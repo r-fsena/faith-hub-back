@@ -1,0 +1,28 @@
+{
+  "name": "faith-hub-backend",
+  "version": "1.0.0",
+  "description": "Serverless AWS Backend for Faith Hub Ecosystem",
+  "main": "handler.js",
+  "scripts": {
+    "start": "export $(grep -v '^#' .env | xargs) && serverless offline start",
+    "deploy": "serverless deploy",
+    "db:sync": "npx ts-node src/db/syncCognito.ts"
+  },
+  "dependencies": {
+    "@aws-sdk/client-cognito-identity-provider": "^3.0.0",
+    "@aws-sdk/client-s3": "^3.1020.0",
+    "@aws-sdk/s3-request-presigner": "^3.1020.0",
+    "cors": "^2.8.5",
+    "mysql2": "^3.9.0",
+    "uuid": "^9.0.0"
+  },
+  "devDependencies": {
+    "@types/aws-lambda": "^8.10.119",
+    "@types/node": "^20.0.0",
+    "esbuild": "^0.19.0",
+    "serverless": "^3.38.0",
+    "serverless-esbuild": "^1.46.0",
+    "serverless-offline": "^13.0.0",
+    "typescript": "^5.0.0"
+  }
+}

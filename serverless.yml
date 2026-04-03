@@ -1,0 +1,403 @@
+service: faith-hub-backend
+frameworkVersion: '3'
+
+provider:
+  name: aws
+  runtime: nodejs18.x
+  region: us-east-2
+  useDotenv: true
+  environment:
+    # EsteUserPool ID real vem da arquitetura do aplicativo. Você precisa garantir que a role Lambda tem acesso.
+    USER_POOL_ID: ${env:USER_POOL_ID, 'us-east-2_pLrj1NgHI'}
+    DB_HOST: ${env:DB_HOST, 'localhost'}
+    DB_PORT: ${env:DB_PORT, '5432'}
+    DB_USER: ${env:DB_USER, 'postgres'}
+    DB_PASSWORD: ${env:DB_PASSWORD, 'postgres'}
+    DB_NAME: ${env:DB_NAME, 'faithhub'}
+    DB_SSL: ${env:DB_SSL, 'false'}
+  iam:
+    role:
+      statements:
+        - Effect: Allow
+          Action:
+            - cognito-idp:AdminCreateUser
+            - cognito-idp:AdminDisableUser
+            - cognito-idp:AdminEnableUser
+            - cognito-idp:AdminResetUserPassword
+            - cognito-idp:AdminAddUserToGroup
+            - cognito-idp:AdminUpdateUserAttributes
+          Resource: "arn:aws:cognito-idp:us-east-2:*:userpool/us-east-2_pLrj1NgHI"
+
+plugins:
+  - serverless-esbuild
+  - serverless-offline
+
+custom:
+  esbuild:
+    bundle: true
+    minify: false
+    sourcemap: true
+
+functions:
+  inviteMember:
+    handler: src/functions/members.invite
+    events:
+      - httpApi:
+          path: /members/invite
+          method: post
+          cors: true
+          
+  updateMemberStatus:
+    handler: src/functions/members.updateStatus
+    events:
+      - httpApi:
+          path: /members/status
+          method: put
+          cors: true
+          
+  resetPassword:
+    handler: src/functions/members.resetPassword
+    events:
+      - httpApi:
+          path: /members/reset-password
+          method: post
+          cors: true
+
+  listMembers:
+    handler: src/functions/members.list
+    events:
+      - httpApi:
+          path: /members
+          method: get
+          cors: true
+          
+  getMember:
+    handler: src/functions/members.get
+    events:
+      - httpApi:
+          path: /members/{id}
+          method: get
+          cors: true
+          
+  updateMember:
+    handler: src/functions/members.update
+    events:
+      - httpApi:
+          path: /members/{id}
+          method: put
+          cors: true
+
+  requestCell:
+    handler: src/functions/members.requestCell
+    events:
+      - httpApi:
+          method: post
+          path: /members/{id}/request-cell
+          cors: true
+
+  getPdvProducts:
+    handler: src/functions/pdv_products.getProducts
+    events:
+      - httpApi:
+          path: /pdv/products
+          method: get
+          cors: true
+
+  createPdvProduct:
+    handler: src/functions/pdv_products.createOrUpdateProduct
+    events:
+      - httpApi:
+          path: /pdv/products
+          method: post
+          cors: true
+
+  deletePdvProduct:
+    handler: src/functions/pdv_products.deleteProduct
+    events:
+      - httpApi:
+          path: /pdv/products/{id}
+          method: delete
+          cors: true
+
+  createPdvOrder:
+    handler: src/functions/pdv_orders.createOrder
+    events:
+      - httpApi:
+          path: /pdv/orders
+          method: post
+          cors: true
+
+  getPdvOrders:
+    handler: src/functions/pdv_orders.getOrders
+    events:
+      - httpApi:
+          path: /pdv/orders
+          method: get
+          cors: true
+          
+  updatePdvOrderStatus:
+    handler: src/functions/pdv_orders.updateOrderStatus
+    events:
+      - httpApi:
+          path: /pdv/orders/{id}/status
+          method: put
+          cors: true
+
+  createOrUpdateBroadcast:
+    handler: src/functions/broadcasts.createOrUpdateBroadcast
+    events:
+      - httpApi:
+          path: /broadcasts
+          method: post
+          cors: true
+          
+  getBroadcasts:
+    handler: src/functions/broadcasts.getBroadcasts
+    events:
+      - httpApi:
+          path: /broadcasts
+          method: get
+          cors: true
+          
+  getActiveBroadcast:
+    handler: src/functions/broadcasts.getActiveBroadcast
+    events:
+      - httpApi:
+          path: /broadcasts/active
+          method: get
+          cors: true
+          
+  deleteBroadcast:
+    handler: src/functions/broadcasts.deleteBroadcast
+    events:
+      - httpApi:
+          path: /broadcasts/{id}
+          method: delete
+          cors: true
+
+  getGroups:
+    handler: src/functions/cellGroups.getGroups
+    events:
+      - httpApi:
+          method: GET
+          path: /cell-groups
+
+  createOrUpdateGroup:
+    handler: src/functions/cellGroups.createOrUpdateGroup
+    events:
+      - httpApi:
+          method: POST
+          path: /cell-groups
+
+  getGroup:
+    handler: src/functions/cellGroups.getGroup
+    events:
+      - httpApi:
+          method: GET
+          path: /cell-groups/{id}
+
+  deleteGroup:
+    handler: src/functions/cellGroups.deleteGroup
+    events:
+      - httpApi:
+          method: DELETE
+          path: /cell-groups/{id}
+
+  evaluateRequest:
+    handler: src/functions/cellGroups.evaluateRequest
+    events:
+      - httpApi:
+          method: POST
+          path: /cell-groups/{id}/evaluate-request
+
+  getStudies:
+    handler: src/functions/studies.getStudies
+    events:
+      - httpApi:
+          method: GET
+          path: /studies
+          cors: true
+
+  createOrUpdateStudy:
+    handler: src/functions/studies.createOrUpdateStudy
+    events:
+      - httpApi:
+          method: POST
+          path: /studies
+          cors: true
+
+  deleteStudy:
+    handler: src/functions/studies.deleteStudy
+    events:
+      - httpApi:
+          method: DELETE
+          path: /studies/{id}
+          cors: true
+
+  getPosts:
+    handler: src/functions/posts.getPosts
+    events:
+      - httpApi:
+          method: GET
+          path: /posts
+          cors: true
+
+  createPost:
+    handler: src/functions/posts.createPost
+    events:
+      - httpApi:
+          method: POST
+          path: /posts
+          cors: true
+
+  deletePost:
+    handler: src/functions/posts.deletePost
+    events:
+      - httpApi:
+          method: DELETE
+          path: /posts/{id}
+          cors: true
+
+  getUploadUrl:
+    handler: src/functions/uploads.getUploadUrl
+    events:
+      - httpApi:
+          method: GET
+          path: /upload-url
+          cors: true
+
+  getPartilhas:
+    handler: src/functions/partilhas.getPartilhas
+    events:
+      - httpApi:
+          method: GET
+          path: /partilhas
+          cors: true
+
+  createPartilha:
+    handler: src/functions/partilhas.createPartilha
+    events:
+      - httpApi:
+          method: POST
+          path: /partilhas
+          cors: true
+
+  togglePartilha:
+    handler: src/functions/partilhas.togglePartilha
+    events:
+      - httpApi:
+          method: PUT
+          path: /partilhas/{id}/toggle
+          cors: true
+
+  deletePartilha:
+    handler: src/functions/partilhas.deletePartilha
+    events:
+      - httpApi:
+          method: DELETE
+          path: /partilhas/{id}
+          cors: true
+
+  getEvents:
+    handler: src/functions/events.getEvents
+    events:
+      - httpApi:
+          method: GET
+          path: /events
+          cors: true
+
+  getEventById:
+    handler: src/functions/events.getEventById
+    events:
+      - httpApi:
+          method: GET
+          path: /events/{id}
+          cors: true
+
+  createOrUpdateEvent:
+    handler: src/functions/events.createOrUpdateEvent
+    events:
+      - httpApi:
+          method: POST
+          path: /events
+          cors: true
+
+  deleteEvent:
+    handler: src/functions/events.deleteEvent
+    events:
+      - httpApi:
+          method: DELETE
+          path: /events/{id}
+          cors: true
+
+  createMockEvent:
+    handler: src/functions/events.createMockEvent
+    events:
+      - httpApi:
+          method: POST
+          path: /events/mock
+          cors: true
+
+  checkoutTicket:
+    handler: src/functions/tickets.checkout
+    events:
+      - httpApi:
+          method: POST
+          path: /tickets/checkout
+          cors: true
+
+  myTickets:
+    handler: src/functions/tickets.myTickets
+    events:
+      - httpApi:
+          method: GET
+          path: /tickets/me
+          cors: true
+
+  scanTicket:
+    handler: src/functions/tickets.scanTicket
+    events:
+      - httpApi:
+          method: POST
+          path: /tickets/scan
+          cors: true
+
+  getDevotionals:
+    handler: src/functions/devotionals.getDevotionals
+    events:
+      - httpApi:
+          method: GET
+          path: /devotionals
+          cors: true
+
+  getTodayDevotional:
+    handler: src/functions/devotionals.getTodayDevotional
+    events:
+      - httpApi:
+          method: GET
+          path: /devotionals/today
+          cors: true
+
+  createOrUpdateDevotional:
+    handler: src/functions/devotionals.createOrUpdateDevotional
+    events:
+      - httpApi:
+          method: POST
+          path: /devotionals
+          cors: true
+
+  deleteDevotional:
+    handler: src/functions/devotionals.deleteDevotional
+    events:
+      - httpApi:
+          method: DELETE
+          path: /devotionals/{id}
+          cors: true
+          
+  saveUserNote:
+    handler: src/functions/devotionals.saveUserNote
+    events:
+      - httpApi:
+          method: POST
+          path: /devotionals/notes
+          cors: true
