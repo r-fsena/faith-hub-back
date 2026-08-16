@@ -207,7 +207,7 @@ export const update: APIGatewayProxyHandlerV2 = async (event) => {
     const id = event.pathParameters?.id;
     if (!id) throw new Error("Missing member ID");
 
-    const { name, cpf, baptismDate, cellGroupId, role, phone, campus_id, campus_ids } = JSON.parse(event.body);
+    const { name, cpf, baptismDate, cellGroupId, role, phone, address, avatar_url, campus_id, campus_ids } = JSON.parse(event.body);
 
     // Convert undefined to null for binding in mySQL
     const pName = name !== undefined ? name : null;
@@ -216,6 +216,8 @@ export const update: APIGatewayProxyHandlerV2 = async (event) => {
     const pCell = cellGroupId !== undefined ? cellGroupId : null;
     const pRole = role !== undefined ? role : null;
     const pPhone = phone !== undefined ? phone : null;
+    const pAddress = address !== undefined ? address : null;
+    const pAvatar = avatar_url !== undefined ? avatar_url : null;
     const pCampus = campus_id !== undefined ? campus_id : null;
     const pCampusIds = campus_ids !== undefined ? JSON.stringify(campus_ids) : null;
 
@@ -228,13 +230,15 @@ export const update: APIGatewayProxyHandlerV2 = async (event) => {
         cell_group_id = COALESCE(?, cell_group_id),
         role = COALESCE(?, role),
         phone = COALESCE(?, phone),
+        address = COALESCE(?, address),
+        avatar_url = COALESCE(?, avatar_url),
         campus_id = COALESCE(?, campus_id),
         campus_ids = COALESCE(?, campus_ids),
         updated_at = NOW()
       WHERE id = ?
     `;
 
-    await query(updateQuery, [pName, pCpf, pBaptism, pCell, pRole, pPhone, pCampus, pCampusIds, id]);
+    await query(updateQuery, [pName, pCpf, pBaptism, pCell, pRole, pPhone, pAddress, pAvatar, pCampus, pCampusIds, id]);
 
     return { statusCode: 200, headers, body: JSON.stringify({ message: "Perfil atualizado", id }) };
   } catch (error: any) {
