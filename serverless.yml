@@ -9,12 +9,13 @@ provider:
   environment:
     # EsteUserPool ID real vem da arquitetura do aplicativo. Você precisa garantir que a role Lambda tem acesso.
     USER_POOL_ID: ${env:USER_POOL_ID, 'us-east-2_pLrj1NgHI'}
-    DB_HOST: ${env:DB_HOST, 'localhost'}
-    DB_PORT: ${env:DB_PORT, '5432'}
-    DB_USER: ${env:DB_USER, 'postgres'}
-    DB_PASSWORD: ${env:DB_PASSWORD, 'postgres'}
-    DB_NAME: ${env:DB_NAME, 'faithhub'}
+    DB_HOST: ${env:DB_HOST, 'faith-hub.cc7220s4ekvj.us-east-1.rds.amazonaws.com'}
+    DB_PORT: ${env:DB_PORT, '3306'}
+    DB_USER: ${env:DB_USER, 'admin_faith_hub'}
+    DB_PASSWORD: ${env:DB_PASSWORD, '30ago2015Ra!'}
+    DB_NAME: ${env:DB_NAME, 'faith-hub'}
     DB_SSL: ${env:DB_SSL, 'false'}
+    S3_MEDIA_BUCKET: ${env:S3_MEDIA_BUCKET, 'faith-hub-media-bucket-rafaelsena'}
   iam:
     role:
       statements:
