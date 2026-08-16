@@ -202,6 +202,20 @@ functions:
           method: POST
           path: /cell-groups/{id}/join-requests/{userId}
 
+  addCellMember:
+    handler: src/functions/cellGroups.addMember
+    events:
+      - httpApi:
+          method: POST
+          path: /cell-groups/{id}/members
+
+  removeCellMember:
+    handler: src/functions/cellGroups.removeMember
+    events:
+      - httpApi:
+          method: DELETE
+          path: /cell-groups/{id}/members/{memberId}
+
 
   getStudies:
     handler: src/functions/studies.getStudies

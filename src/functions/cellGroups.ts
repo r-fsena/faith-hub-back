@@ -175,7 +175,7 @@ export const evaluateJoinRequest = async (event: APIGatewayProxyEvent): Promise<
     if (!groupId || !userId) return apiResponse(400, { error: 'Group ID ou User ID ausente' });
 
     const body = JSON.parse(event.body || '{}');
-    const action = body.action; // 'approve' | 'reject'
+    const action = body.action || (body.status === 'APPROVED' ? 'approve' : 'reject');
     const isApproved = action === 'approve';
 
     if (isApproved) {
@@ -200,3 +200,43 @@ export const evaluateJoinRequest = async (event: APIGatewayProxyEvent): Promise<
     return apiResponse(500, { error: err.message });
   }
 };
+
+// POST /cell-groups/{id}/members -> Adicionar membro existente à célula
+export const addMember = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  try {
+    const groupId = event.pathParameters?.id;
+    if (!groupId) return apiResponse(400, { error: 'Group ID faltante' });
+
+    const body = JSON.parse(event.body || '{}');
+    const { member_id } = body;
+    if (!member_id) return apiResponse(400, { error: 'member_id faltante' });
+
+    await query(
+      `UPDATE members SET cell_group_id = ?, pending_cell_group_id = NULL WHERE id = ?`,
+      [groupId, member_id]
+    );
+
+    return apiResponse(200, { message: 'Membro adicionado à célula com sucesso' });
+  } catch (err: any) {
+    return apiResponse(500, { error: err.message });
+  }
+};
+
+// DELETE /cell-groups/{id}/members/{memberId} -> Remover/desvincular membro da célula
+export const removeMember = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  try {
+    const groupId = event.pathParameters?.id;
+    const memberId = event.pathParameters?.memberId;
+    if (!groupId || !memberId) return apiResponse(400, { error: 'IDs faltantes' });
+
+    await query(
+      `UPDATE members SET cell_group_id = NULL WHERE id = ? AND cell_group_id = ?`,
+      [memberId, groupId]
+    );
+
+    return apiResponse(200, { message: 'Membro desvinculado da célula com sucesso' });
+  } catch (err: any) {
+    return apiResponse(500, { error: err.message });
+  }
+};
+
