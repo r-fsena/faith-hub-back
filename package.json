@@ -18,6 +18,8 @@
     "uuid": "^9.0.0"
   },
   "devDependencies": {
+    "@aws-sdk/client-amplify": "^3.1111.0",
+    "@aws-sdk/client-route-53": "^3.1111.0",
     "@types/aws-lambda": "^8.10.119",
     "@types/node": "^20.0.0",
     "esbuild": "^0.19.0",

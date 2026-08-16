@@ -32,22 +32,55 @@ const DEFAULT_SETTINGS = {
 };
 
 // GET /church-settings
-export const getSettings = async (_event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+export const getSettings = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   try {
-    const { rows } = await query(`SELECT * FROM church_settings ORDER BY updated_at DESC LIMIT 1`);
-    if (rows.length === 0) {
-      return apiResponse(200, DEFAULT_SETTINGS);
+    const slug = event.queryStringParameters?.slug;
+    const orgId = event.queryStringParameters?.organization_id;
+
+    let sql = `SELECT * FROM church_settings`;
+    let params: any[] = [];
+
+    if (slug) {
+      sql += ` WHERE pwa_slug = ? OR id = ? LIMIT 1`;
+      params = [slug, slug];
+    } else if (orgId) {
+      sql += ` WHERE organization_id = ? LIMIT 1`;
+      params = [orgId];
+    } else {
+      sql += ` ORDER BY updated_at DESC LIMIT 1`;
     }
 
-    const item = rows[0];
-    return apiResponse(200, {
-      ...DEFAULT_SETTINGS,
-      ...item,
-      offline_mode: Boolean(item.offline_mode)
-    });
+    const { rows } = await query(sql, params);
+    if (rows.length > 0) {
+      const item = rows[0];
+      return apiResponse(200, {
+        ...DEFAULT_SETTINGS,
+        ...item,
+        offline_mode: Boolean(item.offline_mode)
+      });
+    }
+
+    // Se não encontrou em church_settings mas foi passado slug, tenta buscar em organizations
+    if (slug) {
+      const orgRes = await query(`SELECT * FROM organizations WHERE slug = ? OR id = ? LIMIT 1`, [slug, slug]);
+      if (orgRes.rows.length > 0) {
+        const org = orgRes.rows[0];
+        return apiResponse(200, {
+          ...DEFAULT_SETTINGS,
+          id: org.id,
+          church_name: org.name,
+          pwa_slug: org.slug,
+          primary_color: org.primary_color || DEFAULT_SETTINGS.primary_color,
+          secondary_color: org.secondary_color || DEFAULT_SETTINGS.secondary_color,
+          logo_icon_url: org.logo_url || DEFAULT_SETTINGS.logo_icon_url,
+          organization_id: org.id
+        });
+      }
+    }
+
+    return apiResponse(200, DEFAULT_SETTINGS);
   } catch (error: any) {
     console.error('Erro ao buscar church-settings:', error);
-    // Em caso de falha no BD (offline), retorna defaults para o frontend não quebrar
     return apiResponse(200, DEFAULT_SETTINGS);
   }
 };
