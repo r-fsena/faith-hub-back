@@ -15,7 +15,8 @@ const USER_POOL_ID = process.env.USER_POOL_ID as string;
 const headers = {
   "Content-Type": "application/json",
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "OPTIONS,POST,GET,PUT"
+  "Access-Control-Allow-Methods": "OPTIONS,POST,GET,PUT,DELETE",
+  "Access-Control-Allow-Headers": "Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token"
 };
 
 // 1. Convidar Membro
@@ -23,7 +24,7 @@ export const invite: APIGatewayProxyHandlerV2 = async (event) => {
   try {
     if (!event.body) throw new Error("Missing request body");
     const body = JSON.parse(event.body);
-    const { email, name, role, cpf, baptismDate, cellGroupId, phone, invitedBy } = body;
+    const { email, name, role, cpf, baptismDate, cellGroupId, phone, invitedBy, organization_id, campus_id } = body;
 
     const command = new AdminCreateUserCommand({
       UserPoolId: USER_POOL_ID,
@@ -33,7 +34,6 @@ export const invite: APIGatewayProxyHandlerV2 = async (event) => {
         { Name: "name", Value: name }
       ],
       DesiredDeliveryMediums: ["EMAIL"]
-      // REMOVIDO: MessageAction: "SUPPRESS" para permitir que a AWS envie o e-mail de Boas vindas
     });
 
     const response = await cognitoClient.send(command);
@@ -41,10 +41,12 @@ export const invite: APIGatewayProxyHandlerV2 = async (event) => {
 
     // MySQL Insert
     const insertQuery = `
-      INSERT INTO members (id, name, email, role, status, cpf, baptism_date, cell_group_id, phone, invited_by)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO members (id, name, email, role, status, cpf, baptism_date, cell_group_id, phone, invited_by, organization_id, campus_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
     const roleValue = role || 'MEMBER';
+    const orgValue = organization_id || 'org_default';
+    const campusValue = campus_id || 'campus_sede';
 
     await query(insertQuery, [
       cognitoUserId,
@@ -56,11 +58,12 @@ export const invite: APIGatewayProxyHandlerV2 = async (event) => {
       baptismDate || null,
       cellGroupId || null,
       phone || null,
-      invitedBy || null
+      invitedBy || null,
+      orgValue,
+      campusValue
     ]);
 
-    // Retorna o objeto inserido (Como MySQL2 não suporta RETURNING * pra inserts complexos, construimos local)
-    const newUser = { id: cognitoUserId, name, email, role: roleValue, status: 'Pendente', cpf, baptism_date: baptismDate, cell_group_id: cellGroupId, phone, invited_by: invitedBy };
+    const newUser = { id: cognitoUserId, name, email, role: roleValue, status: 'Pendente', cpf, baptism_date: baptismDate, cell_group_id: cellGroupId, phone, invited_by: invitedBy, organization_id: orgValue, campus_id: campusValue };
 
     return {
       statusCode: 201,
@@ -117,19 +120,38 @@ export const resetPassword: APIGatewayProxyHandlerV2 = async (event) => {
   }
 };
 
-// 4. Listar Membros do DB
+// 4. Listar Membros do DB com suporte a Campus/Organização
 export const list: APIGatewayProxyHandlerV2 = async (event) => {
   try {
     const groupId = event.queryStringParameters?.group_id;
-    let listQuery = `SELECT * FROM members `;
+    const campusId = event.queryStringParameters?.campus_id;
+    const orgId = event.queryStringParameters?.organization_id;
+
+    let listQuery = `
+      SELECT m.*, cg.name as cell_group_name, c.name as campus_name
+      FROM members m
+      LEFT JOIN cell_groups cg ON m.cell_group_id = cg.id
+      LEFT JOIN campuses c ON m.campus_id = c.id
+      WHERE 1=1
+    `;
     let params: any[] = [];
 
+    if (orgId && orgId !== 'all') {
+      listQuery += ` AND m.organization_id = ?`;
+      params.push(orgId);
+    }
+
+    if (campusId && campusId !== 'all') {
+      listQuery += ` AND m.campus_id = ?`;
+      params.push(campusId);
+    }
+
     if (groupId) {
-      listQuery += `WHERE cell_group_id = ? `;
+      listQuery += ` AND m.cell_group_id = ?`;
       params.push(groupId);
     }
 
-    listQuery += `ORDER BY name ASC;`;
+    listQuery += ` ORDER BY m.name ASC;`;
 
     const dbResult = await query(listQuery, params);
 

@@ -7,9 +7,21 @@ export const getEvents = async (event: APIGatewayProxyEvent): Promise<APIGateway
   try {
     const admin = event.queryStringParameters?.admin === 'true';
     const type = event.queryStringParameters?.type; // '0' = Evento, '1' = Curso
+    const orgId = event.queryStringParameters?.organization_id;
+    const campusId = event.queryStringParameters?.campus_id;
 
     let sqlEvents = `SELECT * FROM events WHERE 1=1`;
     const params: any[] = [];
+
+    if (orgId && orgId !== 'all') {
+      sqlEvents += ` AND organization_id = ?`;
+      params.push(orgId);
+    }
+
+    if (campusId && campusId !== 'all') {
+      sqlEvents += ` AND (campus_id = ? OR campus_id IS NULL)`;
+      params.push(campusId);
+    }
 
     if (!admin) {
       sqlEvents += ` AND status = 'PUBLISHED'`;
@@ -130,12 +142,15 @@ export const createOrUpdateEvent = async (event: APIGatewayProxyEvent): Promise<
 
     await connection.beginTransaction();
 
+    const orgValue = data.organization_id || 'org_default';
+    const campusValue = data.campus_id || 'campus_sede';
+
     if (isUpdate) {
-      const q = `UPDATE events SET type=?, is_featured=?, title=?, description=?, image_url=?, video_url=?, start_date=?, end_date=?, location=?, status=? WHERE id=?`;
-      await connection.query(q, [type, isFeatured, data.title, data.description, data.image_url, data.video_url || null, data.start_date, data.end_date, data.location, data.status || 'PUBLISHED', id]);
+      const q = `UPDATE events SET type=?, is_featured=?, title=?, description=?, image_url=?, video_url=?, start_date=?, end_date=?, location=?, status=?, campus_id=? WHERE id=?`;
+      await connection.query(q, [type, isFeatured, data.title, data.description, data.image_url, data.video_url || null, data.start_date, data.end_date, data.location, data.status || 'PUBLISHED', campusValue, id]);
     } else {
-      const q = `INSERT INTO events (id, type, is_featured, title, description, image_url, video_url, start_date, end_date, location, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
-      await connection.query(q, [id, type, isFeatured, data.title, data.description, data.image_url, data.video_url || null, data.start_date, data.end_date, data.location, data.status || 'PUBLISHED']);
+      const q = `INSERT INTO events (id, type, is_featured, title, description, image_url, video_url, start_date, end_date, location, status, organization_id, campus_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+      await connection.query(q, [id, type, isFeatured, data.title, data.description, data.image_url, data.video_url || null, data.start_date, data.end_date, data.location, data.status || 'PUBLISHED', orgValue, campusValue]);
     }
 
     // Gerenciamento de LOTES

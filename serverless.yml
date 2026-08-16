@@ -427,3 +427,53 @@ functions:
           method: DELETE
           path: /prayers/{id}
 
+  listOrganizations:
+    handler: src/functions/organizations.listOrganizations
+    events:
+      - httpApi:
+          method: GET
+          path: /organizations
+
+  getOrganization:
+    handler: src/functions/organizations.getOrganization
+    events:
+      - httpApi:
+          method: GET
+          path: /organizations/{id}
+
+  createOrUpdateOrganization:
+    handler: src/functions/organizations.createOrUpdateOrganization
+    events:
+      - httpApi:
+          method: POST
+          path: /organizations
+
+  listCampuses:
+    handler: src/functions/campuses.listCampuses
+    events:
+      - httpApi:
+          method: GET
+          path: /campuses
+
+  getCampus:
+    handler: src/functions/campuses.getCampus
+    events:
+      - httpApi:
+          method: GET
+          path: /campuses/{id}
+
+  createOrUpdateCampus:
+    handler: src/functions/campuses.createOrUpdateCampus
+    events:
+      - httpApi:
+          method: POST
+          path: /campuses
+
+  deleteCampus:
+    handler: src/functions/campuses.deleteCampus
+    events:
+      - httpApi:
+          method: DELETE
+          path: /campuses/{id}
+
+

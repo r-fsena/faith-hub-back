@@ -6,11 +6,27 @@ import { query, apiResponse } from '../db';
 export const getProducts = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   try {
     const admin = event.queryStringParameters?.admin === 'true';
-    const sql = admin
-      ? `SELECT * FROM pdv_products ORDER BY category, name`
-      : `SELECT * FROM pdv_products WHERE status = 'ACTIVE' ORDER BY category, name`;
+    const orgId = event.queryStringParameters?.organization_id;
+    const campusId = event.queryStringParameters?.campus_id;
 
-    const { rows } = await query(sql);
+    let sql = `SELECT * FROM pdv_products WHERE 1=1`;
+    const params: any[] = [];
+
+    if (orgId && orgId !== 'all') {
+      sql += ` AND organization_id = ?`;
+      params.push(orgId);
+    }
+    if (campusId && campusId !== 'all') {
+      sql += ` AND (campus_id = ? OR campus_id IS NULL)`;
+      params.push(campusId);
+    }
+    if (!admin) {
+      sql += ` AND status = 'ACTIVE'`;
+    }
+
+    sql += ` ORDER BY category, name`;
+
+    const { rows } = await query(sql, params);
 
     const formatted = rows.map((r: any) => ({
       ...r,
@@ -30,6 +46,8 @@ export const createOrUpdateProduct = async (event: APIGatewayProxyEvent): Promis
     const body = JSON.parse(event.body || '{}');
     const isUpdate = !!body.id;
     const id = body.id || uuidv4();
+    const orgValue = body.organization_id || 'org_default';
+    const campusValue = body.campus_id || 'campus_sede';
 
     const qValues = [
       body.name,
@@ -41,11 +59,11 @@ export const createOrUpdateProduct = async (event: APIGatewayProxyEvent): Promis
     ];
 
     if (isUpdate) {
-      const uQ = `UPDATE pdv_products SET name=?, description=?, price=?, category=?, image_urls=?, status=? WHERE id=?`;
-      await query(uQ, [...qValues, id]);
+      const uQ = `UPDATE pdv_products SET name=?, description=?, price=?, category=?, image_urls=?, status=?, campus_id=? WHERE id=?`;
+      await query(uQ, [...qValues, campusValue, id]);
     } else {
-      const iQ = `INSERT INTO pdv_products (name, description, price, category, image_urls, status, id) VALUES (?, ?, ?, ?, ?, ?, ?)`;
-      await query(iQ, [...qValues, id]);
+      const iQ = `INSERT INTO pdv_products (name, description, price, category, image_urls, status, organization_id, campus_id, id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+      await query(iQ, [...qValues, orgValue, campusValue, id]);
     }
 
     return apiResponse(isUpdate ? 200 : 201, { message: 'Produto salvo com sucesso!', id });
