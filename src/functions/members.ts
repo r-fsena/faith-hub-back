@@ -39,14 +39,19 @@ export const invite: APIGatewayProxyHandlerV2 = async (event) => {
     const response = await cognitoClient.send(command);
     const cognitoUserId = response.User?.Username || uuidv4();
 
-    // MySQL Insert
-    const insertQuery = `
-      INSERT INTO members (id, name, email, role, status, cpf, baptism_date, cell_group_id, phone, invited_by, organization_id, campus_id)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `;
     const roleValue = role || 'MEMBER';
     const orgValue = organization_id || 'org_default';
-    const campusValue = campus_id || 'campus_sede';
+    const campusList = Array.isArray(campus_ids) && campus_ids.length > 0 
+      ? campus_ids 
+      : (campus_id ? [campus_id] : ['campus_sede']);
+    const primaryCampus = campusList[0] || 'campus_sede';
+    const campusIdsJson = JSON.stringify(campusList);
+
+    // MySQL Insert
+    const insertQuery = `
+      INSERT INTO members (id, name, email, role, status, cpf, baptism_date, cell_group_id, phone, invited_by, organization_id, campus_id, campus_ids)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `;
 
     await query(insertQuery, [
       cognitoUserId,
@@ -60,10 +65,11 @@ export const invite: APIGatewayProxyHandlerV2 = async (event) => {
       phone || null,
       invitedBy || null,
       orgValue,
-      campusValue
+      primaryCampus,
+      campusIdsJson
     ]);
 
-    const newUser = { id: cognitoUserId, name, email, role: roleValue, status: 'Pendente', cpf, baptism_date: baptismDate, cell_group_id: cellGroupId, phone, invited_by: invitedBy, organization_id: orgValue, campus_id: campusValue };
+    const newUser = { id: cognitoUserId, name, email, role: roleValue, status: 'Pendente', cpf, baptism_date: baptismDate, cell_group_id: cellGroupId, phone, invited_by: invitedBy, organization_id: orgValue, campus_id: primaryCampus, campus_ids: campusList };
 
     return {
       statusCode: 201,
@@ -142,8 +148,8 @@ export const list: APIGatewayProxyHandlerV2 = async (event) => {
     }
 
     if (campusId && campusId !== 'all') {
-      listQuery += ` AND m.campus_id = ?`;
-      params.push(campusId);
+      listQuery += ` AND (m.campus_id = ? OR JSON_CONTAINS(m.campus_ids, JSON_QUOTE(?)) OR JSON_CONTAINS(m.campus_ids, '"all"'))`;
+      params.push(campusId, campusId);
     }
 
     if (groupId) {
@@ -155,7 +161,12 @@ export const list: APIGatewayProxyHandlerV2 = async (event) => {
 
     const dbResult = await query(listQuery, params);
 
-    return { statusCode: 200, headers, body: JSON.stringify({ data: dbResult.rows }) };
+    const formattedMembers = dbResult.rows.map((m: any) => ({
+      ...m,
+      campus_ids: typeof m.campus_ids === 'string' ? JSON.parse(m.campus_ids || '[]') : (m.campus_ids || [])
+    }));
+
+    return { statusCode: 200, headers, body: JSON.stringify({ data: formattedMembers }) };
   } catch (error: any) {
     console.error(error);
     return { statusCode: 500, headers, body: JSON.stringify({ error: error.message }) };
@@ -180,7 +191,10 @@ export const get: APIGatewayProxyHandlerV2 = async (event) => {
       return { statusCode: 404, headers, body: JSON.stringify({ message: "Membro não encontrado" }) };
     }
 
-    return { statusCode: 200, headers, body: JSON.stringify({ data: dbResult.rows[0] }) };
+    const memberData = dbResult.rows[0];
+    memberData.campus_ids = typeof memberData.campus_ids === 'string' ? JSON.parse(memberData.campus_ids || '[]') : (memberData.campus_ids || []);
+
+    return { statusCode: 200, headers, body: JSON.stringify({ data: memberData }) };
   } catch (error: any) {
     console.error(error);
     return { statusCode: 500, headers, body: JSON.stringify({ error: error.message }) };
@@ -193,8 +207,7 @@ export const update: APIGatewayProxyHandlerV2 = async (event) => {
     const id = event.pathParameters?.id;
     if (!id) throw new Error("Missing member ID");
 
-    if (!event.body) throw new Error("Missing request body");
-    const { name, cpf, baptismDate, cellGroupId, role, phone } = JSON.parse(event.body);
+    const { name, cpf, baptismDate, cellGroupId, role, phone, campus_id, campus_ids } = JSON.parse(event.body);
 
     // Convert undefined to null for binding in mySQL
     const pName = name !== undefined ? name : null;
@@ -203,6 +216,8 @@ export const update: APIGatewayProxyHandlerV2 = async (event) => {
     const pCell = cellGroupId !== undefined ? cellGroupId : null;
     const pRole = role !== undefined ? role : null;
     const pPhone = phone !== undefined ? phone : null;
+    const pCampus = campus_id !== undefined ? campus_id : null;
+    const pCampusIds = campus_ids !== undefined ? JSON.stringify(campus_ids) : null;
 
     const updateQuery = `
       UPDATE members 
@@ -213,11 +228,13 @@ export const update: APIGatewayProxyHandlerV2 = async (event) => {
         cell_group_id = COALESCE(?, cell_group_id),
         role = COALESCE(?, role),
         phone = COALESCE(?, phone),
+        campus_id = COALESCE(?, campus_id),
+        campus_ids = COALESCE(?, campus_ids),
         updated_at = NOW()
       WHERE id = ?
     `;
 
-    await query(updateQuery, [pName, pCpf, pBaptism, pCell, pRole, pPhone, id]);
+    await query(updateQuery, [pName, pCpf, pBaptism, pCell, pRole, pPhone, pCampus, pCampusIds, id]);
 
     return { statusCode: 200, headers, body: JSON.stringify({ message: "Perfil atualizado", id }) };
   } catch (error: any) {
