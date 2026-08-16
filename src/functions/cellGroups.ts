@@ -1,134 +1,181 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
-import mysql from 'mysql2/promise';
 import { v4 as uuidv4 } from 'uuid';
+import { query, apiResponse } from '../db';
 
-async function getConnection() {
-  return await mysql.createConnection({
-    host: process.env.DB_HOST,
-    port: parseInt(process.env.DB_PORT || '3306'),
-    user: process.env.DB_USER,
-    password: process.env.DB_PASSWORD,
-    database: process.env.DB_NAME || 'faith-hub',
-    ssl: { rejectUnauthorized: false }
-  });
-}
-
-function response(statusCode: number, body: any) {
-  return {
-    statusCode,
-    headers: { 'Access-Control-Allow-Origin': '*' },
-    body: JSON.stringify(body),
-  };
-}
-
+// POST /cell-groups -> Criar ou Atualizar
 export const createOrUpdateGroup = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   try {
     const body = JSON.parse(event.body || '{}');
     const { id, name, leader_id, description, address, neighborhood, meeting_day, meeting_time, whatsapp_contact, status, focus } = body;
 
-    const connection = await getConnection();
     const finalId = id || uuidv4();
 
-    const q = `INSERT INTO cell_groups (id, name, leader_id, description, address, neighborhood, meeting_day, meeting_time, whatsapp_contact, status, focus) 
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, 'ACTIVE'), COALESCE(?, '@GERAL'))
-               ON DUPLICATE KEY UPDATE 
-               name=VALUES(name), leader_id=VALUES(leader_id), description=VALUES(description), 
-               address=VALUES(address), neighborhood=VALUES(neighborhood), 
-               meeting_day=VALUES(meeting_day), meeting_time=VALUES(meeting_time), 
-               whatsapp_contact=VALUES(whatsapp_contact), status=VALUES(status), focus=VALUES(focus)`;
+    const q = `
+      INSERT INTO cell_groups (id, name, leader_id, description, address, neighborhood, meeting_day, meeting_time, whatsapp_contact, status, focus) 
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, 'ACTIVE'), COALESCE(?, '@GERAL'))
+      ON DUPLICATE KEY UPDATE 
+        name = VALUES(name),
+        leader_id = VALUES(leader_id),
+        description = VALUES(description), 
+        address = VALUES(address),
+        neighborhood = VALUES(neighborhood), 
+        meeting_day = VALUES(meeting_day),
+        meeting_time = VALUES(meeting_time), 
+        whatsapp_contact = VALUES(whatsapp_contact),
+        status = VALUES(status),
+        focus = VALUES(focus),
+        updated_at = NOW()
+    `;
 
-    await connection.query(q, [finalId, name, leader_id || null, description || null, address || null, neighborhood || null, meeting_day || null, meeting_time || null, whatsapp_contact || null, status, focus]);
-    await connection.end();
+    await query(q, [
+      finalId,
+      name,
+      leader_id || null,
+      description || null,
+      address || null,
+      neighborhood || null,
+      meeting_day || null,
+      meeting_time || null,
+      whatsapp_contact || null,
+      status,
+      focus
+    ]);
 
-    return response(id ? 200 : 201, { message: 'Célula/Grupo salva com sucesso', id: finalId });
+    return apiResponse(id ? 200 : 201, { message: 'Célula/Grupo salva com sucesso', id: finalId });
   } catch (err: any) {
-    console.error(err);
-    return response(500, { error: err.message });
+    console.error('Erro ao salvar célula:', err);
+    return apiResponse(500, { error: err.message });
   }
 };
 
-export const getGroups = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+// GET /cell-groups -> Listar todas as células
+export const getGroups = async (_event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   try {
-    const connection = await getConnection();
-
-    // We join with the members table to get the leader name!
     const q = `
       SELECT cg.*, m.name as leader_name,
-        (SELECT COUNT(*) FROM members WHERE pending_cell_group_id = cg.id) as pending_count
+        (SELECT COUNT(*) FROM members WHERE pending_cell_group_id = cg.id) as pending_count,
+        (SELECT COUNT(*) FROM members WHERE cell_group_id = cg.id) as member_count
       FROM cell_groups cg 
       LEFT JOIN members m ON cg.leader_id = m.id 
       ORDER BY cg.name ASC
     `;
-    const [rows] = await connection.query(q);
-    await connection.end();
-
-    return response(200, rows);
+    const { rows } = await query(q);
+    return apiResponse(200, rows);
   } catch (err: any) {
-    console.error(err);
-    return response(500, { error: err.message });
+    console.error('Erro ao listar células:', err);
+    return apiResponse(500, { error: err.message });
   }
 };
 
+// GET /cell-groups/{id} -> Detalhes da célula e membros pendentes
 export const getGroup = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   try {
     const id = event.pathParameters?.id;
-    if (!id) return response(400, { error: 'ID faltante' });
+    if (!id) return apiResponse(400, { error: 'ID faltante' });
 
-    const connection = await getConnection();
-    const [rows]: any = await connection.query(`SELECT * FROM cell_groups WHERE id = ? LIMIT 1`, [id]);
+    const { rows } = await query(`SELECT * FROM cell_groups WHERE id = ? LIMIT 1`, [id]);
 
     if (rows.length === 0) {
-      await connection.end();
-      return response(404, { message: 'Célula não encontrada' });
+      return apiResponse(404, { message: 'Célula não encontrada' });
     }
 
-    // Puxa os membros pedentes específicos desta célula para a tela de revisão
-    const [pendingRows]: any = await connection.query(`SELECT id, name, phone, email FROM members WHERE pending_cell_group_id = ?`, [id]);
-    await connection.end();
+    const { rows: pendingRows } = await query(
+      `SELECT id, name, phone, email, created_at FROM members WHERE pending_cell_group_id = ?`,
+      [id]
+    );
 
-    const cellData = rows[0];
-    cellData.pending_users = pendingRows || [];
+    const { rows: currentMembers } = await query(
+      `SELECT id, name, phone, email, role FROM members WHERE cell_group_id = ?`,
+      [id]
+    );
 
-    return response(200, cellData);
+    const cellData = {
+      ...rows[0],
+      pending_users: pendingRows || [],
+      members: currentMembers || []
+    };
+
+    return apiResponse(200, cellData);
   } catch (err: any) {
-    return response(500, { error: err.message });
+    return apiResponse(500, { error: err.message });
   }
 };
 
+// DELETE /cell-groups/{id}
 export const deleteGroup = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   try {
     const id = event.pathParameters?.id;
-    if (!id) return response(400, { error: 'ID faltante' });
+    if (!id) return apiResponse(400, { error: 'ID faltante' });
 
-    const connection = await getConnection();
-    await connection.query(`DELETE FROM cell_groups WHERE id = ?`, [id]);
-    await connection.end();
+    // Desvincula membros antes de deletar
+    await query(`UPDATE members SET cell_group_id = NULL WHERE cell_group_id = ?`, [id]);
+    await query(`UPDATE members SET pending_cell_group_id = NULL WHERE pending_cell_group_id = ?`, [id]);
+    await query(`DELETE FROM cell_groups WHERE id = ?`, [id]);
 
-    return response(200, { message: 'Célula deletada' });
+    return apiResponse(200, { message: 'Célula deletada com sucesso' });
   } catch (err: any) {
-    return response(500, { error: err.message });
+    return apiResponse(500, { error: err.message });
   }
 };
 
+// POST /cell-groups/{id}/evaluate-request (legado)
 export const evaluateRequest = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   try {
     const groupId = event.pathParameters?.id;
-    if (!groupId) return response(400, { error: 'Group ID faltante' });
+    if (!groupId) return apiResponse(400, { error: 'Group ID faltante' });
 
     const body = JSON.parse(event.body || '{}');
     const { memberId, approved } = body;
-    if (!memberId) return response(400, { error: 'Member ID faltante' });
+    if (!memberId) return apiResponse(400, { error: 'Member ID faltante' });
 
-    const connection = await getConnection();
     if (approved) {
-      await connection.query(`UPDATE members SET cell_group_id = ?, pending_cell_group_id = NULL WHERE id = ? AND pending_cell_group_id = ?`, [groupId, memberId, groupId]);
+      await query(
+        `UPDATE members SET cell_group_id = ?, pending_cell_group_id = NULL WHERE id = ? AND pending_cell_group_id = ?`,
+        [groupId, memberId, groupId]
+      );
     } else {
-      await connection.query(`UPDATE members SET pending_cell_group_id = NULL WHERE id = ? AND pending_cell_group_id = ?`, [memberId, groupId]);
+      await query(
+        `UPDATE members SET pending_cell_group_id = NULL WHERE id = ? AND pending_cell_group_id = ?`,
+        [memberId, groupId]
+      );
     }
-    await connection.end();
 
-    return response(200, { message: approved ? 'Membro aprovado na célula!' : 'Solicitação negada e removida' });
+    return apiResponse(200, { message: approved ? 'Membro aprovado na célula!' : 'Solicitação negada e removida' });
   } catch (err: any) {
-    return response(500, { error: err.message });
+    return apiResponse(500, { error: err.message });
+  }
+};
+
+// POST /cell-groups/{id}/join-requests/{userId} (chamado pelo Portal Web)
+export const evaluateJoinRequest = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  try {
+    const groupId = event.pathParameters?.id;
+    const userId = event.pathParameters?.userId;
+    if (!groupId || !userId) return apiResponse(400, { error: 'Group ID ou User ID ausente' });
+
+    const body = JSON.parse(event.body || '{}');
+    const action = body.action; // 'approve' | 'reject'
+    const isApproved = action === 'approve';
+
+    if (isApproved) {
+      await query(
+        `UPDATE members SET cell_group_id = ?, pending_cell_group_id = NULL WHERE id = ?`,
+        [groupId, userId]
+      );
+    } else {
+      await query(
+        `UPDATE members SET pending_cell_group_id = NULL WHERE id = ?`,
+        [userId]
+      );
+    }
+
+    return apiResponse(200, {
+      message: isApproved ? 'Solicitação aprovada! Membro integrado ao grupo.' : 'Solicitação de entrada rejeitada.',
+      userId,
+      groupId,
+      status: isApproved ? 'APPROVED' : 'REJECTED'
+    });
+  } catch (err: any) {
+    return apiResponse(500, { error: err.message });
   }
 };

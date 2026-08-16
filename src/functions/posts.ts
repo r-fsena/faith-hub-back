@@ -1,104 +1,100 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { v4 as uuidv4 } from 'uuid';
-import mysql from 'mysql2/promise';
+import { query, apiResponse } from '../db';
 
-async function getConnection() {
-  return await mysql.createConnection({
-    host: process.env.DB_HOST,
-    port: parseInt(process.env.DB_PORT || '3306'),
-    user: process.env.DB_USER,
-    password: process.env.DB_PASSWORD,
-    database: process.env.DB_NAME || 'faith-hub',
-    ssl: { rejectUnauthorized: false }
-  });
-}
-
-function response(statusCode: number, body: any) {
-  return {
-    statusCode,
-    headers: { 'Access-Control-Allow-Origin': '*' },
-    body: JSON.stringify(body),
-  };
-}
-
+// GET /posts
 export const getPosts = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   try {
     const groupId = event.queryStringParameters?.group_id;
     const mediaOnly = event.queryStringParameters?.media_only === 'true';
     
-    const connection = await getConnection();
-    
-    let query = `
+    let sql = `
       SELECT id, cell_group_id, author_id, author_name, content_text, media_url, media_type, created_at 
       FROM board_posts
-      WHERE (cell_group_id = ? OR cell_group_id IS NULL)
+      WHERE 1=1
     `;
-    const params: any[] = [groupId || null];
+    const params: any[] = [];
 
-    if (mediaOnly) {
-      query += ` AND media_type IN ('IMAGE', 'VIDEO') `;
+    if (groupId) {
+      sql += ` AND (cell_group_id = ? OR cell_group_id IS NULL)`;
+      params.push(groupId);
     }
 
-    query += ` ORDER BY created_at DESC LIMIT 50`;
+    if (mediaOnly) {
+      sql += ` AND media_type IN ('IMAGE', 'VIDEO')`;
+    }
 
-    const [rows] = await connection.query(query, params);
-    await connection.end();
+    sql += ` ORDER BY created_at DESC LIMIT 50`;
 
-    return response(200, rows);
+    const { rows } = await query(sql, params);
+    return apiResponse(200, rows);
   } catch (error: any) {
     console.error('Error fetching posts:', error);
-    return response(500, { message: 'Erro ao buscar mural', error: error.message });
+    return apiResponse(500, { message: 'Erro ao buscar mural', error: error.message });
   }
 };
 
+// POST /posts
 export const createPost = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   try {
     const body = JSON.parse(event.body || '{}');
-    const { cell_group_id, author_id, author_name, content_text, media_url, media_type } = body;
+    const { cell_group_id, group_id, author_id, author_name, content_text, content, media_url, media_type } = body;
 
-    if (!author_id || !author_name) {
-      return response(400, { message: 'author_id e author_name são obrigatórios' });
+    const finalAuthor = author_name || 'Membro';
+    const finalAuthorId = author_id || `usr_${Date.now()}`;
+    const finalContent = content_text || content;
+    const finalGroupId = cell_group_id || group_id || null;
+
+    if (!finalContent) {
+      return apiResponse(400, { message: 'O conteúdo da publicação é obrigatório' });
     }
 
-    const connection = await getConnection();
     const id = uuidv4();
-
     const q = `
       INSERT INTO board_posts (id, cell_group_id, author_id, author_name, content_text, media_url, media_type) 
       VALUES (?, ?, ?, ?, ?, ?, ?)
     `;
 
-    await connection.query(q, [
+    await query(q, [
       id, 
-      cell_group_id || null, 
-      author_id, 
-      author_name, 
-      content_text || null, 
+      finalGroupId, 
+      finalAuthorId, 
+      finalAuthor, 
+      finalContent, 
       media_url || null, 
       media_type || 'NONE'
     ]);
-    
-    await connection.end();
 
-    return response(201, { message: 'Post enviado com sucesso', id });
+    return apiResponse(201, {
+      message: 'Post enviado com sucesso',
+      id,
+      post: {
+        id,
+        cell_group_id: finalGroupId,
+        author_id: finalAuthorId,
+        author_name: finalAuthor,
+        content_text: finalContent,
+        media_url: media_url || null,
+        media_type: media_type || 'NONE',
+        created_at: new Date().toISOString()
+      }
+    });
   } catch (error: any) {
     console.error('Error creating post:', error);
-    return response(500, { message: 'Erro ao salvar post', error: error.message });
+    return apiResponse(500, { message: 'Erro ao salvar post', error: error.message });
   }
 };
 
+// DELETE /posts/{id}
 export const deletePost = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   try {
     const id = event.pathParameters?.id;
-    if (!id) return response(400, { message: 'ID é obrigatório' });
+    if (!id) return apiResponse(400, { message: 'ID é obrigatório' });
 
-    const connection = await getConnection();
-    await connection.query('DELETE FROM board_posts WHERE id = ?', [id]);
-    await connection.end();
-
-    return response(200, { message: 'Deletado com sucesso' });
+    await query('DELETE FROM board_posts WHERE id = ?', [id]);
+    return apiResponse(200, { message: 'Deletado com sucesso' });
   } catch (error: any) {
     console.error('Error deleting post:', error);
-    return response(500, { message: 'Erro interno', error });
+    return apiResponse(500, { message: 'Erro ao deletar post', error: error.message });
   }
 };

@@ -210,6 +210,14 @@ functions:
           method: POST
           path: /cell-groups/{id}/evaluate-request
 
+  evaluateJoinRequest:
+    handler: src/functions/cellGroups.evaluateJoinRequest
+    events:
+      - httpApi:
+          method: POST
+          path: /cell-groups/{id}/join-requests/{userId}
+
+
   getStudies:
     handler: src/functions/studies.getStudies
     events:
@@ -401,3 +409,68 @@ functions:
           method: POST
           path: /devotionals/notes
           cors: true
+
+  getChurchSettings:
+    handler: src/functions/churchSettings.getSettings
+    events:
+      - httpApi:
+          method: GET
+          path: /church-settings
+          cors: true
+
+  updateChurchSettings:
+    handler: src/functions/churchSettings.updateSettings
+    events:
+      - httpApi:
+          method: POST
+          path: /church-settings
+          cors: true
+
+  getPagarmeSettings:
+    handler: src/functions/pagarmeSettings.getGatewayConfig
+    events:
+      - httpApi:
+          method: GET
+          path: /pagarme-settings
+          cors: true
+
+  updatePagarmeSettings:
+    handler: src/functions/pagarmeSettings.updateGatewayConfig
+    events:
+      - httpApi:
+          method: POST
+          path: /pagarme-settings
+          cors: true
+
+  getPrayers:
+    handler: src/functions/prayers.getPrayers
+    events:
+      - httpApi:
+          method: GET
+          path: /prayers
+          cors: true
+
+  createPrayer:
+    handler: src/functions/prayers.createPrayer
+    events:
+      - httpApi:
+          method: POST
+          path: /prayers
+          cors: true
+
+  prayForRequest:
+    handler: src/functions/prayers.prayForRequest
+    events:
+      - httpApi:
+          method: POST
+          path: /prayers/{id}/pray
+          cors: true
+
+  deletePrayer:
+    handler: src/functions/prayers.deletePrayer
+    events:
+      - httpApi:
+          method: DELETE
+          path: /prayers/{id}
+          cors: true
+
