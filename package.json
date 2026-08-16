@@ -5,7 +5,7 @@
   "main": "handler.js",
   "scripts": {
     "start": "export $(grep -v '^#' .env | xargs) && serverless offline start",
-    "deploy": "export $(grep -v '^#' .env | xargs) && serverless deploy --verbose",
+    "deploy": "node deploy_aws.js",
     "db:migrate": "node migrate_all.js",
     "db:sync": "npx ts-node src/db/syncCognito.ts"
   },
