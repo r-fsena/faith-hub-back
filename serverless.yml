@@ -5,7 +5,8 @@ provider:
   name: aws
   runtime: nodejs18.x
   region: us-east-2
-  useDotenv: true
+  httpApi:
+    cors: true
   environment:
     # EsteUserPool ID real vem da arquitetura do aplicativo. Você precisa garantir que a role Lambda tem acesso.
     USER_POOL_ID: ${env:USER_POOL_ID, 'us-east-2_pLrj1NgHI'}
@@ -46,7 +47,6 @@ functions:
       - httpApi:
           path: /members/invite
           method: post
-          cors: true
           
   updateMemberStatus:
     handler: src/functions/members.updateStatus
@@ -54,7 +54,6 @@ functions:
       - httpApi:
           path: /members/status
           method: put
-          cors: true
           
   resetPassword:
     handler: src/functions/members.resetPassword
@@ -62,7 +61,6 @@ functions:
       - httpApi:
           path: /members/reset-password
           method: post
-          cors: true
 
   listMembers:
     handler: src/functions/members.list
@@ -70,7 +68,6 @@ functions:
       - httpApi:
           path: /members
           method: get
-          cors: true
           
   getMember:
     handler: src/functions/members.get
@@ -78,7 +75,6 @@ functions:
       - httpApi:
           path: /members/{id}
           method: get
-          cors: true
           
   updateMember:
     handler: src/functions/members.update
@@ -86,7 +82,6 @@ functions:
       - httpApi:
           path: /members/{id}
           method: put
-          cors: true
 
   requestCell:
     handler: src/functions/members.requestCell
@@ -94,7 +89,6 @@ functions:
       - httpApi:
           method: post
           path: /members/{id}/request-cell
-          cors: true
 
   getPdvProducts:
     handler: src/functions/pdv_products.getProducts
@@ -102,7 +96,6 @@ functions:
       - httpApi:
           path: /pdv/products
           method: get
-          cors: true
 
   createPdvProduct:
     handler: src/functions/pdv_products.createOrUpdateProduct
@@ -110,7 +103,6 @@ functions:
       - httpApi:
           path: /pdv/products
           method: post
-          cors: true
 
   deletePdvProduct:
     handler: src/functions/pdv_products.deleteProduct
@@ -118,7 +110,6 @@ functions:
       - httpApi:
           path: /pdv/products/{id}
           method: delete
-          cors: true
 
   createPdvOrder:
     handler: src/functions/pdv_orders.createOrder
@@ -126,7 +117,6 @@ functions:
       - httpApi:
           path: /pdv/orders
           method: post
-          cors: true
 
   getPdvOrders:
     handler: src/functions/pdv_orders.getOrders
@@ -134,7 +124,6 @@ functions:
       - httpApi:
           path: /pdv/orders
           method: get
-          cors: true
           
   updatePdvOrderStatus:
     handler: src/functions/pdv_orders.updateOrderStatus
@@ -142,7 +131,6 @@ functions:
       - httpApi:
           path: /pdv/orders/{id}/status
           method: put
-          cors: true
 
   createOrUpdateBroadcast:
     handler: src/functions/broadcasts.createOrUpdateBroadcast
@@ -150,7 +138,6 @@ functions:
       - httpApi:
           path: /broadcasts
           method: post
-          cors: true
           
   getBroadcasts:
     handler: src/functions/broadcasts.getBroadcasts
@@ -158,7 +145,6 @@ functions:
       - httpApi:
           path: /broadcasts
           method: get
-          cors: true
           
   getActiveBroadcast:
     handler: src/functions/broadcasts.getActiveBroadcast
@@ -166,7 +152,6 @@ functions:
       - httpApi:
           path: /broadcasts/active
           method: get
-          cors: true
           
   deleteBroadcast:
     handler: src/functions/broadcasts.deleteBroadcast
@@ -174,7 +159,6 @@ functions:
       - httpApi:
           path: /broadcasts/{id}
           method: delete
-          cors: true
 
   getGroups:
     handler: src/functions/cellGroups.getGroups
@@ -225,7 +209,6 @@ functions:
       - httpApi:
           method: GET
           path: /studies
-          cors: true
 
   createOrUpdateStudy:
     handler: src/functions/studies.createOrUpdateStudy
@@ -233,7 +216,6 @@ functions:
       - httpApi:
           method: POST
           path: /studies
-          cors: true
 
   deleteStudy:
     handler: src/functions/studies.deleteStudy
@@ -241,7 +223,6 @@ functions:
       - httpApi:
           method: DELETE
           path: /studies/{id}
-          cors: true
 
   getPosts:
     handler: src/functions/posts.getPosts
@@ -249,7 +230,6 @@ functions:
       - httpApi:
           method: GET
           path: /posts
-          cors: true
 
   createPost:
     handler: src/functions/posts.createPost
@@ -257,7 +237,6 @@ functions:
       - httpApi:
           method: POST
           path: /posts
-          cors: true
 
   deletePost:
     handler: src/functions/posts.deletePost
@@ -265,7 +244,6 @@ functions:
       - httpApi:
           method: DELETE
           path: /posts/{id}
-          cors: true
 
   getUploadUrl:
     handler: src/functions/uploads.getUploadUrl
@@ -273,7 +251,6 @@ functions:
       - httpApi:
           method: GET
           path: /upload-url
-          cors: true
 
   getPartilhas:
     handler: src/functions/partilhas.getPartilhas
@@ -281,7 +258,6 @@ functions:
       - httpApi:
           method: GET
           path: /partilhas
-          cors: true
 
   createPartilha:
     handler: src/functions/partilhas.createPartilha
@@ -289,7 +265,6 @@ functions:
       - httpApi:
           method: POST
           path: /partilhas
-          cors: true
 
   togglePartilha:
     handler: src/functions/partilhas.togglePartilha
@@ -297,7 +272,6 @@ functions:
       - httpApi:
           method: PUT
           path: /partilhas/{id}/toggle
-          cors: true
 
   deletePartilha:
     handler: src/functions/partilhas.deletePartilha
@@ -305,7 +279,6 @@ functions:
       - httpApi:
           method: DELETE
           path: /partilhas/{id}
-          cors: true
 
   getEvents:
     handler: src/functions/events.getEvents
@@ -313,7 +286,6 @@ functions:
       - httpApi:
           method: GET
           path: /events
-          cors: true
 
   getEventById:
     handler: src/functions/events.getEventById
@@ -321,7 +293,6 @@ functions:
       - httpApi:
           method: GET
           path: /events/{id}
-          cors: true
 
   createOrUpdateEvent:
     handler: src/functions/events.createOrUpdateEvent
@@ -329,7 +300,6 @@ functions:
       - httpApi:
           method: POST
           path: /events
-          cors: true
 
   deleteEvent:
     handler: src/functions/events.deleteEvent
@@ -337,7 +307,6 @@ functions:
       - httpApi:
           method: DELETE
           path: /events/{id}
-          cors: true
 
   createMockEvent:
     handler: src/functions/events.createMockEvent
@@ -345,7 +314,6 @@ functions:
       - httpApi:
           method: POST
           path: /events/mock
-          cors: true
 
   checkoutTicket:
     handler: src/functions/tickets.checkout
@@ -353,7 +321,6 @@ functions:
       - httpApi:
           method: POST
           path: /tickets/checkout
-          cors: true
 
   myTickets:
     handler: src/functions/tickets.myTickets
@@ -361,7 +328,6 @@ functions:
       - httpApi:
           method: GET
           path: /tickets/me
-          cors: true
 
   scanTicket:
     handler: src/functions/tickets.scanTicket
@@ -369,7 +335,6 @@ functions:
       - httpApi:
           method: POST
           path: /tickets/scan
-          cors: true
 
   getDevotionals:
     handler: src/functions/devotionals.getDevotionals
@@ -377,7 +342,6 @@ functions:
       - httpApi:
           method: GET
           path: /devotionals
-          cors: true
 
   getTodayDevotional:
     handler: src/functions/devotionals.getTodayDevotional
@@ -385,7 +349,6 @@ functions:
       - httpApi:
           method: GET
           path: /devotionals/today
-          cors: true
 
   createOrUpdateDevotional:
     handler: src/functions/devotionals.createOrUpdateDevotional
@@ -393,7 +356,6 @@ functions:
       - httpApi:
           method: POST
           path: /devotionals
-          cors: true
 
   deleteDevotional:
     handler: src/functions/devotionals.deleteDevotional
@@ -401,7 +363,6 @@ functions:
       - httpApi:
           method: DELETE
           path: /devotionals/{id}
-          cors: true
           
   saveUserNote:
     handler: src/functions/devotionals.saveUserNote
@@ -409,7 +370,6 @@ functions:
       - httpApi:
           method: POST
           path: /devotionals/notes
-          cors: true
 
   getChurchSettings:
     handler: src/functions/churchSettings.getSettings
@@ -417,7 +377,6 @@ functions:
       - httpApi:
           method: GET
           path: /church-settings
-          cors: true
 
   updateChurchSettings:
     handler: src/functions/churchSettings.updateSettings
@@ -425,7 +384,6 @@ functions:
       - httpApi:
           method: POST
           path: /church-settings
-          cors: true
 
   getPagarmeSettings:
     handler: src/functions/pagarmeSettings.getGatewayConfig
@@ -433,7 +391,6 @@ functions:
       - httpApi:
           method: GET
           path: /pagarme-settings
-          cors: true
 
   updatePagarmeSettings:
     handler: src/functions/pagarmeSettings.updateGatewayConfig
@@ -441,7 +398,6 @@ functions:
       - httpApi:
           method: POST
           path: /pagarme-settings
-          cors: true
 
   getPrayers:
     handler: src/functions/prayers.getPrayers
@@ -449,7 +405,6 @@ functions:
       - httpApi:
           method: GET
           path: /prayers
-          cors: true
 
   createPrayer:
     handler: src/functions/prayers.createPrayer
@@ -457,7 +412,6 @@ functions:
       - httpApi:
           method: POST
           path: /prayers
-          cors: true
 
   prayForRequest:
     handler: src/functions/prayers.prayForRequest
@@ -465,7 +419,6 @@ functions:
       - httpApi:
           method: POST
           path: /prayers/{id}/pray
-          cors: true
 
   deletePrayer:
     handler: src/functions/prayers.deletePrayer
@@ -473,5 +426,4 @@ functions:
       - httpApi:
           method: DELETE
           path: /prayers/{id}
-          cors: true
 
