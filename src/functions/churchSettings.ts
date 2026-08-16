@@ -34,15 +34,16 @@ const DEFAULT_SETTINGS = {
 // GET /church-settings
 export const getSettings = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   try {
-    const slug = event.queryStringParameters?.slug;
+    const rawSlug = event.queryStringParameters?.slug;
     const orgId = event.queryStringParameters?.organization_id;
 
     let sql = `SELECT * FROM church_settings`;
     let params: any[] = [];
 
-    if (slug) {
-      sql += ` WHERE pwa_slug = ? OR id = ? LIMIT 1`;
-      params = [slug, slug];
+    if (rawSlug) {
+      const cleanSlug = rawSlug.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+      sql += ` WHERE pwa_slug = ? OR pwa_slug = ? OR id = ? LIMIT 1`;
+      params = [rawSlug, cleanSlug, rawSlug];
     } else if (orgId) {
       sql += ` WHERE organization_id = ? LIMIT 1`;
       params = [orgId];
@@ -50,7 +51,7 @@ export const getSettings = async (event: APIGatewayProxyEvent): Promise<APIGatew
       sql += ` ORDER BY updated_at DESC LIMIT 1`;
     }
 
-    const { rows } = await query(sql, params);
+    let { rows } = await query(sql, params);
     if (rows.length > 0) {
       const item = rows[0];
       return apiResponse(200, {
@@ -61,8 +62,9 @@ export const getSettings = async (event: APIGatewayProxyEvent): Promise<APIGatew
     }
 
     // Se não encontrou em church_settings mas foi passado slug, tenta buscar em organizations
-    if (slug) {
-      const orgRes = await query(`SELECT * FROM organizations WHERE slug = ? OR id = ? LIMIT 1`, [slug, slug]);
+    if (rawSlug) {
+      const cleanSlug = rawSlug.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+      const orgRes = await query(`SELECT * FROM organizations WHERE slug = ? OR slug = ? OR id = ? LIMIT 1`, [rawSlug, cleanSlug, rawSlug]);
       if (orgRes.rows.length > 0) {
         const org = orgRes.rows[0];
         return apiResponse(200, {
@@ -74,6 +76,17 @@ export const getSettings = async (event: APIGatewayProxyEvent): Promise<APIGatew
           secondary_color: org.secondary_color || DEFAULT_SETTINGS.secondary_color,
           logo_icon_url: org.logo_url || DEFAULT_SETTINGS.logo_icon_url,
           organization_id: org.id
+        });
+      }
+
+      // Fallback Inteligente: se for demo ou se o slug não for encontrado, retorna as configurações ativas mais recentes
+      const fallbackRes = await query(`SELECT * FROM church_settings ORDER BY updated_at DESC LIMIT 1`);
+      if (fallbackRes.rows.length > 0) {
+        const item = fallbackRes.rows[0];
+        return apiResponse(200, {
+          ...DEFAULT_SETTINGS,
+          ...item,
+          offline_mode: Boolean(item.offline_mode)
         });
       }
     }
