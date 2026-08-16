@@ -24,14 +24,15 @@ export const invite: APIGatewayProxyHandlerV2 = async (event) => {
   try {
     if (!event.body) throw new Error("Missing request body");
     const body = JSON.parse(event.body);
-    const { email, name, role, cpf, baptismDate, cellGroupId, phone, invitedBy, organization_id, campus_id } = body;
+    const { email, name, role, cpf, baptismDate, cellGroupId, phone, invitedBy, organization_id, campus_id, campus_ids } = body;
 
     const command = new AdminCreateUserCommand({
       UserPoolId: USER_POOL_ID,
       Username: email,
       UserAttributes: [
         { Name: "email", Value: email },
-        { Name: "name", Value: name }
+        { Name: "name", Value: name },
+        { Name: "email_verified", Value: "true" }
       ],
       DesiredDeliveryMediums: ["EMAIL"]
     });
