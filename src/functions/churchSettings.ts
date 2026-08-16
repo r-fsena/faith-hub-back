@@ -4,7 +4,7 @@ import { query, apiResponse } from '../db';
 const DEFAULT_SETTINGS = {
   id: 'default_church',
   church_name: 'Igreja Faith Hub',
-  slogan: 'Um lugar de fé, amor e comunhão',
+  slogan: '',
   cnpj: '',
   pastor_name: 'Pr. Titular',
   phone: '',
@@ -102,7 +102,8 @@ export const getSettings = async (event: APIGatewayProxyEvent): Promise<APIGatew
 export const updateSettings = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   try {
     const body = JSON.parse(event.body || '{}');
-    const settings = { ...DEFAULT_SETTINGS, ...body };
+    const sloganValue = body.slogan !== undefined ? body.slogan : (body.tagline !== undefined ? body.tagline : '');
+    const settings = { ...DEFAULT_SETTINGS, ...body, slogan: sloganValue };
 
     const sql = `
       INSERT INTO church_settings (
