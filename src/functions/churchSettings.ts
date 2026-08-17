@@ -87,7 +87,7 @@ export const getSettings = async (event: APIGatewayProxyEvent): Promise<APIGatew
     if (orgId) {
       // 1. Busca específica por ID da organização
       const { rows } = await query(
-        `SELECT * FROM church_settings WHERE organization_id = ? OR id = ? LIMIT 1`,
+        `SELECT * FROM church_settings WHERE organization_id = ? OR id = ? ORDER BY updated_at DESC LIMIT 1`,
         [orgId, orgId]
       );
       if (rows.length > 0) {
@@ -100,7 +100,7 @@ export const getSettings = async (event: APIGatewayProxyEvent): Promise<APIGatew
         const org = orgRes.rows[0];
         return apiResponse(200, {
           ...DEFAULT_SETTINGS,
-          id: `settings_${org.id}`,
+          id: `settings_${org.slug ? org.slug.replace(/-/g, '_') : org.id}`,
           church_name: org.name,
           pwa_slug: org.slug,
           primary_color: org.primary_color || DEFAULT_SETTINGS.primary_color,
@@ -116,7 +116,7 @@ export const getSettings = async (event: APIGatewayProxyEvent): Promise<APIGatew
 
       // 2. Busca específica por slug do PWA
       const { rows } = await query(
-        `SELECT * FROM church_settings WHERE pwa_slug = ? OR pwa_slug = ? OR id = ? OR organization_id IN (SELECT id FROM organizations WHERE slug = ? OR slug = ?) LIMIT 1`,
+        `SELECT * FROM church_settings WHERE pwa_slug = ? OR pwa_slug = ? OR id = ? OR organization_id IN (SELECT id FROM organizations WHERE slug = ? OR slug = ?) ORDER BY updated_at DESC LIMIT 1`,
         [rawSlug, cleanSlug, rawSlug, rawSlug, cleanSlug]
       );
       if (rows.length > 0) {
@@ -132,7 +132,7 @@ export const getSettings = async (event: APIGatewayProxyEvent): Promise<APIGatew
         const org = orgRes.rows[0];
         return apiResponse(200, {
           ...DEFAULT_SETTINGS,
-          id: `settings_${org.id}`,
+          id: `settings_${org.slug ? org.slug.replace(/-/g, '_') : org.id}`,
           church_name: org.name,
           pwa_slug: org.slug,
           primary_color: org.primary_color || DEFAULT_SETTINGS.primary_color,
@@ -145,7 +145,7 @@ export const getSettings = async (event: APIGatewayProxyEvent): Promise<APIGatew
 
     // 3. Se nenhum parâmetro foi passado, retorna a congregação padrão
     const { rows: defaultRows } = await query(
-      `SELECT * FROM church_settings WHERE id = 'default_church' OR organization_id = 'org_default' LIMIT 1`
+      `SELECT * FROM church_settings WHERE organization_id = 'org_default' OR id = 'default_church' ORDER BY updated_at DESC LIMIT 1`
     );
     if (defaultRows.length > 0) {
       return apiResponse(200, formatSettings(defaultRows[0]));
@@ -162,9 +162,21 @@ export const getSettings = async (event: APIGatewayProxyEvent): Promise<APIGatew
 export const updateSettings = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   try {
     const body = JSON.parse(event.body || '{}');
-    const orgId = body.organization_id || body.orgId;
+    const orgId = body.organization_id || body.orgId || 'org_default';
     const pwaSlug = (body.pwa_slug || body.slug || 'igreja').toLowerCase().trim();
-    const settingsId = body.id || (orgId ? `settings_${orgId.replace(/-/g, '_')}` : `settings_${pwaSlug.replace(/-/g, '_')}`);
+
+    // Localiza se já existe registro desta organização para reaproveitar o mesmo ID
+    let settingsId = body.id;
+    if (!settingsId && orgId) {
+      const existing = await query(`SELECT id FROM church_settings WHERE organization_id = ? LIMIT 1`, [orgId]);
+      if (existing.rows.length > 0) {
+        settingsId = existing.rows[0].id;
+      }
+    }
+    if (!settingsId) {
+      settingsId = `settings_${pwaSlug.replace(/-/g, '_')}`;
+    }
+
     const sloganValue = body.slogan !== undefined ? body.slogan : (body.tagline !== undefined ? body.tagline : '');
     const kanbanValue = body.kanban_config ? (typeof body.kanban_config === 'string' ? body.kanban_config : JSON.stringify(body.kanban_config)) : JSON.stringify(DEFAULT_KANBAN_CONFIG);
 
@@ -172,7 +184,7 @@ export const updateSettings = async (event: APIGatewayProxyEvent): Promise<APIGa
       ...DEFAULT_SETTINGS,
       ...body,
       id: settingsId,
-      organization_id: orgId || DEFAULT_SETTINGS.organization_id,
+      organization_id: orgId,
       pwa_slug: pwaSlug,
       slogan: sloganValue,
       kanban_config: body.kanban_config || DEFAULT_KANBAN_CONFIG
@@ -254,7 +266,7 @@ export const updateSettings = async (event: APIGatewayProxyEvent): Promise<APIGa
     await query(sql, params);
 
     // Sincroniza também na tabela organizations se houver organization_id
-    if (orgId) {
+    if (orgId && orgId !== 'org_default') {
       await query(
         `UPDATE organizations SET name = ?, primary_color = ?, secondary_color = ?, logo_url = ?, updated_at = NOW() WHERE id = ?`,
         [settings.church_name, settings.primary_color, settings.secondary_color, settings.logo_icon_url || null, orgId]
