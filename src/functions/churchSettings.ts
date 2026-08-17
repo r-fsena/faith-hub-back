@@ -1,6 +1,33 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { query, apiResponse } from '../db';
 
+export const DEFAULT_KANBAN_CONFIG = {
+  RECEBIDO: {
+    title: 'Novos / Recebidos',
+    icon: '🔔',
+    color: '#ef4444',
+    description: 'Pedidos recém-chegados pelo App ou Balcão'
+  },
+  PREPARANDO: {
+    title: 'Em Separação',
+    icon: '⏳',
+    color: '#f59e0b',
+    description: 'Itens em preparo na cozinha ou separação no estoque'
+  },
+  PRONTO: {
+    title: 'Aguardando Retirada',
+    icon: '✅',
+    color: '#3b82f6',
+    description: 'Prontos para retirada no balcão ou despacho'
+  },
+  ENTREGUE: {
+    title: 'Finalizados',
+    icon: '🎉',
+    color: '#10b981',
+    description: 'Venda concluída e entregue ao membro'
+  }
+};
+
 const DEFAULT_SETTINGS = {
   id: 'default_church',
   church_name: 'Igreja Faith Hub',
@@ -29,8 +56,27 @@ const DEFAULT_SETTINGS = {
   pwa_short_name: 'Faith Hub',
   pwa_slug: 'faithhub',
   offline_mode: false,
-  organization_id: 'org_default'
+  organization_id: 'org_default',
+  kanban_config: DEFAULT_KANBAN_CONFIG
 };
+
+function formatSettings(item: any) {
+  let kanban = DEFAULT_KANBAN_CONFIG;
+  if (item.kanban_config) {
+    try {
+      kanban = typeof item.kanban_config === 'string' ? JSON.parse(item.kanban_config) : item.kanban_config;
+    } catch {
+      kanban = DEFAULT_KANBAN_CONFIG;
+    }
+  }
+
+  return {
+    ...DEFAULT_SETTINGS,
+    ...item,
+    kanban_config: { ...DEFAULT_KANBAN_CONFIG, ...kanban },
+    offline_mode: Boolean(item.offline_mode)
+  };
+}
 
 // GET /church-settings
 export const getSettings = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
@@ -45,12 +91,7 @@ export const getSettings = async (event: APIGatewayProxyEvent): Promise<APIGatew
         [orgId, orgId]
       );
       if (rows.length > 0) {
-        const item = rows[0];
-        return apiResponse(200, {
-          ...DEFAULT_SETTINGS,
-          ...item,
-          offline_mode: Boolean(item.offline_mode)
-        });
+        return apiResponse(200, formatSettings(rows[0]));
       }
 
       // Se não encontrou em church_settings, busca na tabela organizations
@@ -79,12 +120,7 @@ export const getSettings = async (event: APIGatewayProxyEvent): Promise<APIGatew
         [rawSlug, cleanSlug, rawSlug, rawSlug, cleanSlug]
       );
       if (rows.length > 0) {
-        const item = rows[0];
-        return apiResponse(200, {
-          ...DEFAULT_SETTINGS,
-          ...item,
-          offline_mode: Boolean(item.offline_mode)
-        });
+        return apiResponse(200, formatSettings(rows[0]));
       }
 
       // Se não encontrou em church_settings, busca na tabela organizations
@@ -112,11 +148,7 @@ export const getSettings = async (event: APIGatewayProxyEvent): Promise<APIGatew
       `SELECT * FROM church_settings WHERE id = 'default_church' OR organization_id = 'org_default' LIMIT 1`
     );
     if (defaultRows.length > 0) {
-      return apiResponse(200, {
-        ...DEFAULT_SETTINGS,
-        ...defaultRows[0],
-        offline_mode: Boolean(defaultRows[0].offline_mode)
-      });
+      return apiResponse(200, formatSettings(defaultRows[0]));
     }
 
     return apiResponse(200, DEFAULT_SETTINGS);
@@ -134,6 +166,7 @@ export const updateSettings = async (event: APIGatewayProxyEvent): Promise<APIGa
     const pwaSlug = (body.pwa_slug || body.slug || 'igreja').toLowerCase().trim();
     const settingsId = body.id || (orgId ? `settings_${orgId.replace(/-/g, '_')}` : `settings_${pwaSlug.replace(/-/g, '_')}`);
     const sloganValue = body.slogan !== undefined ? body.slogan : (body.tagline !== undefined ? body.tagline : '');
+    const kanbanValue = body.kanban_config ? (typeof body.kanban_config === 'string' ? body.kanban_config : JSON.stringify(body.kanban_config)) : JSON.stringify(DEFAULT_KANBAN_CONFIG);
 
     const settings = {
       ...DEFAULT_SETTINGS,
@@ -141,7 +174,8 @@ export const updateSettings = async (event: APIGatewayProxyEvent): Promise<APIGa
       id: settingsId,
       organization_id: orgId || DEFAULT_SETTINGS.organization_id,
       pwa_slug: pwaSlug,
-      slogan: sloganValue
+      slogan: sloganValue,
+      kanban_config: body.kanban_config || DEFAULT_KANBAN_CONFIG
     };
 
     const sql = `
@@ -151,8 +185,8 @@ export const updateSettings = async (event: APIGatewayProxyEvent): Promise<APIGa
         instagram_url, youtube_url, facebook_url, website_url,
         logo_icon_url, logo_header_url, banner_url,
         primary_color, secondary_color, pwa_theme_color, pwa_short_name, pwa_slug, offline_mode,
-        organization_id
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        organization_id, kanban_config
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON DUPLICATE KEY UPDATE
         church_name = VALUES(church_name),
         slogan = VALUES(slogan),
@@ -181,6 +215,7 @@ export const updateSettings = async (event: APIGatewayProxyEvent): Promise<APIGa
         pwa_slug = VALUES(pwa_slug),
         offline_mode = VALUES(offline_mode),
         organization_id = VALUES(organization_id),
+        kanban_config = VALUES(kanban_config),
         updated_at = NOW()
     `;
 
@@ -212,7 +247,8 @@ export const updateSettings = async (event: APIGatewayProxyEvent): Promise<APIGa
       settings.pwa_short_name,
       settings.pwa_slug,
       settings.offline_mode ? 1 : 0,
-      settings.organization_id
+      settings.organization_id,
+      kanbanValue
     ];
 
     await query(sql, params);
