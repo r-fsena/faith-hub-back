@@ -563,4 +563,16 @@ functions:
           method: DELETE
           path: /saas-plans/{id}
 
+  kidsHandler:
+    handler: src/functions/kids.kidsHandler
+    events:
+      - httpApi:
+          method: ANY
+          path: /kids/{proxy+}
+      - httpApi:
+          method: ANY
+          path: /kids
+
+
+
 
