@@ -392,8 +392,27 @@ export const doCheckin = async (event: APIGatewayProxyEvent): Promise<APIGateway
       campus_id
     } = body;
 
-    if (!child_name || !room_id || !parent_name || !parent_phone || !organization_id) {
-      return apiResponse(400, { message: 'Dados insuficientes para realizar o check-in' });
+    const finalOrgId = organization_id || 'org_default';
+
+    if (!child_name || !parent_name || !parent_phone) {
+      return apiResponse(400, { message: 'Nome da criança, nome do responsável e telefone são obrigatórios' });
+    }
+
+    // Busca ou define a sala
+    let finalRoomId = room_id;
+    let finalRoomName = room_name;
+    if (!finalRoomId) {
+      const { rows: rRows } = await query(`SELECT id, name FROM kids_rooms WHERE organization_id = ? ORDER BY min_age ASC LIMIT 1`, [finalOrgId]);
+      if (rRows.length > 0) {
+        finalRoomId = rRows[0].id;
+        finalRoomName = rRows[0].name;
+      } else {
+        finalRoomId = 'room_default';
+        finalRoomName = 'Sala Kids';
+      }
+    } else if (!finalRoomName) {
+      const { rows: roomRows } = await query(`SELECT name FROM kids_rooms WHERE id = ? LIMIT 1`, [finalRoomId]);
+      finalRoomName = roomRows[0]?.name || 'Sala Kids';
     }
 
     let finalParentMemberId = parent_member_id || null;
@@ -405,7 +424,7 @@ export const doCheckin = async (event: APIGatewayProxyEvent): Promise<APIGateway
         `INSERT INTO members (id, name, email, phone, role, status, organization_id, campus_id)
          VALUES (?, ?, ?, ?, 'Visitante', 'Ativo', ?, ?)
          ON DUPLICATE KEY UPDATE name = VALUES(name), phone = VALUES(phone)`,
-        [visitorMemberId, parent_name, parent_email || `visitante_${Date.now()}@faithhub.temp`, parent_phone, organization_id, campus_id || null]
+        [visitorMemberId, parent_name, parent_email || `visitante_${Date.now()}@faithhub.temp`, parent_phone, finalOrgId, campus_id || null]
       ).catch(() => {});
       finalParentMemberId = visitorMemberId;
     }
@@ -418,7 +437,7 @@ export const doCheckin = async (event: APIGatewayProxyEvent): Promise<APIGateway
       await query(
         `INSERT INTO kids_children (id, name, birthdate, allergies, medical_notes, parent_name, parent_phone, parent_email, parent_member_id, is_visitor, organization_id, campus_id)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [finalChildId, child_name, birthdate || null, allergies || null, medical_notes || null, parent_name, parent_phone, parent_email || null, finalParentMemberId, is_visitor ? 1 : 0, organization_id, campus_id || null]
+        [finalChildId, child_name, birthdate || null, allergies || null, medical_notes || null, parent_name, parent_phone, parent_email || null, finalParentMemberId, is_visitor ? 1 : 0, finalOrgId, campus_id || null]
       );
     }
 
@@ -429,13 +448,6 @@ export const doCheckin = async (event: APIGatewayProxyEvent): Promise<APIGateway
     );
     if (activeCheckins.length > 0) {
       return apiResponse(400, { message: 'Esta criança já possui um check-in ativo na sala!' });
-    }
-
-    // Busca nome da sala se não informado
-    let finalRoomName = room_name;
-    if (!finalRoomName) {
-      const { rows: roomRows } = await query(`SELECT name FROM kids_rooms WHERE id = ? LIMIT 1`, [room_id]);
-      finalRoomName = roomRows[0]?.name || 'Sala Kids';
     }
 
     const checkinId = `checkin_${randomUUID()}`;
@@ -454,7 +466,7 @@ export const doCheckin = async (event: APIGatewayProxyEvent): Promise<APIGateway
       checkinId,
       finalChildId,
       child_name,
-      room_id,
+      finalRoomId,
       finalRoomName,
       parent_name,
       parent_phone,
@@ -462,7 +474,7 @@ export const doCheckin = async (event: APIGatewayProxyEvent): Promise<APIGateway
       is_visitor ? 1 : 0,
       securityCode,
       checked_in_by || 'Recepção Kids',
-      organization_id,
+      finalOrgId,
       campus_id || null
     ]);
 
@@ -472,7 +484,7 @@ export const doCheckin = async (event: APIGatewayProxyEvent): Promise<APIGateway
         id: checkinId,
         child_id: finalChildId,
         child_name,
-        room_id,
+        room_id: finalRoomId,
         room_name: finalRoomName,
         parent_name,
         parent_phone,
