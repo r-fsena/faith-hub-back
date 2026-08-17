@@ -5,22 +5,34 @@ import { ProvisioningService } from '../services/provisioningService';
 
 export const handleAsaasWebhook = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   try {
-    // 0. Validação de Segurança do Token de Autenticação do Webhook Asaas
+    // 0. Validação de Segurança do Token de Autenticação do Webhook Asaas (Case-insensitive)
     const expectedToken = process.env.ASAAS_WEBHOOK_SECRET;
-    const receivedToken = event.headers?.['asaas-access-token'] || 
-                          event.headers?.['Asaas-Access-Token'] ||
-                          event.headers?.['ASAAS-ACCESS-TOKEN'];
+    const headers = event.headers || {};
+    const receivedToken = Object.entries(headers).find(
+      ([k]) => k.toLowerCase() === 'asaas-access-token'
+    )?.[1];
 
     if (expectedToken && receivedToken && receivedToken !== expectedToken) {
       console.warn('⚠️ Token de autenticação do Webhook Asaas inválido!', { receivedToken });
       return apiResponse(401, { message: 'Token de autenticação do webhook inválido' });
     }
 
-    const body = JSON.parse(event.body || '{}');
+    let body: any = {};
+    try {
+      body = typeof event.body === 'string' ? JSON.parse(event.body || '{}') : (event.body || {});
+    } catch {
+      body = {};
+    }
+
     const webhookEvent = body.event;
     const payment = body.payment || {};
     const subscriptionId = payment.subscription || body.subscription?.id;
     const customerId = payment.customer || body.customer?.id;
+
+    // Se for apenas um ping/health check do Asaas
+    if (!webhookEvent) {
+      return apiResponse(200, { received: true, message: 'Faith-Hub Asaas Webhook is Healthy' });
+    }
 
     console.log(`🔔 Webhook Asaas Recebido: ${webhookEvent}`, {
       subscriptionId,
