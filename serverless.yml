@@ -93,6 +93,14 @@ functions:
           method: post
           path: /members/{id}/request-cell
 
+  selfRegisterMember:
+    handler: src/functions/members.selfRegister
+    events:
+      - httpApi:
+          path: /members/self-register
+          method: post
+
+
   getPdvProducts:
     handler: src/functions/pdv_products.getProducts
     events:

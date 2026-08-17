@@ -270,3 +270,62 @@ export const requestCell: APIGatewayProxyHandlerV2 = async (event) => {
     return { statusCode: 500, headers, body: JSON.stringify({ error: error.message }) };
   }
 };
+
+// 8. Auto-cadastro / Sincronização de usuário logado (PWA / Mobile)
+export const selfRegister: APIGatewayProxyHandlerV2 = async (event) => {
+  try {
+    if (!event.body) throw new Error("Missing request body");
+    const { id, email, name, phone, birthdate, organization_id, campus_id } = JSON.parse(event.body);
+
+    if (!email) throw new Error("Email is required");
+
+    const memberId = id || uuidv4();
+    const memberName = name || email.split('@')[0];
+    const orgValue = organization_id || 'org_default';
+    const primaryCampus = campus_id || 'campus_sede';
+    const campusIdsJson = JSON.stringify([primaryCampus]);
+
+    // Verifica se já existe por email ou id
+    const checkSql = `SELECT id FROM members WHERE id = ? OR LOWER(email) = LOWER(?) LIMIT 1`;
+    const checkRes = await query(checkSql, [memberId, email]);
+
+    if (checkRes.rows.length === 0) {
+      const insertSql = `
+        INSERT INTO members (id, name, email, phone, role, status, organization_id, campus_id, campus_ids)
+        VALUES (?, ?, ?, ?, 'Membro', 'Ativo', ?, ?, ?)
+      `;
+      await query(insertSql, [memberId, memberName, email, phone || null, orgValue, primaryCampus, campusIdsJson]);
+    } else {
+      const existingId = checkRes.rows[0].id;
+      const updateSql = `
+        UPDATE members 
+        SET 
+          name = COALESCE(?, name),
+          phone = COALESCE(?, phone),
+          status = 'Ativo',
+          updated_at = NOW()
+        WHERE id = ?
+      `;
+      await query(updateSql, [name || null, phone || null, existingId]);
+    }
+
+    if (birthdate) {
+      try {
+        await query(
+          `INSERT INTO member_details (member_id, birth_date) VALUES (?, ?) ON DUPLICATE KEY UPDATE birth_date = ?`,
+          [memberId, birthdate, birthdate]
+        );
+      } catch (e) {}
+    }
+
+    return {
+      statusCode: 200,
+      headers,
+      body: JSON.stringify({ message: "Membro sincronizado com sucesso", id: memberId })
+    };
+  } catch (error: any) {
+    console.error("Erro no selfRegister:", error);
+    return { statusCode: 500, headers, body: JSON.stringify({ error: error.message }) };
+  }
+};
+
