@@ -5,6 +5,17 @@ import { ProvisioningService } from '../services/provisioningService';
 
 export const handleAsaasWebhook = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   try {
+    // 0. Validação de Segurança do Token de Autenticação do Webhook Asaas
+    const expectedToken = process.env.ASAAS_WEBHOOK_SECRET;
+    const receivedToken = event.headers?.['asaas-access-token'] || 
+                          event.headers?.['Asaas-Access-Token'] ||
+                          event.headers?.['ASAAS-ACCESS-TOKEN'];
+
+    if (expectedToken && receivedToken && receivedToken !== expectedToken) {
+      console.warn('⚠️ Token de autenticação do Webhook Asaas inválido!', { receivedToken });
+      return apiResponse(401, { message: 'Token de autenticação do webhook inválido' });
+    }
+
     const body = JSON.parse(event.body || '{}');
     const webhookEvent = body.event;
     const payment = body.payment || {};
