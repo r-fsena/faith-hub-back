@@ -490,4 +490,53 @@ functions:
           method: DELETE
           path: /campuses/{id}
 
+  createProposal:
+    handler: src/functions/proposals.createProposal
+    events:
+      - httpApi:
+          method: POST
+          path: /proposals
+
+  listProposals:
+    handler: src/functions/proposals.listProposals
+    events:
+      - httpApi:
+          method: GET
+          path: /proposals
+
+  getPublicProposal:
+    handler: src/functions/proposals.getPublicProposal
+    events:
+      - httpApi:
+          method: GET
+          path: /proposals/public/{token}
+
+  acceptProposal:
+    handler: src/functions/proposals.acceptProposal
+    events:
+      - httpApi:
+          method: POST
+          path: /proposals/public/{token}/accept
+
+  simulateProposalPayment:
+    handler: src/functions/proposals.simulatePayment
+    events:
+      - httpApi:
+          method: POST
+          path: /proposals/{id}/simulate-payment
+
+  listSaasSubscriptions:
+    handler: src/functions/proposals.listSubscriptions
+    events:
+      - httpApi:
+          method: GET
+          path: /saas-subscriptions
+
+  handleAsaasWebhook:
+    handler: src/functions/asaasWebhook.handleAsaasWebhook
+    events:
+      - httpApi:
+          method: POST
+          path: /webhooks/asaas
+
 
