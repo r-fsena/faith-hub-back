@@ -93,13 +93,16 @@ export class ProvisioningService {
     // 5. Cria a Congregação Sede Principal (campuses)
     await query(`
       INSERT INTO campuses (
-        id, name, address, city, state, zip_code, phone, pastor_name, is_headquarters, organization_id
-      ) VALUES (?, 'Sede Principal', '', '', '', '', ?, ?, 1, ?)
+        id, organization_id, name, slug, pastor_name, phone, whatsapp, email, address, city, state, is_headquarters, status
+      ) VALUES (?, ?, 'Sede Principal', 'sede', ?, ?, ?, ?, '', '', '', 1, 'ACTIVE')
+      ON DUPLICATE KEY UPDATE name = VALUES(name)
     `, [
       campusId,
-      proposal.contact_phone || '',
+      orgId,
       proposal.contact_name,
-      orgId
+      proposal.contact_phone || '',
+      proposal.contact_phone || '',
+      proposal.contact_email
     ]);
 
     // 6. Cria o Usuário Administrador no AWS Cognito com envio de convite por e-mail
