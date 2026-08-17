@@ -17,6 +17,8 @@ provider:
     DB_NAME: ${env:DB_NAME, 'faith-hub'}
     DB_SSL: ${env:DB_SSL, 'false'}
     S3_MEDIA_BUCKET: ${env:S3_MEDIA_BUCKET, 'faith-hub-media-bucket-rafaelsena'}
+    ASAAS_API_KEY: ${env:ASAAS_API_KEY}
+    ASAAS_ENVIRONMENT: ${env:ASAAS_ENVIRONMENT, 'production'}
   iam:
     role:
       statements:
