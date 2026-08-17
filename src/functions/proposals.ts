@@ -24,7 +24,11 @@ export const createProposal = async (event: APIGatewayProxyEvent): Promise<APIGa
       features_included,
       notes,
       expires_days,
-      created_by
+      created_by,
+      discount_type,
+      discount_value,
+      discount_duration_months,
+      notes_commercial
     } = body;
 
     if (!church_name || !contact_name || !contact_email || !monthly_amount) {
@@ -35,6 +39,20 @@ export const createProposal = async (event: APIGatewayProxyEvent): Promise<APIGa
     const token = crypto.randomBytes(24).toString('hex');
     const daysValid = Number(expires_days) || 15;
     const expiresAt = new Date(Date.now() + daysValid * 24 * 60 * 60 * 1000);
+
+    const baseAmount = Number(monthly_amount);
+    const discType = discount_type || 'NONE';
+    const discVal = Number(discount_value || 0);
+    const discMonths = Number(discount_duration_months || 0);
+
+    let firstCycleAmount = baseAmount;
+    if (discType === 'FIRST_FREE') {
+      firstCycleAmount = 0.00;
+    } else if (discType === 'FIRST_MONTH_DISCOUNT' || discType === 'RECURRING_MONTHS_DISCOUNT') {
+      firstCycleAmount = Math.max(0, baseAmount - discVal);
+    } else if (discType === 'PERMANENT_DISCOUNT') {
+      firstCycleAmount = Math.max(0, baseAmount - discVal);
+    }
 
     // 1. Cria cliente preliminar no Asaas (se configurado)
     let asaasCustomerId: string | null = null;
@@ -68,8 +86,9 @@ export const createProposal = async (event: APIGatewayProxyEvent): Promise<APIGa
       INSERT INTO saas_proposals (
         id, token, church_name, cnpj_cpf, contact_name, contact_email, contact_phone,
         plan_tier, billing_cycle, monthly_amount, setup_fee, suggested_slug,
-        status, features_included, notes, expires_at, asaas_customer_id, created_by
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'SENT', ?, ?, ?, ?, ?)
+        status, features_included, notes, expires_at, asaas_customer_id, created_by,
+        discount_type, discount_value, discount_duration_months, first_cycle_amount, notes_commercial
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'SENT', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
     await query(q, [
@@ -82,14 +101,19 @@ export const createProposal = async (event: APIGatewayProxyEvent): Promise<APIGa
       contact_phone || null,
       plan_tier || 'PRO',
       billing_cycle || 'MONTHLY',
-      Number(monthly_amount),
+      baseAmount,
       Number(setup_fee || 0),
       suggested_slug || null,
       featuresJson,
       notes || null,
       expiresAt,
       asaasCustomerId,
-      created_by || 'Master Admin'
+      created_by || 'Master Admin',
+      discType,
+      discVal,
+      discMonths,
+      firstCycleAmount,
+      notes_commercial || null
     ]);
 
     const proposalUrl = `https://studio.faithhubs.com/?proposta=${token}`;
@@ -105,7 +129,12 @@ export const createProposal = async (event: APIGatewayProxyEvent): Promise<APIGa
         contact_phone,
         plan_tier: plan_tier || 'PRO',
         billing_cycle: billing_cycle || 'MONTHLY',
-        monthly_amount: Number(monthly_amount),
+        monthly_amount: baseAmount,
+        discount_type: discType,
+        discount_value: discVal,
+        discount_duration_months: discMonths,
+        first_cycle_amount: firstCycleAmount,
+        notes_commercial,
         setup_fee: Number(setup_fee || 0),
         status: 'SENT',
         proposal_url: proposalUrl,
@@ -126,7 +155,6 @@ export const listProposals = async (event: APIGatewayProxyEvent): Promise<APIGat
       ORDER BY created_at DESC
     `);
 
-    // Calcula Métricas Consolidadas do Funil
     let totalMRR = 0;
     let pipelineMRR = 0;
     const funnel = {
@@ -150,10 +178,9 @@ export const listProposals = async (event: APIGatewayProxyEvent): Promise<APIGat
       else if (status === 'PAID') { funnel.paid++; totalMRR += amount; }
       else if (status === 'CANCELLED' || status === 'EXPIRED') funnel.cancelled++;
 
-      // Formata link da proposta
       p.proposal_url = `https://studio.faithhubs.com/?proposta=${p.token}`;
       try {
-        p.features_included = JSON.parse(p.features_included || '[]');
+        p.features_included = typeof p.features_included === 'string' ? JSON.parse(p.features_included || '[]') : p.features_included;
       } catch {
         p.features_included = [];
       }
@@ -195,7 +222,7 @@ export const getPublicProposal = async (event: APIGatewayProxyEvent): Promise<AP
     }
 
     try {
-      proposal.features_included = JSON.parse(proposal.features_included || '[]');
+      proposal.features_included = typeof proposal.features_included === 'string' ? JSON.parse(proposal.features_included || '[]') : proposal.features_included;
     } catch {
       proposal.features_included = [];
     }
@@ -207,7 +234,7 @@ export const getPublicProposal = async (event: APIGatewayProxyEvent): Promise<AP
   }
 };
 
-// 4. Aceitar Proposta e Gerar Checkout Asaas (POST /proposals/public/{token}/accept)
+// 4. Aceitar Proposta e Gerar Checkout / Ativação (POST /proposals/public/{token}/accept)
 export const acceptProposal = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   try {
     const token = event.pathParameters?.token || event.queryStringParameters?.token;
@@ -223,7 +250,7 @@ export const acceptProposal = async (event: APIGatewayProxyEvent): Promise<APIGa
 
     const proposal = rows[0];
 
-    // Se já foi paga
+    // Se já foi paga / provisionada
     if (proposal.status === 'PAID') {
       return apiResponse(200, {
         message: 'Esta proposta já foi aprovada e o ambiente está ativo!',
@@ -232,12 +259,11 @@ export const acceptProposal = async (event: APIGatewayProxyEvent): Promise<APIGa
       });
     }
 
-    // 1. Cria Assinatura no Asaas
+    const isFirstFree = proposal.discount_type === 'FIRST_FREE';
     let asaasSubId = proposal.asaas_subscription_id;
     let paymentLink = proposal.asaas_payment_link;
 
     try {
-      // Garante que o cliente existe no Asaas
       let customerId = proposal.asaas_customer_id;
       if (!customerId) {
         const customer = await AsaasService.createCustomer({
@@ -249,14 +275,18 @@ export const acceptProposal = async (event: APIGatewayProxyEvent): Promise<APIGa
         customerId = customer.id;
       }
 
-      // Cria assinatura recorrente
+      // Se a primeira mensalidade for gratuita (carência de 30 dias), agenda para 30 dias à frente
+      const daysAhead = isFirstFree ? 30 : 2;
+      const dueDate = new Date(Date.now() + daysAhead * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+
+      // Cria assinatura recorrente no Asaas
       const sub = await AsaasService.createSubscription({
         customer: customerId,
         billingType: body.billingType || 'PIX',
         value: Number(proposal.monthly_amount),
-        nextDueDate: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+        nextDueDate: dueDate,
         cycle: proposal.billing_cycle === 'YEARLY' ? 'YEARLY' : 'MONTHLY',
-        description: `Assinatura Faith-Hub SaaS - ${proposal.church_name} (${proposal.plan_tier})`,
+        description: `Assinatura Faith-Hub SaaS - ${proposal.church_name} (${proposal.plan_tier})${isFirstFree ? ' [1º Mês Grátis]' : ''}`,
         creditCard: body.creditCard,
         creditCardHolderInfo: body.creditCardHolderInfo
       });
@@ -264,10 +294,36 @@ export const acceptProposal = async (event: APIGatewayProxyEvent): Promise<APIGa
       asaasSubId = sub.id;
       paymentLink = sub.paymentLink || sub.invoiceUrl || `https://studio.faithhubs.com/?proposta=${token}&step=pay`;
     } catch (asaasErr) {
-      console.warn('Erro ao criar assinatura Asaas (usando fallback):', asaasErr);
+      console.warn('Erro ao criar assinatura Asaas:', asaasErr);
     }
 
-    // 2. Atualiza Proposta com Aceite
+    // Se a primeira mensalidade é 100% gratuita, PROVISIONA O AMBIENTE IMEDIATAMENTE NA AWS!
+    if (isFirstFree) {
+      console.log(`🎁 Proposta com 1º mês grátis aceita. Provisionando ambiente imediatamente: ${proposal.id}`);
+      const provisionResult = await ProvisioningService.provisionFromProposal(proposal.id);
+
+      await query(`
+        UPDATE saas_proposals 
+        SET status = 'PAID',
+            accepted_at = NOW(),
+            accepted_ip = ?,
+            asaas_subscription_id = ?,
+            asaas_payment_link = ?,
+            updated_at = NOW()
+        WHERE id = ?
+      `, [clientIp, asaasSubId, paymentLink, proposal.id]);
+
+      return apiResponse(200, {
+        message: '🎉 Parabéns! Sua proposta com 1º Mês Grátis foi ativada e o ambiente já está pronto!',
+        status: 'PAID',
+        is_free_trial: true,
+        provision_result: provisionResult,
+        login_url: 'https://studio.faithhubs.com',
+        pwa_url: provisionResult.pwa_url
+      });
+    }
+
+    // Caso contrário, atualiza como ACCEPTED e aguarda pagamento da primeira mensalidade
     await query(`
       UPDATE saas_proposals 
       SET status = 'ACCEPTED',
@@ -311,11 +367,11 @@ export const simulatePayment = async (event: APIGatewayProxyEvent): Promise<APIG
   }
 };
 
-// 6. Listar Assinaturas Ativas (GET /saas-subscriptions)
+// 6. Listar Assinaturas do SaaS (GET /saas-subscriptions)
 export const listSubscriptions = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   try {
     const { rows } = await query(`
-      SELECT s.*, o.name as org_name, o.slug as org_slug, o.plan as org_plan 
+      SELECT s.*, o.name as church_name
       FROM saas_subscriptions s
       LEFT JOIN organizations o ON s.organization_id = o.id
       ORDER BY s.created_at DESC
