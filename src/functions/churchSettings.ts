@@ -61,19 +61,19 @@ const DEFAULT_SETTINGS = {
 };
 
 function formatSettings(item: any) {
-  let kanban = DEFAULT_KANBAN_CONFIG;
-  if (item.kanban_config) {
+  let kanban = item.kanban_config;
+  if (kanban && typeof kanban === 'string') {
     try {
-      kanban = typeof item.kanban_config === 'string' ? JSON.parse(item.kanban_config) : item.kanban_config;
+      kanban = JSON.parse(kanban);
     } catch {
-      kanban = DEFAULT_KANBAN_CONFIG;
+      kanban = null;
     }
   }
 
   return {
     ...DEFAULT_SETTINGS,
     ...item,
-    kanban_config: { ...DEFAULT_KANBAN_CONFIG, ...kanban },
+    kanban_config: kanban || DEFAULT_KANBAN_CONFIG,
     offline_mode: Boolean(item.offline_mode)
   };
 }
