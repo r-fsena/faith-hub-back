@@ -542,4 +542,25 @@ functions:
           method: POST
           path: /webhooks/asaas
 
+  listSaasPlans:
+    handler: src/functions/saasPlans.listPlans
+    events:
+      - httpApi:
+          method: GET
+          path: /saas-plans
+
+  createOrUpdateSaasPlan:
+    handler: src/functions/saasPlans.createOrUpdatePlan
+    events:
+      - httpApi:
+          method: POST
+          path: /saas-plans
+
+  deleteSaasPlan:
+    handler: src/functions/saasPlans.deletePlan
+    events:
+      - httpApi:
+          method: DELETE
+          path: /saas-plans/{id}
+
 
