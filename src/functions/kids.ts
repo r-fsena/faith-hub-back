@@ -683,6 +683,11 @@ export const kidsHandler = async (event: APIGatewayProxyEvent): Promise<APIGatew
   const method = (event.requestContext?.http?.method || event.httpMethod || '').toUpperCase();
   const rawPath = event.requestContext?.http?.path || event.path || '';
 
+  // Responder a Preflight CORS OPTIONS imediatamente com 200 OK
+  if (method === 'OPTIONS') {
+    return apiResponse(200, { ok: true });
+  }
+
   if (rawPath.includes('/kids/rooms')) {
     if (method === 'GET') return getRooms(event);
     if (method === 'POST') return saveRoom(event);
@@ -715,3 +720,4 @@ export const kidsHandler = async (event: APIGatewayProxyEvent): Promise<APIGatew
 
   return apiResponse(404, { message: 'Rota Kids não encontrada' });
 };
+
