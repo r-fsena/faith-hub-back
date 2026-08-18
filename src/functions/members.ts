@@ -133,6 +133,7 @@ export const list: APIGatewayProxyHandlerV2 = async (event) => {
     const groupId = event.queryStringParameters?.group_id;
     const campusId = event.queryStringParameters?.campus_id;
     const orgId = event.queryStringParameters?.organization_id;
+    const email = event.queryStringParameters?.email;
 
     let listQuery = `
       SELECT m.*, cg.name as cell_group_name, c.name as campus_name
@@ -142,6 +143,11 @@ export const list: APIGatewayProxyHandlerV2 = async (event) => {
       WHERE 1=1
     `;
     let params: any[] = [];
+
+    if (email) {
+      listQuery += ` AND m.email = ?`;
+      params.push(email);
+    }
 
     if (orgId && orgId !== 'all') {
       listQuery += ` AND m.organization_id = ?`;
