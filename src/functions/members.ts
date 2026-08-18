@@ -275,7 +275,7 @@ export const requestCell: APIGatewayProxyHandlerV2 = async (event) => {
 export const selfRegister: APIGatewayProxyHandlerV2 = async (event) => {
   try {
     if (!event.body) throw new Error("Missing request body");
-    const { id, email, name, phone, birthdate, organization_id, campus_id } = JSON.parse(event.body);
+    const { id, email, name, phone, birthdate, address, organization_id, campus_id } = JSON.parse(event.body);
 
     if (!email) throw new Error("Email is required");
 
@@ -291,10 +291,10 @@ export const selfRegister: APIGatewayProxyHandlerV2 = async (event) => {
 
     if (checkRes.rows.length === 0) {
       const insertSql = `
-        INSERT INTO members (id, name, email, phone, role, status, organization_id, campus_id, campus_ids)
-        VALUES (?, ?, ?, ?, 'Membro', 'Ativo', ?, ?, ?)
+        INSERT INTO members (id, name, email, phone, address, role, status, organization_id, campus_id, campus_ids)
+        VALUES (?, ?, ?, ?, ?, 'Membro', 'Ativo', ?, ?, ?)
       `;
-      await query(insertSql, [memberId, memberName, email, phone || null, orgValue, primaryCampus, campusIdsJson]);
+      await query(insertSql, [memberId, memberName, email, phone || null, address || null, orgValue, primaryCampus, campusIdsJson]);
     } else {
       const existingId = checkRes.rows[0].id;
       const updateSql = `
@@ -302,11 +302,12 @@ export const selfRegister: APIGatewayProxyHandlerV2 = async (event) => {
         SET 
           name = COALESCE(?, name),
           phone = COALESCE(?, phone),
+          address = COALESCE(?, address),
           status = 'Ativo',
           updated_at = NOW()
         WHERE id = ?
       `;
-      await query(updateSql, [name || null, phone || null, existingId]);
+      await query(updateSql, [name || null, phone || null, address || null, existingId]);
     }
 
     if (birthdate) {
