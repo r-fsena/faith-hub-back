@@ -360,6 +360,18 @@ export const getCheckins = async (event: APIGatewayProxyEvent): Promise<APIGatew
       params.push(childId);
     }
 
+    const startDate = event.queryStringParameters?.start_date;
+    const endDate = event.queryStringParameters?.end_date;
+
+    if (startDate) {
+      sql += ` AND DATE(c.checkin_at) >= ?`;
+      params.push(startDate);
+    }
+    if (endDate) {
+      sql += ` AND DATE(c.checkin_at) <= ?`;
+      params.push(endDate);
+    }
+
     sql += ` ORDER BY c.status = 'CALLING_PARENTS' DESC, c.checkin_at DESC`;
 
     const { rows } = await query(sql, params);
@@ -517,7 +529,8 @@ export const callParent = async (event: APIGatewayProxyEvent): Promise<APIGatewa
       SET status = 'CALLING_PARENTS',
           call_reason = ?,
           call_message = ?,
-          called_at = NOW()
+          called_at = NOW(),
+          call_count = COALESCE(call_count, 0) + 1
       WHERE id = ?
     `;
 
