@@ -40,11 +40,19 @@ export const createOrUpdateOrganization = async (event: APIGatewayProxyEvent): P
     const body = JSON.parse(event.body || '{}');
     const { id, name, slug, cnpj, plan, primary_color, secondary_color, logo_url, status } = body;
 
+    // Se passou apenas ID e status para inativar/reativar
+    if (id && status && !name && !slug) {
+      await query(`UPDATE organizations SET status = ?, updated_at = NOW() WHERE id = ?`, [status, id]);
+      await query(`UPDATE church_settings SET status = ?, updated_at = NOW() WHERE organization_id = ?`, [status, id]);
+      return apiResponse(200, { message: `Status da organização atualizado para ${status}`, organization_id: id, status });
+    }
+
     if (!name || !slug) {
       return apiResponse(400, { error: 'Nome e slug são campos obrigatórios' });
     }
 
     const orgId = id || uuidv4();
+    const cleanSlug = slug.toLowerCase().trim().replace(/[^a-z0-9-]/g, '-');
     const sql = `
       INSERT INTO organizations (id, name, slug, cnpj, plan, primary_color, secondary_color, logo_url, status)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -63,7 +71,7 @@ export const createOrUpdateOrganization = async (event: APIGatewayProxyEvent): P
     await query(sql, [
       orgId,
       name,
-      slug.toLowerCase().trim().replace(/[^a-z0-9-]/g, '-'),
+      cleanSlug,
       cnpj || '',
       plan || 'PRO',
       primary_color || '#0f766e',
@@ -71,6 +79,14 @@ export const createOrUpdateOrganization = async (event: APIGatewayProxyEvent): P
       logo_url || '',
       status || 'ACTIVE'
     ]);
+
+    // Sincroniza também na tabela church_settings se já existir
+    if (id) {
+      await query(
+        `UPDATE church_settings SET church_name = ?, pwa_slug = ?, primary_color = ?, secondary_color = ?, status = ?, updated_at = NOW() WHERE organization_id = ?`,
+        [name, cleanSlug, primary_color || '#0f766e', secondary_color || '#14b8a6', status || 'ACTIVE', id]
+      );
+    }
 
     return apiResponse(200, { message: 'Organização salva com sucesso!', organization_id: orgId });
   } catch (error: any) {

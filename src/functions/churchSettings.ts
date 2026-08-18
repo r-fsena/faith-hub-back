@@ -87,11 +87,17 @@ export const getSettings = async (event: APIGatewayProxyEvent): Promise<APIGatew
     if (orgId) {
       // 1. Busca específica por ID da organização
       const { rows } = await query(
-        `SELECT * FROM church_settings WHERE organization_id = ? OR id = ? ORDER BY updated_at DESC LIMIT 1`,
+        `SELECT cs.*, o.status as org_status 
+         FROM church_settings cs
+         LEFT JOIN organizations o ON cs.organization_id = o.id
+         WHERE cs.organization_id = ? OR cs.id = ? 
+         ORDER BY cs.updated_at DESC LIMIT 1`,
         [orgId, orgId]
       );
       if (rows.length > 0) {
-        return apiResponse(200, formatSettings(rows[0]));
+        const item = rows[0];
+        const finalStatus = item.org_status === 'INACTIVE' || item.status === 'INACTIVE' ? 'INACTIVE' : 'ACTIVE';
+        return apiResponse(200, { ...formatSettings(item), status: finalStatus });
       }
 
       // Se não encontrou em church_settings, busca na tabela organizations
@@ -106,7 +112,8 @@ export const getSettings = async (event: APIGatewayProxyEvent): Promise<APIGatew
           primary_color: org.primary_color || DEFAULT_SETTINGS.primary_color,
           secondary_color: org.secondary_color || DEFAULT_SETTINGS.secondary_color,
           logo_icon_url: org.logo_url || DEFAULT_SETTINGS.logo_icon_url,
-          organization_id: org.id
+          organization_id: org.id,
+          status: org.status || 'ACTIVE'
         });
       }
     }
@@ -116,11 +123,17 @@ export const getSettings = async (event: APIGatewayProxyEvent): Promise<APIGatew
 
       // 2. Busca específica por slug do PWA
       const { rows } = await query(
-        `SELECT * FROM church_settings WHERE pwa_slug = ? OR pwa_slug = ? OR id = ? OR organization_id IN (SELECT id FROM organizations WHERE slug = ? OR slug = ?) ORDER BY updated_at DESC LIMIT 1`,
+        `SELECT cs.*, o.status as org_status 
+         FROM church_settings cs
+         LEFT JOIN organizations o ON (cs.organization_id = o.id OR cs.pwa_slug = o.slug)
+         WHERE cs.pwa_slug = ? OR cs.pwa_slug = ? OR cs.id = ? OR cs.organization_id IN (SELECT id FROM organizations WHERE slug = ? OR slug = ?) 
+         ORDER BY cs.updated_at DESC LIMIT 1`,
         [rawSlug, cleanSlug, rawSlug, rawSlug, cleanSlug]
       );
       if (rows.length > 0) {
-        return apiResponse(200, formatSettings(rows[0]));
+        const item = rows[0];
+        const finalStatus = item.org_status === 'INACTIVE' || item.status === 'INACTIVE' ? 'INACTIVE' : 'ACTIVE';
+        return apiResponse(200, { ...formatSettings(item), status: finalStatus });
       }
 
       // Se não encontrou em church_settings, busca na tabela organizations
@@ -138,7 +151,8 @@ export const getSettings = async (event: APIGatewayProxyEvent): Promise<APIGatew
           primary_color: org.primary_color || DEFAULT_SETTINGS.primary_color,
           secondary_color: org.secondary_color || DEFAULT_SETTINGS.secondary_color,
           logo_icon_url: org.logo_url || DEFAULT_SETTINGS.logo_icon_url,
-          organization_id: org.id
+          organization_id: org.id,
+          status: org.status || 'ACTIVE'
         });
       }
     }
