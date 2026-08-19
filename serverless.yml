@@ -581,6 +581,18 @@ functions:
           method: ANY
           path: /kids
 
-
-
-
+  financialHandler:
+    handler: src/functions/financial.financialHandler
+    events:
+      - httpApi:
+          method: ANY
+          path: /financial/{proxy+}
+      - httpApi:
+          method: ANY
+          path: /financial
+      - httpApi:
+          method: ANY
+          path: /saas/invoices/{proxy+}
+      - httpApi:
+          method: ANY
+          path: /saas/invoices
