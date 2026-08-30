@@ -8,9 +8,14 @@ provider:
   httpApi:
     cors:
       allowedOrigins:
+        - '*'
         - 'https://faithhubs.com'
-        - 'https://*.faithhubs.com'
         - 'https://admin.faithhubs.com'
+        - 'https://app.faithhubs.com'
+        - 'https://pwa.faithhubs.com'
+        - 'https://d2lyt83fsceg0b.amplifyapp.com'
+        - 'https://d312p1jp7kl7kp.amplifyapp.com'
+        - 'https://dcd98qkjlz7f5.amplifyapp.com'
         - 'http://localhost:5173'
         - 'http://localhost:8081'
         - 'http://localhost:3000'
@@ -63,10 +68,15 @@ provider:
           Resource: "arn:aws:cognito-idp:us-east-2:*:userpool/${env:USER_POOL_ID, 'us-east-2_pLrj1NgHI'}"
 
 plugins:
+  - serverless-plugin-split-stacks
   - serverless-esbuild
   - serverless-offline
 
 custom:
+  splitStacks:
+    perFunction: false
+    perType: true
+    perGroupFunction: false
   esbuild:
     bundle: true
     minify: false
