@@ -1,22 +1,24 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { v4 as uuidv4 } from 'uuid';
 import { query, getConnection, apiResponse } from '../db';
+import { requireAuth, enforceRole, enforceTenant, getAuthenticatedUser } from '../services/authMiddleware';
+import { logSecurityEvent } from '../services/auditLogService';
+
+const EVENT_ADMIN_ROLES = ['SUPERADMIN', 'PASTOR', 'ADMIN', 'LEADER'];
 
 // GET /events
 export const getEvents = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   try {
+    const user = await getAuthenticatedUser(event);
     const admin = event.queryStringParameters?.admin === 'true';
     const type = event.queryStringParameters?.type; // '0' = Evento, '1' = Curso
-    const orgId = event.queryStringParameters?.organization_id;
+    const requestedOrgId = event.queryStringParameters?.organization_id;
     const campusId = event.queryStringParameters?.campus_id;
 
-    let sqlEvents = `SELECT * FROM events WHERE 1=1`;
-    const params: any[] = [];
+    const orgId = user ? enforceTenant(user, requestedOrgId).effectiveOrgId : (requestedOrgId || 'org_default');
 
-    if (orgId && orgId !== 'all') {
-      sqlEvents += ` AND organization_id = ?`;
-      params.push(orgId);
-    }
+    let sqlEvents = `SELECT * FROM events WHERE organization_id = ?`;
+    const params: any[] = [orgId];
 
     if (campusId && campusId !== 'all') {
       sqlEvents += ` AND (campus_id = ? OR campus_id IS NULL)`;
@@ -56,7 +58,7 @@ export const getEvents = async (event: APIGatewayProxyEvent): Promise<APIGateway
     return apiResponse(200, { data: resultData });
   } catch (error: any) {
     console.error('Error fetching events:', error);
-    return apiResponse(500, { message: 'Erro ao buscar eventos', error: error.message });
+    return apiResponse(500, { message: 'Erro ao buscar eventos' });
   }
 };
 
@@ -84,44 +86,7 @@ export const getEventById = async (event: APIGatewayProxyEvent): Promise<APIGate
       }
     });
   } catch (error: any) {
-    return apiResponse(500, { message: 'Erro ao buscar detalhes do evento', error: error.message });
-  }
-};
-
-// POST /events/mock
-export const createMockEvent = async (_event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
-  const connection = await getConnection();
-  try {
-    const evId = uuidv4();
-    const l1Id = uuidv4();
-    const l2Id = uuidv4();
-
-    await connection.beginTransaction();
-
-    const qEv = `
-      INSERT INTO events (id, type, is_featured, title, description, image_url, video_url, start_date, end_date, location, status) 
-      VALUES (?, 0, 1, 'Conferência Reino em Movimento 2026', 'Três dias de avivamento, capacitação profética e adoração intensa.', 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?q=80&w=800', NULL, DATE_ADD(NOW(), INTERVAL 7 DAY), DATE_ADD(NOW(), INTERVAL 9 DAY), 'Templo Principal - Sede', 'PUBLISHED')
-    `;
-    await connection.query(qEv, [evId]);
-    await connection.query(`INSERT INTO event_lots (id, event_id, name, price, total_capacity, available_capacity) VALUES (?, ?, '1º Lote Solidário', 120.00, 50, 50)`, [l1Id, evId]);
-    await connection.query(`INSERT INTO event_lots (id, event_id, name, price, total_capacity, available_capacity) VALUES (?, ?, '2º Lote', 200.00, 100, 100)`, [l2Id, evId]);
-
-    const cId = uuidv4();
-    const qC = `
-      INSERT INTO events (id, type, is_featured, title, description, image_url, video_url, start_date, end_date, location, status) 
-      VALUES (?, 1, 0, 'Imersão em Liderança TKS', 'Curso intensivo de formação de líderes multiplicadores baseado nos valores reais do reino.', 'https://images.unsplash.com/photo-1515187029135-18ee286d815b?q=80&w=800', NULL, DATE_ADD(NOW(), INTERVAL 15 DAY), DATE_ADD(NOW(), INTERVAL 45 DAY), 'Campus Central / Online', 'PUBLISHED')
-    `;
-    await connection.query(qC, [cId]);
-    await connection.query(`INSERT INTO event_lots (id, event_id, name, price, total_capacity, available_capacity) VALUES (?, ?, 'Lote Único (Membros)', 0.00, 200, 200)`, [uuidv4(), cId]);
-
-    await connection.commit();
-    connection.release();
-
-    return apiResponse(201, { message: 'Mock Event & Course gerados com sucesso!', id: evId });
-  } catch (e: any) {
-    await connection.rollback();
-    connection.release();
-    return apiResponse(500, { message: e.message });
+    return apiResponse(500, { message: 'Erro ao buscar detalhes do evento' });
   }
 };
 
@@ -129,21 +94,38 @@ export const createMockEvent = async (_event: APIGatewayProxyEvent): Promise<API
 export const createOrUpdateEvent = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   const connection = await getConnection();
   try {
+    const auth = await requireAuth(event);
+    if ('errorResponse' in auth) {
+      connection.release();
+      return auth.errorResponse;
+    }
+
+    const roleCheck = enforceRole(auth.user, EVENT_ADMIN_ROLES);
+    if (!roleCheck.allowed) {
+      connection.release();
+      return roleCheck.errorResponse!;
+    }
+
     if (!event.body) {
       connection.release();
       return apiResponse(400, { message: 'Body obrigatório' });
     }
     const data = JSON.parse(event.body);
 
+    const tenantCheck = enforceTenant(auth.user, data.organization_id);
+    if (!tenantCheck.allowed) {
+      connection.release();
+      return tenantCheck.errorResponse!;
+    }
+    const orgValue = tenantCheck.effectiveOrgId;
+
     const isUpdate = !!data.id;
     const id = data.id || uuidv4();
     const type = data.type || 0;
     const isFeatured = data.is_featured ? 1 : 0;
+    const campusValue = data.campus_id || 'campus_sede';
 
     await connection.beginTransaction();
-
-    const orgValue = data.organization_id || 'org_default';
-    const campusValue = data.campus_id || 'campus_sede';
 
     if (isUpdate) {
       const q = `UPDATE events SET type=?, is_featured=?, title=?, description=?, image_url=?, video_url=?, start_date=?, end_date=?, location=?, status=?, campus_id=? WHERE id=?`;
@@ -173,11 +155,21 @@ export const createOrUpdateEvent = async (event: APIGatewayProxyEvent): Promise<
     await connection.commit();
     connection.release();
 
+    await logSecurityEvent({
+      organizationId: orgValue,
+      user: auth.user,
+      action: isUpdate ? 'UPDATE_EVENT' : 'CREATE_EVENT',
+      resource: 'events',
+      resourceId: id,
+      details: { title: data.title, type },
+      event
+    });
+
     return apiResponse(isUpdate ? 200 : 201, { message: 'Evento salvo com sucesso!', id });
   } catch (e: any) {
     await connection.rollback();
     connection.release();
-    return apiResponse(500, { message: e.message });
+    return apiResponse(500, { message: 'Erro ao salvar evento' });
   }
 };
 
@@ -185,10 +177,34 @@ export const createOrUpdateEvent = async (event: APIGatewayProxyEvent): Promise<
 export const deleteEvent = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   const connection = await getConnection();
   try {
+    const auth = await requireAuth(event);
+    if ('errorResponse' in auth) {
+      connection.release();
+      return auth.errorResponse;
+    }
+
+    const roleCheck = enforceRole(auth.user, ['SUPERADMIN', 'PASTOR', 'ADMIN']);
+    if (!roleCheck.allowed) {
+      connection.release();
+      return roleCheck.errorResponse!;
+    }
+
     const id = event.pathParameters?.id;
     if (!id) {
       connection.release();
       return apiResponse(400, { message: 'ID ausente' });
+    }
+
+    const [rows]: any = await connection.query(`SELECT organization_id, title FROM events WHERE id = ? LIMIT 1`, [id]);
+    if (rows.length === 0) {
+      connection.release();
+      return apiResponse(404, { message: 'Evento não encontrado' });
+    }
+
+    const tenantCheck = enforceTenant(auth.user, rows[0].organization_id);
+    if (!tenantCheck.allowed) {
+      connection.release();
+      return tenantCheck.errorResponse!;
     }
 
     await connection.beginTransaction();
@@ -198,10 +214,20 @@ export const deleteEvent = async (event: APIGatewayProxyEvent): Promise<APIGatew
     await connection.commit();
     connection.release();
 
+    await logSecurityEvent({
+      organizationId: tenantCheck.effectiveOrgId,
+      user: auth.user,
+      action: 'DELETE_EVENT',
+      resource: 'events',
+      resourceId: id,
+      details: { title: rows[0].title },
+      event
+    });
+
     return apiResponse(200, { message: 'Evento deletado com sucesso!' });
   } catch (e: any) {
     await connection.rollback();
     connection.release();
-    return apiResponse(500, { message: e.message });
+    return apiResponse(500, { message: 'Erro ao deletar evento' });
   }
 };

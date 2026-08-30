@@ -1,5 +1,7 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { query, apiResponse } from '../db';
+import { requireAuth, enforceRole, enforceTenant } from '../services/authMiddleware';
+import { logSecurityEvent } from '../services/auditLogService';
 
 export const DEFAULT_KANBAN_CONFIG = {
   RECEBIDO: {
@@ -101,14 +103,13 @@ function formatSettings(item: any) {
   };
 }
 
-// GET /church-settings
+// GET /church-settings (Público para leitura de identidade visual do PWA/App)
 export const getSettings = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   try {
     const rawSlug = event.queryStringParameters?.slug;
     const orgId = event.queryStringParameters?.organization_id;
 
     if (orgId) {
-      // 1. Busca específica por ID da organização
       const { rows } = await query(
         `SELECT cs.*, o.status as org_status 
          FROM church_settings cs
@@ -123,7 +124,6 @@ export const getSettings = async (event: APIGatewayProxyEvent): Promise<APIGatew
         return apiResponse(200, { ...formatSettings(item), status: finalStatus });
       }
 
-      // Se não encontrou em church_settings, busca na tabela organizations
       const orgRes = await query(`SELECT * FROM organizations WHERE id = ? LIMIT 1`, [orgId]);
       if (orgRes.rows.length > 0) {
         const org = orgRes.rows[0];
@@ -144,7 +144,6 @@ export const getSettings = async (event: APIGatewayProxyEvent): Promise<APIGatew
     if (rawSlug) {
       const cleanSlug = rawSlug.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
 
-      // 2. Busca específica por slug do PWA
       const { rows } = await query(
         `SELECT cs.*, o.status as org_status 
          FROM church_settings cs
@@ -159,7 +158,6 @@ export const getSettings = async (event: APIGatewayProxyEvent): Promise<APIGatew
         return apiResponse(200, { ...formatSettings(item), status: finalStatus });
       }
 
-      // Se não encontrou em church_settings, busca na tabela organizations
       const orgRes = await query(
         `SELECT * FROM organizations WHERE slug = ? OR slug = ? OR id = ? LIMIT 1`,
         [rawSlug, cleanSlug, rawSlug]
@@ -180,7 +178,6 @@ export const getSettings = async (event: APIGatewayProxyEvent): Promise<APIGatew
       }
     }
 
-    // 3. Se nenhum parâmetro foi passado, retorna a congregação padrão
     const { rows: defaultRows } = await query(
       `SELECT * FROM church_settings WHERE organization_id = 'org_default' OR id = 'default_church' ORDER BY updated_at DESC LIMIT 1`
     );
@@ -195,14 +192,24 @@ export const getSettings = async (event: APIGatewayProxyEvent): Promise<APIGatew
   }
 };
 
-// POST /church-settings
+// POST /church-settings (PROTEGIDO: Apenas Liderança/Pastor da própria congregação)
 export const updateSettings = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   try {
+    const auth = await requireAuth(event);
+    if ('errorResponse' in auth) return auth.errorResponse;
+
+    const roleCheck = enforceRole(auth.user, ['SUPERADMIN', 'PASTOR', 'ADMIN']);
+    if (!roleCheck.allowed) return roleCheck.errorResponse!;
+
     const body = JSON.parse(event.body || '{}');
-    const orgId = body.organization_id || body.orgId || 'org_default';
+    const requestedOrgId = body.organization_id || body.orgId;
+
+    const tenantCheck = enforceTenant(auth.user, requestedOrgId);
+    if (!tenantCheck.allowed) return tenantCheck.errorResponse!;
+    const orgId = tenantCheck.effectiveOrgId;
+
     const pwaSlug = (body.pwa_slug || body.slug || 'igreja').toLowerCase().trim();
 
-    // Localiza se já existe registro desta organização para reaproveitar o mesmo ID
     let settingsId = body.id;
     if (!settingsId && orgId) {
       const existing = await query(`SELECT id FROM church_settings WHERE organization_id = ? LIMIT 1`, [orgId]);
@@ -306,7 +313,6 @@ export const updateSettings = async (event: APIGatewayProxyEvent): Promise<APIGa
 
     await query(sql, params);
 
-    // Sincroniza também na tabela organizations se houver organization_id
     if (orgId && orgId !== 'org_default') {
       await query(
         `UPDATE organizations SET name = ?, primary_color = ?, secondary_color = ?, logo_url = ?, updated_at = NOW() WHERE id = ?`,
@@ -314,12 +320,22 @@ export const updateSettings = async (event: APIGatewayProxyEvent): Promise<APIGa
       ).catch(() => {});
     }
 
+    await logSecurityEvent({
+      organizationId: orgId,
+      user: auth.user,
+      action: 'UPDATE_CHURCH_SETTINGS',
+      resource: 'church_settings',
+      resourceId: settings.id,
+      details: { church_name: settings.church_name, pwa_slug: settings.pwa_slug },
+      event
+    });
+
     return apiResponse(200, {
       message: 'Configurações da Igreja salvas com sucesso!',
       settings
     });
   } catch (error: any) {
     console.error('Erro ao salvar church-settings:', error);
-    return apiResponse(500, { message: 'Erro ao salvar configurações', error: error.message });
+    return apiResponse(500, { message: 'Erro ao salvar configurações' });
   }
 };

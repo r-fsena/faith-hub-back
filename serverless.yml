@@ -6,14 +6,43 @@ provider:
   runtime: nodejs18.x
   region: us-east-2
   httpApi:
-    cors: true
+    cors:
+      allowedOrigins:
+        - 'https://faithhubs.com'
+        - 'https://*.faithhubs.com'
+        - 'https://admin.faithhubs.com'
+        - 'http://localhost:5173'
+        - 'http://localhost:8081'
+        - 'http://localhost:3000'
+        - 'http://localhost:19006'
+      allowedHeaders:
+        - Content-Type
+        - Authorization
+        - X-Amz-Date
+        - X-Api-Key
+        - X-Amz-Security-Token
+        - asaas-access-token
+      allowedMethods:
+        - GET
+        - POST
+        - PUT
+        - DELETE
+        - OPTIONS
+      maxAge: 3600
+    authorizers:
+      cognitoAuthorizer:
+        type: jwt
+        identitySource: $request.header.Authorization
+        issuerUrl: https://cognito-idp.us-east-2.amazonaws.com/${env:USER_POOL_ID, 'us-east-2_pLrj1NgHI'}
+        audience:
+          - ${env:USER_POOL_CLIENT_ID, '3ik571j3u4o4sb13bo7n4o9822'}
   environment:
-    # EsteUserPool ID real vem da arquitetura do aplicativo. Você precisa garantir que a role Lambda tem acesso.
     USER_POOL_ID: ${env:USER_POOL_ID, 'us-east-2_pLrj1NgHI'}
+    USER_POOL_CLIENT_ID: ${env:USER_POOL_CLIENT_ID, '3ik571j3u4o4sb13bo7n4o9822'}
     DB_HOST: ${env:DB_HOST, 'faith-hub.cc7220s4ekvj.us-east-1.rds.amazonaws.com'}
     DB_PORT: ${env:DB_PORT, '3306'}
     DB_USER: ${env:DB_USER, 'admin_faith_hub'}
-    DB_PASSWORD: ${env:DB_PASSWORD, '30ago2015Ra!'}
+    DB_PASSWORD: ${env:DB_PASSWORD}
     DB_NAME: ${env:DB_NAME, 'faith-hub'}
     DB_SSL: ${env:DB_SSL, 'false'}
     S3_MEDIA_BUCKET: ${env:S3_MEDIA_BUCKET, 'faith-hub-media-bucket-rafaelsena'}
@@ -31,7 +60,7 @@ provider:
             - cognito-idp:AdminResetUserPassword
             - cognito-idp:AdminAddUserToGroup
             - cognito-idp:AdminUpdateUserAttributes
-          Resource: "arn:aws:cognito-idp:us-east-2:*:userpool/us-east-2_pLrj1NgHI"
+          Resource: "arn:aws:cognito-idp:us-east-2:*:userpool/${env:USER_POOL_ID, 'us-east-2_pLrj1NgHI'}"
 
 plugins:
   - serverless-esbuild
@@ -596,3 +625,40 @@ functions:
       - httpApi:
           method: ANY
           path: /saas/invoices
+
+  getFeatureFlags:
+    handler: src/functions/featureFlags.getFeatureFlags
+    events:
+      - httpApi:
+          method: GET
+          path: /feature-flags
+
+  toggleFeatureFlag:
+    handler: src/functions/featureFlags.toggleFeatureFlag
+    events:
+      - httpApi:
+          method: POST
+          path: /feature-flags/toggle
+
+  batchUpdateFeatureFlags:
+    handler: src/functions/featureFlags.batchUpdateFeatureFlags
+    events:
+      - httpApi:
+          method: POST
+          path: /feature-flags/batch
+
+  resetTenantFlags:
+    handler: src/functions/featureFlags.resetTenantFlags
+    events:
+      - httpApi:
+          method: DELETE
+          path: /feature-flags/tenant/{id}
+
+  listAuditLogs:
+    handler: src/functions/auditLogs.listAuditLogs
+    events:
+      - httpApi:
+          method: GET
+          path: /security/audit-logs
+
+

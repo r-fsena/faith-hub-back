@@ -1,10 +1,19 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { query, apiResponse } from '../db';
 import { v4 as uuidv4 } from 'uuid';
+import { requireAuth, enforceRole, enforceTenant, getAuthenticatedUser } from '../services/authMiddleware';
+import { logSecurityEvent } from '../services/auditLogService';
 
+const CAMPUS_ADMIN_ROLES = ['SUPERADMIN', 'PASTOR', 'ADMIN'];
+
+// GET /campuses
 export const listCampuses = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   try {
-    const orgId = event.queryStringParameters?.organization_id || 'org_default';
+    const user = await getAuthenticatedUser(event);
+    const requestedOrgId = event.queryStringParameters?.organization_id;
+
+    const orgId = user ? enforceTenant(user, requestedOrgId).effectiveOrgId : (requestedOrgId || 'org_default');
+
     const { rows } = await query(`
       SELECT c.*,
              COUNT(DISTINCT m.id) as total_members,
@@ -20,10 +29,11 @@ export const listCampuses = async (event: APIGatewayProxyEvent): Promise<APIGate
     return apiResponse(200, { data: rows });
   } catch (error: any) {
     console.error('Erro ao listar unidades/campi:', error);
-    return apiResponse(500, { error: error.message });
+    return apiResponse(500, { error: 'Erro ao listar unidades' });
   }
 };
 
+// GET /campuses/{id}
 export const getCampus = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   try {
     const id = event.pathParameters?.id;
@@ -36,12 +46,19 @@ export const getCampus = async (event: APIGatewayProxyEvent): Promise<APIGateway
     return apiResponse(200, rows[0]);
   } catch (error: any) {
     console.error('Erro ao obter campus:', error);
-    return apiResponse(500, { error: error.message });
+    return apiResponse(500, { error: 'Erro ao obter unidade' });
   }
 };
 
+// POST /campuses
 export const createOrUpdateCampus = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   try {
+    const auth = await requireAuth(event);
+    if ('errorResponse' in auth) return auth.errorResponse;
+
+    const roleCheck = enforceRole(auth.user, CAMPUS_ADMIN_ROLES);
+    if (!roleCheck.allowed) return roleCheck.errorResponse!;
+
     const body = JSON.parse(event.body || '{}');
     const {
       id,
@@ -64,11 +81,13 @@ export const createOrUpdateCampus = async (event: APIGatewayProxyEvent): Promise
       return apiResponse(400, { error: 'Nome da unidade e slug são obrigatórios' });
     }
 
-    const orgId = organization_id || 'org_default';
+    const tenantCheck = enforceTenant(auth.user, organization_id);
+    if (!tenantCheck.allowed) return tenantCheck.errorResponse!;
+    const orgId = tenantCheck.effectiveOrgId;
+
     const campusId = id || uuidv4();
     const formattedSlug = slug.toLowerCase().trim().replace(/[^a-z0-9-]/g, '-');
 
-    // Se for marcado como sede, desmarca os outros
     if (is_headquarters) {
       await query(`UPDATE campuses SET is_headquarters = FALSE WHERE organization_id = ?`, [orgId]);
     }
@@ -100,7 +119,7 @@ export const createOrUpdateCampus = async (event: APIGatewayProxyEvent): Promise
       orgId,
       name,
       formattedSlug,
-      is_headquarters ? 1 : 0,
+      Boolean(is_headquarters),
       pastor_name || '',
       phone || '',
       whatsapp || '',
@@ -112,31 +131,56 @@ export const createOrUpdateCampus = async (event: APIGatewayProxyEvent): Promise
       status || 'ACTIVE'
     ]);
 
-    return apiResponse(200, {
-      message: 'Unidade/Campus salvo com sucesso!',
-      campus_id: campusId
+    await logSecurityEvent({
+      organizationId: orgId,
+      user: auth.user,
+      action: id ? 'UPDATE_CAMPUS' : 'CREATE_CAMPUS',
+      resource: 'campuses',
+      resourceId: campusId,
+      details: { name, slug: formattedSlug, is_headquarters: Boolean(is_headquarters) },
+      event
     });
+
+    return apiResponse(200, { message: 'Campus/Unidade salva com sucesso!', campus_id: campusId });
   } catch (error: any) {
     console.error('Erro ao salvar campus:', error);
-    return apiResponse(500, { error: error.message });
+    return apiResponse(500, { error: 'Erro ao salvar unidade' });
   }
 };
 
+// DELETE /campuses/{id}
 export const deleteCampus = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   try {
+    const auth = await requireAuth(event);
+    if ('errorResponse' in auth) return auth.errorResponse;
+
+    const roleCheck = enforceRole(auth.user, ['SUPERADMIN', 'PASTOR', 'ADMIN']);
+    if (!roleCheck.allowed) return roleCheck.errorResponse!;
+
     const id = event.pathParameters?.id;
     if (!id) return apiResponse(400, { error: 'ID do campus obrigatório' });
 
-    // Não permite apagar se for a Sede
-    const { rows } = await query(`SELECT is_headquarters FROM campuses WHERE id = ?`, [id]);
-    if (rows.length > 0 && rows[0].is_headquarters) {
-      return apiResponse(400, { error: 'A Sede Principal não pode ser excluída. Transfira a sede para outra unidade antes.' });
-    }
+    const { rows } = await query(`SELECT organization_id, name FROM campuses WHERE id = ? LIMIT 1`, [id]);
+    if (rows.length === 0) return apiResponse(404, { error: 'Campus não encontrado' });
+
+    const tenantCheck = enforceTenant(auth.user, rows[0].organization_id);
+    if (!tenantCheck.allowed) return tenantCheck.errorResponse!;
 
     await query(`DELETE FROM campuses WHERE id = ?`, [id]);
-    return apiResponse(200, { message: 'Unidade/Campus removido com sucesso' });
+
+    await logSecurityEvent({
+      organizationId: tenantCheck.effectiveOrgId,
+      user: auth.user,
+      action: 'DELETE_CAMPUS',
+      resource: 'campuses',
+      resourceId: id,
+      details: { name: rows[0].name },
+      event
+    });
+
+    return apiResponse(200, { message: 'Campus/Unidade removido com sucesso!' });
   } catch (error: any) {
-    console.error('Erro ao excluir campus:', error);
-    return apiResponse(500, { error: error.message });
+    console.error('Erro ao deletar campus:', error);
+    return apiResponse(500, { error: 'Erro ao deletar unidade' });
   }
 };

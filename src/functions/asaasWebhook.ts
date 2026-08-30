@@ -5,16 +5,20 @@ import { ProvisioningService } from '../services/provisioningService';
 
 export const handleAsaasWebhook = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   try {
-    // 0. Validação de Segurança do Token de Autenticação do Webhook Asaas (Case-insensitive)
+    // 0. Validação Rigorosa de Segurança do Token de Autenticação do Webhook Asaas
     const expectedToken = process.env.ASAAS_WEBHOOK_SECRET;
     const headers = event.headers || {};
     const receivedToken = Object.entries(headers).find(
       ([k]) => k.toLowerCase() === 'asaas-access-token'
     )?.[1];
 
-    if (expectedToken && receivedToken && receivedToken !== expectedToken) {
-      console.warn('⚠️ Token de autenticação do Webhook Asaas inválido!', { receivedToken });
-      return apiResponse(401, { message: 'Token de autenticação do webhook inválido' });
+    if (expectedToken) {
+      if (!receivedToken || receivedToken !== expectedToken) {
+        console.warn('⚠️ Token de autenticação do Webhook Asaas inválido ou ausente!', {
+          hasReceivedToken: Boolean(receivedToken)
+        });
+        return apiResponse(401, { message: 'Acesso não autorizado: token do webhook inválido ou ausente' });
+      }
     }
 
     let body: any = {};

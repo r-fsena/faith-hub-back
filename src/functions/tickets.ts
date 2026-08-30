@@ -1,6 +1,11 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { v4 as uuidv4 } from 'uuid';
 import { query, getConnection, apiResponse } from '../db';
+import { requireAuth, enforceRole, getAuthenticatedUser } from '../services/authMiddleware';
+import { logSecurityEvent } from '../services/auditLogService';
+import { checkRateLimit } from '../services/rateLimiter';
+
+const SCANNER_ROLES = ['SUPERADMIN', 'PASTOR', 'ADMIN', 'LEADER', 'VOLUNTEER'];
 
 // Gerador de Código Curto de Validação Manual (ex: FH-784291)
 const generateShortCode = (): string => {
@@ -12,6 +17,17 @@ const generateShortCode = (): string => {
 export const checkout = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   const connection = await getConnection();
   try {
+    const rateCheck = checkRateLimit(event, {
+      maxRequests: 20,
+      windowSeconds: 60,
+      identifierPrefix: 'ticket_checkout'
+    });
+    if (!rateCheck.allowed) {
+      connection.release();
+      return rateCheck.errorResponse!;
+    }
+
+    const user = await getAuthenticatedUser(event);
     const body = JSON.parse(event.body || '{}');
     const {
       event_id,
@@ -25,9 +41,11 @@ export const checkout = async (event: APIGatewayProxyEvent): Promise<APIGatewayP
       payment_method
     } = body;
 
-    if (!event_id || !user_id) {
+    const effectiveUserId = user?.userId || user_id || 'GUEST';
+
+    if (!event_id) {
       connection.release();
-      return apiResponse(400, { message: 'Requisição inválida (event_id e user_id obrigatórios)' });
+      return apiResponse(400, { message: 'Requisição inválida (event_id obrigatório)' });
     }
 
     await connection.beginTransaction();
@@ -48,7 +66,6 @@ export const checkout = async (event: APIGatewayProxyEvent): Promise<APIGatewayP
         }
       }
     } else {
-      // Se não passou lot_id, busca o primeiro lote ativo do evento
       const [lots]: any = await connection.query(`SELECT * FROM event_lots WHERE event_id = ? ORDER BY price ASC LIMIT 1 FOR UPDATE;`, [event_id]);
       if (lots.length > 0) {
         targetLotId = lots[0].id;
@@ -60,7 +77,6 @@ export const checkout = async (event: APIGatewayProxyEvent): Promise<APIGatewayP
       }
     }
 
-    // Busca detalhes do Evento para confirmação
     const [eventRow]: any = await connection.query(`SELECT * FROM events WHERE id = ?;`, [event_id]);
     const eventData = eventRow.length > 0 ? eventRow[0] : {};
 
@@ -72,25 +88,26 @@ export const checkout = async (event: APIGatewayProxyEvent): Promise<APIGatewayP
 
     const qInsert = `
       INSERT INTO event_tickets (
-        id, event_id, lot_id, user_id, status, qrcode_token, short_code, price_paid,
+        id, event_id, lot_id, user_id, organization_id, status, qrcode_token, short_code, price_paid,
         attendee_name, attendee_whatsapp, attendee_cpf, attendee_email, dietary_notes
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
     await connection.query(qInsert, [
       ticketId,
       event_id,
       targetLotId || 'lot_default',
-      user_id,
+      effectiveUserId,
+      eventData.organization_id || user?.organizationId || 'org_default',
       initialStatus,
       qrCodeToken,
       shortCode,
       lotPrice,
-      attendee_name || null,
+      attendee_name || user?.name || null,
       attendee_whatsapp || null,
       attendee_cpf || null,
-      attendee_email || null,
+      attendee_email || user?.email || null,
       dietary_notes || null
     ]);
 
@@ -110,10 +127,10 @@ export const checkout = async (event: APIGatewayProxyEvent): Promise<APIGatewayP
       event_location: eventData.location || 'Templo Principal',
       lot_name: lotName,
       attendee: {
-        name: attendee_name,
+        name: attendee_name || user?.name,
         whatsapp: attendee_whatsapp,
         cpf: attendee_cpf,
-        email: attendee_email,
+        email: attendee_email || user?.email,
         dietary_notes
       }
     });
@@ -121,19 +138,20 @@ export const checkout = async (event: APIGatewayProxyEvent): Promise<APIGatewayP
     await connection.rollback();
     connection.release();
     console.error('Erro no checkout de ingresso:', error);
-    return apiResponse(500, { message: 'Erro na emissão do ingresso', error: error.message });
+    return apiResponse(500, { message: 'Erro na emissão do ingresso' });
   }
 };
 
 // GET /tickets/me?user_id=123
 export const myTickets = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   try {
-    const userId = event.queryStringParameters?.user_id;
+    const user = await getAuthenticatedUser(event);
+    const userId = user?.userId || event.queryStringParameters?.user_id;
     const phone = event.queryStringParameters?.phone;
-    const email = event.queryStringParameters?.email;
+    const email = user?.email || event.queryStringParameters?.email;
 
     if (!userId && !phone && !email) {
-      return apiResponse(400, { message: 'user_id, phone ou email obrigatório' });
+      return apiResponse(400, { message: 'Identificação do participante obrigatória' });
     }
 
     let sql = `
@@ -153,8 +171,8 @@ export const myTickets = async (event: APIGatewayProxyEvent): Promise<APIGateway
       sql += ` AND (t.user_id = ? OR t.attendee_whatsapp = ? OR t.attendee_email = ?)`;
       params.push(userId, phone, email);
     } else if (userId) {
-      sql += ` AND t.user_id = ?`;
-      params.push(userId);
+      sql += ` AND (t.user_id = ? OR t.attendee_email = ?)`;
+      params.push(userId, email || userId);
     } else if (phone) {
       sql += ` AND t.attendee_whatsapp = ?`;
       params.push(phone);
@@ -169,14 +187,26 @@ export const myTickets = async (event: APIGatewayProxyEvent): Promise<APIGateway
     return apiResponse(200, { data: rows });
   } catch (err: any) {
     console.error('Erro ao buscar ingressos do membro:', err);
-    return apiResponse(500, { error: err.message });
+    return apiResponse(500, { error: 'Erro ao listar ingressos' });
   }
 };
 
-// POST /tickets/scan
+// POST /tickets/scan (PROTEGIDO: Apenas Portaria / Voluntários / Líderes Autorizados)
 export const scanTicket = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   const connection = await getConnection();
   try {
+    const auth = await requireAuth(event);
+    if ('errorResponse' in auth) {
+      connection.release();
+      return auth.errorResponse;
+    }
+
+    const roleCheck = enforceRole(auth.user, SCANNER_ROLES);
+    if (!roleCheck.allowed) {
+      connection.release();
+      return roleCheck.errorResponse!;
+    }
+
     const body = JSON.parse(event.body || '{}');
     const { token, scanned_by } = body;
 
@@ -188,9 +218,8 @@ export const scanTicket = async (event: APIGatewayProxyEvent): Promise<APIGatewa
 
     await connection.beginTransaction();
     
-    // Suporta busca por QR Code Token, por Código Curto (FH-XXXXXX) ou por ID do ticket
     const [ticketRow]: any = await connection.query(
-      `SELECT t.*, e.title as event_title, e.start_date as event_date, e.location as event_location,
+      `SELECT t.*, e.title as event_title, e.start_date as event_date, e.location as event_location, e.organization_id,
               COALESCE(l.name, 'Geral') as lot_name 
        FROM event_tickets t 
        JOIN events e ON t.event_id = e.id 
@@ -239,13 +268,12 @@ export const scanTicket = async (event: APIGatewayProxyEvent): Promise<APIGatewa
       });
     }
 
-    const validatorName = scanned_by || 'Portaria';
+    const validatorName = scanned_by || auth.user.name || auth.user.email || 'Portaria';
     await connection.query(
       `UPDATE event_tickets SET status = 'USED', scanned_at = NOW(), scanned_by = ? WHERE id = ?`,
       [validatorName, ticket.id]
     );
 
-    // Estatísticas atualizadas do evento
     const [countRows]: any = await connection.query(
       `SELECT 
         COUNT(*) as total_tickets,
@@ -257,6 +285,16 @@ export const scanTicket = async (event: APIGatewayProxyEvent): Promise<APIGatewa
 
     await connection.commit();
     connection.release();
+
+    await logSecurityEvent({
+      organizationId: ticket.organization_id || auth.user.organizationId,
+      user: auth.user,
+      action: 'SCAN_EVENT_TICKET',
+      resource: 'event_tickets',
+      resourceId: ticket.id,
+      details: { attendee_name: ticket.attendee_name, event_title: ticket.event_title },
+      event
+    });
 
     return apiResponse(200, {
       isValid: true,
@@ -278,6 +316,6 @@ export const scanTicket = async (event: APIGatewayProxyEvent): Promise<APIGatewa
     await connection.rollback();
     connection.release();
     console.error('Erro no scanTicket:', err);
-    return apiResponse(500, { message: 'Falha no Scanner', error: err.message });
+    return apiResponse(500, { message: 'Falha no Scanner' });
   }
 };

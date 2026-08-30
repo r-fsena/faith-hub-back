@@ -1,6 +1,10 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { query, apiResponse } from '../db';
 import { randomUUID } from 'crypto';
+import { requireAuth, enforceRole, enforceTenant, getAuthenticatedUser } from '../services/authMiddleware';
+import { logSecurityEvent } from '../services/auditLogService';
+
+const KIDS_ADMIN_ROLES = ['SUPERADMIN', 'PASTOR', 'ADMIN', 'LEADER', 'VOLUNTEER'];
 
 // Helper para gerar código de segurança de 4 dígitos aleatório com prefixo
 function generateSecurityCode(): string {
@@ -21,7 +25,9 @@ const DEFAULT_ROOMS = [
 // ==========================================
 export const getRooms = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   try {
-    const orgId = event.queryStringParameters?.organization_id || 'org_default';
+    const user = await getAuthenticatedUser(event);
+    const requestedOrgId = event.queryStringParameters?.organization_id;
+    const orgId = user ? enforceTenant(user, requestedOrgId).effectiveOrgId : (requestedOrgId || 'org_default');
     const campusId = event.queryStringParameters?.campus_id;
 
     let sql = `SELECT * FROM kids_rooms WHERE organization_id = ?`;
@@ -52,17 +58,27 @@ export const getRooms = async (event: APIGatewayProxyEvent): Promise<APIGatewayP
     return apiResponse(200, { data: rows });
   } catch (error: any) {
     console.error('Erro ao listar salas do Kids:', error);
-    return apiResponse(500, { message: 'Erro ao listar salas', error: error.message });
+    return apiResponse(500, { message: 'Erro ao listar salas' });
   }
 };
 
 export const saveRoom = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   try {
+    const auth = await requireAuth(event);
+    if ('errorResponse' in auth) return auth.errorResponse;
+
+    const roleCheck = enforceRole(auth.user, KIDS_ADMIN_ROLES);
+    if (!roleCheck.allowed) return roleCheck.errorResponse!;
+
     const body = JSON.parse(event.body || '{}');
     const { id, name, min_age, max_age, capacity, color, icon, description, organization_id, campus_id } = body;
 
-    if (!name || !organization_id) {
-      return apiResponse(400, { message: 'Nome da sala e organização são obrigatórios' });
+    const tenantCheck = enforceTenant(auth.user, organization_id);
+    if (!tenantCheck.allowed) return tenantCheck.errorResponse!;
+    const orgId = tenantCheck.effectiveOrgId;
+
+    if (!name) {
+      return apiResponse(400, { message: 'Nome da sala é obrigatório' });
     }
 
     const roomId = id || `room_${randomUUID().substring(0, 8)}`;
@@ -91,23 +107,33 @@ export const saveRoom = async (event: APIGatewayProxyEvent): Promise<APIGatewayP
       color || '#0f766e',
       icon || '👶',
       description || null,
-      organization_id,
+      orgId,
       campus_id || null
     ]);
 
     return apiResponse(200, { message: 'Sala salva com sucesso!', id: roomId });
   } catch (error: any) {
     console.error('Erro ao salvar sala do Kids:', error);
-    return apiResponse(500, { message: 'Erro ao salvar sala', error: error.message });
+    return apiResponse(500, { message: 'Erro ao salvar sala' });
   }
 };
 
 // ==========================================
-// 2. GET /kids/families (Lista Famílias / Membros com filhos)
+// 2. GET /kids/families (Lista Famílias / Membros com filhos) - PROTEGIDO
 // ==========================================
 export const getFamilies = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   try {
-    const orgId = event.queryStringParameters?.organization_id || 'org_default';
+    const auth = await requireAuth(event);
+    if ('errorResponse' in auth) return auth.errorResponse;
+
+    const roleCheck = enforceRole(auth.user, KIDS_ADMIN_ROLES);
+    if (!roleCheck.allowed) return roleCheck.errorResponse!;
+
+    const requestedOrgId = event.queryStringParameters?.organization_id;
+    const tenantCheck = enforceTenant(auth.user, requestedOrgId);
+    if (!tenantCheck.allowed) return tenantCheck.errorResponse!;
+    const orgId = tenantCheck.effectiveOrgId;
+
     const search = event.queryStringParameters?.search;
     const campusId = event.queryStringParameters?.campus_id;
 
@@ -167,16 +193,26 @@ export const getFamilies = async (event: APIGatewayProxyEvent): Promise<APIGatew
     return apiResponse(200, { data: formatted });
   } catch (error: any) {
     console.error('Erro ao buscar famílias:', error);
-    return apiResponse(500, { message: 'Erro ao buscar famílias', error: error.message });
+    return apiResponse(500, { message: 'Erro ao buscar famílias' });
   }
 };
 
 // ==========================================
-// 3. GET & POST /kids/children
+// 3. GET & POST /kids/children - PROTEGIDO
 // ==========================================
 export const getChildren = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   try {
-    const orgId = event.queryStringParameters?.organization_id || 'org_default';
+    const auth = await requireAuth(event);
+    if ('errorResponse' in auth) return auth.errorResponse;
+
+    const roleCheck = enforceRole(auth.user, KIDS_ADMIN_ROLES);
+    if (!roleCheck.allowed) return roleCheck.errorResponse!;
+
+    const requestedOrgId = event.queryStringParameters?.organization_id;
+    const tenantCheck = enforceTenant(auth.user, requestedOrgId);
+    if (!tenantCheck.allowed) return tenantCheck.errorResponse!;
+    const orgId = tenantCheck.effectiveOrgId;
+
     const search = event.queryStringParameters?.search;
     const campusId = event.queryStringParameters?.campus_id;
 
@@ -210,12 +246,15 @@ export const getChildren = async (event: APIGatewayProxyEvent): Promise<APIGatew
     return apiResponse(200, { data: rows });
   } catch (error: any) {
     console.error('Erro ao listar crianças:', error);
-    return apiResponse(500, { message: 'Erro ao listar crianças', error: error.message });
+    return apiResponse(500, { message: 'Erro ao listar crianças' });
   }
 };
 
 export const saveChild = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   try {
+    const auth = await requireAuth(event);
+    if ('errorResponse' in auth) return auth.errorResponse;
+
     const body = JSON.parse(event.body || '{}');
     const {
       id,
@@ -237,16 +276,19 @@ export const saveChild = async (event: APIGatewayProxyEvent): Promise<APIGateway
       campus_id
     } = body;
 
-    if (!name || !parent_name || !parent_phone || !organization_id) {
-      return apiResponse(400, { message: 'Nome da criança, nome do responsável, telefone e organização são obrigatórios' });
+    const tenantCheck = enforceTenant(auth.user, organization_id);
+    if (!tenantCheck.allowed) return tenantCheck.errorResponse!;
+    const orgId = tenantCheck.effectiveOrgId;
+
+    if (!name || !parent_name || !parent_phone) {
+      return apiResponse(400, { message: 'Nome da criança, nome do responsável e telefone são obrigatórios' });
     }
 
-    // Auto-vincula a um membro se não foi passado o ID mas o telefone/email bate
     let finalParentMemberId = parent_member_id || null;
     if (!finalParentMemberId && (parent_phone || parent_email)) {
       const { rows: memRows } = await query(
         `SELECT id, name FROM members WHERE organization_id = ? AND (phone = ? OR (email = ? AND email != '')) LIMIT 1`,
-        [organization_id, parent_phone, parent_email || '']
+        [orgId, parent_phone, parent_email || '']
       );
       if (memRows.length > 0) {
         finalParentMemberId = memRows[0].id;
@@ -296,14 +338,24 @@ export const saveChild = async (event: APIGatewayProxyEvent): Promise<APIGateway
       emergency_contact || null,
       emergency_phone || null,
       photo_url || null,
-      organization_id,
+      orgId,
       campus_id || null
     ]);
+
+    await logSecurityEvent({
+      organizationId: orgId,
+      user: auth.user,
+      action: 'SAVE_CHILD_RECORD',
+      resource: 'kids_children',
+      resourceId: childId,
+      details: { child_name: name, parent_name },
+      event
+    });
 
     return apiResponse(200, { message: 'Criança cadastrada com sucesso!', id: childId, parent_member_id: finalParentMemberId });
   } catch (error: any) {
     console.error('Erro ao salvar cadastro de criança:', error);
-    return apiResponse(500, { message: 'Erro ao cadastrar criança', error: error.message });
+    return apiResponse(500, { message: 'Erro ao cadastrar criança' });
   }
 };
 
@@ -312,7 +364,17 @@ export const saveChild = async (event: APIGatewayProxyEvent): Promise<APIGateway
 // ==========================================
 export const getCheckins = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   try {
-    const orgId = event.queryStringParameters?.organization_id || 'org_default';
+    const auth = await requireAuth(event);
+    if ('errorResponse' in auth) return auth.errorResponse;
+
+    const roleCheck = enforceRole(auth.user, KIDS_ADMIN_ROLES);
+    if (!roleCheck.allowed) return roleCheck.errorResponse!;
+
+    const requestedOrgId = event.queryStringParameters?.organization_id;
+    const tenantCheck = enforceTenant(auth.user, requestedOrgId);
+    if (!tenantCheck.allowed) return tenantCheck.errorResponse!;
+    const orgId = tenantCheck.effectiveOrgId;
+
     const status = event.queryStringParameters?.status;
     const roomId = event.queryStringParameters?.room_id;
     const campusId = event.queryStringParameters?.campus_id;
@@ -378,12 +440,14 @@ export const getCheckins = async (event: APIGatewayProxyEvent): Promise<APIGatew
     return apiResponse(200, { data: rows });
   } catch (error: any) {
     console.error('Erro ao buscar check-ins do Kids:', error);
-    return apiResponse(500, { message: 'Erro ao buscar check-ins', error: error.message });
+    return apiResponse(500, { message: 'Erro ao buscar check-ins' });
   }
 };
 
 export const doCheckin = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   try {
+    const user = await getAuthenticatedUser(event);
+
     const body = JSON.parse(event.body || '{}');
     const {
       child_id,
@@ -404,13 +468,13 @@ export const doCheckin = async (event: APIGatewayProxyEvent): Promise<APIGateway
       campus_id
     } = body;
 
-    const finalOrgId = organization_id || 'org_default';
+    const requestedOrgId = organization_id || user?.organizationId || 'org_default';
+    const finalOrgId = user ? enforceTenant(user, requestedOrgId).effectiveOrgId : requestedOrgId;
 
     if (!child_name || !parent_name || !parent_phone) {
       return apiResponse(400, { message: 'Nome da criança, nome do responsável e telefone são obrigatórios' });
     }
 
-    // Busca ou define a sala
     let finalRoomId = room_id;
     let finalRoomName = room_name;
     if (!finalRoomId) {
@@ -429,7 +493,6 @@ export const doCheckin = async (event: APIGatewayProxyEvent): Promise<APIGateway
 
     let finalParentMemberId = parent_member_id || null;
 
-    // Se for visitante e marcar para registrar como membro/visitante permanente
     if (is_visitor && register_as_member && parent_phone && parent_name) {
       const visitorMemberId = `mem_${randomUUID().substring(0, 8)}`;
       await query(
@@ -443,7 +506,6 @@ export const doCheckin = async (event: APIGatewayProxyEvent): Promise<APIGateway
 
     let finalChildId = child_id;
 
-    // Se a criança não existir no cadastro, cadastra automaticamente vinculando ao responsável
     if (!finalChildId) {
       finalChildId = `child_${randomUUID()}`;
       await query(
@@ -453,7 +515,6 @@ export const doCheckin = async (event: APIGatewayProxyEvent): Promise<APIGateway
       );
     }
 
-    // Verifica se a criança já possui check-in ativo hoje
     const { rows: activeCheckins } = await query(
       `SELECT id FROM kids_checkins WHERE child_id = ? AND status IN ('CHECKED_IN', 'CALLING_PARENTS') LIMIT 1`,
       [finalChildId]
@@ -485,10 +546,20 @@ export const doCheckin = async (event: APIGatewayProxyEvent): Promise<APIGateway
       finalParentMemberId,
       is_visitor ? 1 : 0,
       securityCode,
-      checked_in_by || 'Recepção Kids',
+      checked_in_by || user?.name || 'Recepção Kids',
       finalOrgId,
       campus_id || null
     ]);
+
+    await logSecurityEvent({
+      organizationId: finalOrgId,
+      user,
+      action: 'CHECKIN_CHILD',
+      resource: 'kids_checkins',
+      resourceId: checkinId,
+      details: { child_name, room_name: finalRoomName, security_code: securityCode },
+      event
+    });
 
     return apiResponse(200, {
       message: 'Check-in realizado com sucesso!',
@@ -508,7 +579,7 @@ export const doCheckin = async (event: APIGatewayProxyEvent): Promise<APIGateway
     });
   } catch (error: any) {
     console.error('Erro ao realizar check-in:', error);
-    return apiResponse(500, { message: 'Erro ao realizar check-in', error: error.message });
+    return apiResponse(500, { message: 'Erro ao realizar check-in' });
   }
 };
 
@@ -517,12 +588,21 @@ export const doCheckin = async (event: APIGatewayProxyEvent): Promise<APIGateway
 // ==========================================
 export const callParent = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   try {
+    const auth = await requireAuth(event);
+    if ('errorResponse' in auth) return auth.errorResponse;
+
     const body = JSON.parse(event.body || '{}');
     const { checkin_id, reason, message } = body;
 
     if (!checkin_id || !reason) {
       return apiResponse(400, { message: 'checkin_id e motivo da chamada são obrigatórios' });
     }
+
+    const { rows: existing } = await query(`SELECT organization_id, child_name FROM kids_checkins WHERE id = ? LIMIT 1`, [checkin_id]);
+    if (existing.length === 0) return apiResponse(404, { message: 'Check-in não encontrado' });
+
+    const tenantCheck = enforceTenant(auth.user, existing[0].organization_id);
+    if (!tenantCheck.allowed) return tenantCheck.errorResponse!;
 
     const sql = `
       UPDATE kids_checkins
@@ -542,18 +622,27 @@ export const callParent = async (event: APIGatewayProxyEvent): Promise<APIGatewa
     });
   } catch (error: any) {
     console.error('Erro ao acionar chamada de pais:', error);
-    return apiResponse(500, { message: 'Erro ao acionar chamada de pais', error: error.message });
+    return apiResponse(500, { message: 'Erro ao acionar chamada de pais' });
   }
 };
 
 export const resolveCall = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   try {
+    const auth = await requireAuth(event);
+    if ('errorResponse' in auth) return auth.errorResponse;
+
     const body = JSON.parse(event.body || '{}');
     const { checkin_id } = body;
 
     if (!checkin_id) {
       return apiResponse(400, { message: 'checkin_id é obrigatório' });
     }
+
+    const { rows: existing } = await query(`SELECT organization_id FROM kids_checkins WHERE id = ? LIMIT 1`, [checkin_id]);
+    if (existing.length === 0) return apiResponse(404, { message: 'Check-in não encontrado' });
+
+    const tenantCheck = enforceTenant(auth.user, existing[0].organization_id);
+    if (!tenantCheck.allowed) return tenantCheck.errorResponse!;
 
     const sql = `
       UPDATE kids_checkins
@@ -571,7 +660,7 @@ export const resolveCall = async (event: APIGatewayProxyEvent): Promise<APIGatew
     });
   } catch (error: any) {
     console.error('Erro ao resolver chamado:', error);
-    return apiResponse(500, { message: 'Erro ao resolver chamado', error: error.message });
+    return apiResponse(500, { message: 'Erro ao resolver chamado' });
   }
 };
 
@@ -580,6 +669,9 @@ export const resolveCall = async (event: APIGatewayProxyEvent): Promise<APIGatew
 // ==========================================
 export const doCheckout = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   try {
+    const auth = await requireAuth(event);
+    if ('errorResponse' in auth) return auth.errorResponse;
+
     const body = JSON.parse(event.body || '{}');
     const { checkin_id, security_code, checked_out_by, force_checkout } = body;
 
@@ -587,13 +679,15 @@ export const doCheckout = async (event: APIGatewayProxyEvent): Promise<APIGatewa
       return apiResponse(400, { message: 'checkin_id é obrigatório' });
     }
 
-    // Busca o checkin atual
     const { rows } = await query(`SELECT * FROM kids_checkins WHERE id = ? LIMIT 1`, [checkin_id]);
     if (rows.length === 0) {
       return apiResponse(404, { message: 'Registro de check-in não encontrado' });
     }
 
     const checkin = rows[0];
+
+    const tenantCheck = enforceTenant(auth.user, checkin.organization_id);
+    if (!tenantCheck.allowed) return tenantCheck.errorResponse!;
 
     if (checkin.status === 'CHECKED_OUT') {
       return apiResponse(400, { message: 'Esta criança já foi retirada anteriormente!' });
@@ -606,7 +700,15 @@ export const doCheckout = async (event: APIGatewayProxyEvent): Promise<APIGatewa
 
       if (cleanInputPin !== cleanDbPin && cleanInputPin !== cleanDbPin.replace('K-', '')) {
         return apiResponse(400, {
-          message: `Código de segurança inválido! O código correto é ${checkin.security_code}. Digite o PIN correto do crachá do responsável para liberar a criança.`
+          message: 'Código de segurança incorreto! Digite o PIN constante no crachá do responsável para liberar a criança.'
+        });
+      }
+    } else {
+      // Apenas liderança autorizada pode forçar o checkout sem o PIN
+      const forceRoleCheck = enforceRole(auth.user, ['SUPERADMIN', 'PASTOR', 'ADMIN', 'LEADER']);
+      if (!forceRoleCheck.allowed) {
+        return apiResponse(403, {
+          message: 'Apenas Líderes ou Pastores podem realizar a liberação manual forçada sem o PIN de segurança.'
         });
       }
     }
@@ -619,7 +721,17 @@ export const doCheckout = async (event: APIGatewayProxyEvent): Promise<APIGatewa
       WHERE id = ?
     `;
 
-    await query(sql, [checked_out_by || 'Voluntário da Sala', checkin_id]);
+    await query(sql, [checked_out_by || auth.user.name || 'Voluntário da Sala', checkin_id]);
+
+    await logSecurityEvent({
+      organizationId: checkin.organization_id,
+      user: auth.user,
+      action: 'CHECKOUT_CHILD',
+      resource: 'kids_checkins',
+      resourceId: checkin_id,
+      details: { child_name: checkin.child_name, force_checkout: Boolean(force_checkout) },
+      event
+    });
 
     return apiResponse(200, {
       message: `Checkout de ${checkin.child_name} realizado com segurança!`,
@@ -627,7 +739,7 @@ export const doCheckout = async (event: APIGatewayProxyEvent): Promise<APIGatewa
     });
   } catch (error: any) {
     console.error('Erro ao realizar checkout:', error);
-    return apiResponse(500, { message: 'Erro ao realizar checkout', error: error.message });
+    return apiResponse(500, { message: 'Erro ao realizar checkout' });
   }
 };
 
@@ -685,7 +797,7 @@ export const getParentStatus = async (event: APIGatewayProxyEvent): Promise<APIG
     return apiResponse(200, { active_checkins: rows });
   } catch (error: any) {
     console.error('Erro ao consultar status dos filhos para o responsável:', error);
-    return apiResponse(500, { message: 'Erro ao consultar status', error: error.message });
+    return apiResponse(500, { message: 'Erro ao consultar status' });
   }
 };
 
@@ -693,10 +805,9 @@ export const getParentStatus = async (event: APIGatewayProxyEvent): Promise<APIG
 // UNIFIED ROUTER HANDLER
 // ==========================================
 export const kidsHandler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
-  const method = (event.requestContext?.http?.method || event.httpMethod || '').toUpperCase();
-  const rawPath = event.requestContext?.http?.path || event.path || '';
+  const method = (((event.requestContext as any)?.http?.method || event.httpMethod || '') as string).toUpperCase();
+  const rawPath = ((event.requestContext as any)?.http?.path || event.path || '') as string;
 
-  // Responder a Preflight CORS OPTIONS imediatamente com 200 OK
   if (method === 'OPTIONS') {
     return apiResponse(200, { ok: true });
   }
@@ -733,4 +844,3 @@ export const kidsHandler = async (event: APIGatewayProxyEvent): Promise<APIGatew
 
   return apiResponse(404, { message: 'Rota Kids não encontrada' });
 };
-

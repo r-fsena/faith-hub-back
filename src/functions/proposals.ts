@@ -5,10 +5,18 @@ import crypto from 'crypto';
 import { query, apiResponse } from '../db';
 import { AsaasService } from '../services/asaasService';
 import { ProvisioningService } from '../services/provisioningService';
+import { requireAuth, enforceRole } from '../services/authMiddleware';
+import { logSecurityEvent } from '../services/auditLogService';
 
-// 1. Criar Nova Proposta Comercial (POST /proposals)
+// 1. Criar Nova Proposta Comercial (POST /proposals) - Apenas SuperAdmin
 export const createProposal = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   try {
+    const auth = await requireAuth(event);
+    if ('errorResponse' in auth) return auth.errorResponse;
+
+    const roleCheck = enforceRole(auth.user, ['SUPERADMIN']);
+    if (!roleCheck.allowed) return roleCheck.errorResponse!;
+
     const body = JSON.parse(event.body || '{}');
     const {
       church_name,
@@ -147,9 +155,15 @@ export const createProposal = async (event: APIGatewayProxyEvent): Promise<APIGa
   }
 };
 
-// 2. Listar Propostas e Métricas do Funil (GET /proposals)
+// 2. Listar Propostas e Métricas do Funil (GET /proposals) - Apenas SuperAdmin
 export const listProposals = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   try {
+    const auth = await requireAuth(event);
+    if ('errorResponse' in auth) return auth.errorResponse;
+
+    const roleCheck = enforceRole(auth.user, ['SUPERADMIN']);
+    if (!roleCheck.allowed) return roleCheck.errorResponse!;
+
     const { rows: proposals } = await query(`
       SELECT * FROM saas_proposals 
       ORDER BY created_at DESC
