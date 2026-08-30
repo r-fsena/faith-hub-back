@@ -309,6 +309,13 @@ functions:
           method: DELETE
           path: /posts/{id}
 
+  reactPost:
+    handler: src/functions/posts.reactPost
+    events:
+      - httpApi:
+          method: POST
+          path: /posts/{id}/react
+
   getUploadUrl:
     handler: src/functions/uploads.getUploadUrl
     events:
