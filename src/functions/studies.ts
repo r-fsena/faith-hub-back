@@ -65,6 +65,9 @@ export const getStudyBookById = async (event: APIGatewayProxyEvent): Promise<API
     const id = event.pathParameters?.id;
     if (!id) return apiResponse(400, { error: 'ID do livro é obrigatório' });
 
+    const user = await getAuthenticatedUser(event);
+    const userId = user?.userId || user?.email || event.queryStringParameters?.user_id;
+
     const { rows: bookRows } = await query(
       `SELECT sb.*, cg.name AS target_group_name 
        FROM study_books sb
@@ -84,8 +87,18 @@ export const getStudyBookById = async (event: APIGatewayProxyEvent): Promise<API
       [id]
     );
 
+    let completedChapterIds: string[] = [];
+    if (userId) {
+      const { rows: compRows } = await query(
+        `SELECT chapter_id FROM study_chapter_completions WHERE user_id = ? AND book_id = ?`,
+        [userId, id]
+      );
+      completedChapterIds = compRows.map(r => r.chapter_id);
+    }
+
     const parsedChapters = chapterRows.map(ch => ({
       ...ch,
+      completed: completedChapterIds.includes(ch.id),
       discussion_questions: typeof ch.discussion_questions === 'string' 
         ? JSON.parse(ch.discussion_questions || '[]') 
         : (ch.discussion_questions || [])
@@ -93,7 +106,8 @@ export const getStudyBookById = async (event: APIGatewayProxyEvent): Promise<API
 
     return apiResponse(200, {
       ...book,
-      chapters: parsedChapters
+      chapters: parsedChapters,
+      completed_chapter_ids: completedChapterIds
     });
   } catch (err: any) {
     console.error('Erro ao carregar livro de estudo:', err);
@@ -376,8 +390,76 @@ export const deleteStudyChapter = async (event: APIGatewayProxyEvent): Promise<A
 };
 
 // ============================================================================
-// 7. COMPATIBILIDADE LEGADA: GET /studies, POST /studies, DELETE /studies
+// 7. POST /study-chapters/{id}/toggle-completion -> Alternar Conclusão do Capítulo
+// ============================================================================
+export const toggleChapterCompletion = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  try {
+    const user = await getAuthenticatedUser(event);
+    const chapterId = event.pathParameters?.id;
+    if (!chapterId) return apiResponse(400, { error: 'ID do capítulo é obrigatório' });
+
+    let userId = user?.userId || user?.email;
+    let bookId = '';
+    let orgId = user?.organizationId || 'org_default';
+
+    if (event.body) {
+      try {
+        const body = JSON.parse(event.body);
+        if (body.user_id) userId = body.user_id;
+        if (body.book_id) bookId = body.book_id;
+        if (body.organization_id) orgId = body.organization_id;
+      } catch {}
+    }
+
+    if (!userId) {
+      return apiResponse(400, { error: 'Identificação do usuário necessária' });
+    }
+
+    if (!bookId) {
+      const { rows: chRows } = await query('SELECT book_id FROM study_chapters WHERE id = ?', [chapterId]);
+      if (chRows.length > 0) bookId = chRows[0].book_id;
+    }
+
+    // Verifica se já está concluído
+    const { rows: existing } = await query(
+      'SELECT id FROM study_chapter_completions WHERE user_id = ? AND chapter_id = ?',
+      [userId, chapterId]
+    );
+
+    let completed = false;
+    if (existing.length > 0) {
+      await query('DELETE FROM study_chapter_completions WHERE user_id = ? AND chapter_id = ?', [userId, chapterId]);
+      completed = false;
+    } else {
+      await query(
+        'INSERT INTO study_chapter_completions (id, user_id, chapter_id, book_id, organization_id) VALUES (?, ?, ?, ?, ?)',
+        [uuidv4(), userId, chapterId, bookId, orgId]
+      );
+      completed = true;
+    }
+
+    // Retorna lista atualizada de capítulos concluídos deste livro
+    const { rows: allCompleted } = await query(
+      'SELECT chapter_id FROM study_chapter_completions WHERE user_id = ? AND book_id = ?',
+      [userId, bookId]
+    );
+
+    return apiResponse(200, {
+      success: true,
+      chapter_id: chapterId,
+      completed,
+      completed_chapter_ids: allCompleted.map((r: any) => r.chapter_id)
+    });
+  } catch (err: any) {
+    console.error('Erro ao alternar status do capítulo:', err);
+    return apiResponse(500, { error: 'Erro ao alternar status do capítulo' });
+  }
+};
+
+// ============================================================================
+// 8. COMPATIBILIDADE LEGADA: GET /studies, POST /studies, DELETE /studies
 // ============================================================================
 export const createOrUpdateStudy = createOrUpdateStudyBook;
 export const getStudies = getStudyBooks;
 export const deleteStudy = deleteStudyBook;
+

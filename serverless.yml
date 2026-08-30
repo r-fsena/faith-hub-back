@@ -330,6 +330,13 @@ functions:
           method: DELETE
           path: /study-books/{id}/chapters/{chapterId}
 
+  toggleChapterCompletion:
+    handler: src/functions/studies.toggleChapterCompletion
+    events:
+      - httpApi:
+          method: POST
+          path: /study-chapters/{id}/toggle-completion
+
   getPosts:
     handler: src/functions/posts.getPosts
     events:
