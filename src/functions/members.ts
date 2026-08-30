@@ -261,16 +261,20 @@ export const get: APIGatewayProxyHandlerV2 = async (event) => {
       return { statusCode: auth.errorResponse.statusCode, headers, body: auth.errorResponse.body };
     }
 
-    const id = event.pathParameters?.id;
-    if (!id) throw new Error("Missing member ID");
+    const rawId = event.pathParameters?.id;
+    if (!rawId) throw new Error("Missing member ID");
+
+    const effectiveId = (rawId === 'me' || rawId === 'user_me') ? auth.user.userId : rawId;
+    const effectiveEmail = (rawId === 'me' || rawId === 'user_me') ? (auth.user.email || '') : '';
 
     const getQuery = `
       SELECT m.*, cg.name as cell_group_name 
       FROM members m 
       LEFT JOIN cell_groups cg ON m.cell_group_id = cg.id 
-      WHERE m.id = ? LIMIT 1;
+      WHERE (m.id = ? AND m.id != '') OR (m.email IS NOT NULL AND LOWER(m.email) = LOWER(?))
+      LIMIT 1;
     `;
-    const dbResult = await query(getQuery, [id]);
+    const dbResult = await query(getQuery, [effectiveId, effectiveEmail || effectiveId]);
 
     if (dbResult.rows.length === 0) {
       return { statusCode: 404, headers, body: JSON.stringify({ message: "Membro não encontrado" }) };

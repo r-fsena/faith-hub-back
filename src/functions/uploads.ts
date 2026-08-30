@@ -91,7 +91,7 @@ export const getUploadUrl = async (event: APIGatewayProxyEvent): Promise<APIGate
     });
 
     // URL com expiração de 15 minutos (900s)
-    const uploadUrl = await getSignedUrl(s3, command, { expiresIn: 900 });
+    const uploadUrl = await getSignedUrl(s3 as any, command, { expiresIn: 900 });
     const finalFileUrl = `https://${bucketName}.s3.${process.env.AWS_REGION || 'us-east-2'}.amazonaws.com/${uniqueKey}`;
 
     return apiResponse(200, {
