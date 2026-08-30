@@ -288,6 +288,48 @@ functions:
           method: DELETE
           path: /studies/{id}
 
+  getStudyBooks:
+    handler: src/functions/studies.getStudyBooks
+    events:
+      - httpApi:
+          method: GET
+          path: /study-books
+
+  getStudyBookById:
+    handler: src/functions/studies.getStudyBookById
+    events:
+      - httpApi:
+          method: GET
+          path: /study-books/{id}
+
+  createOrUpdateStudyBook:
+    handler: src/functions/studies.createOrUpdateStudyBook
+    events:
+      - httpApi:
+          method: POST
+          path: /study-books
+
+  deleteStudyBook:
+    handler: src/functions/studies.deleteStudyBook
+    events:
+      - httpApi:
+          method: DELETE
+          path: /study-books/{id}
+
+  saveStudyChapter:
+    handler: src/functions/studies.saveStudyChapter
+    events:
+      - httpApi:
+          method: POST
+          path: /study-books/{id}/chapters
+
+  deleteStudyChapter:
+    handler: src/functions/studies.deleteStudyChapter
+    events:
+      - httpApi:
+          method: DELETE
+          path: /study-books/{id}/chapters/{chapterId}
+
   getPosts:
     handler: src/functions/posts.getPosts
     events:
