@@ -9,8 +9,11 @@ const PASTORAL_ROLES = ['SUPERADMIN', 'PASTOR', 'ADMIN', 'LEADER'];
 // GET /devotionals?admin=true
 export const getDevotionals = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   try {
-    const admin = event.queryStringParameters?.admin === 'true';
-    const sql = admin
+    const user = await getAuthenticatedUser(event);
+    const isAdminRequested = event.queryStringParameters?.admin === 'true';
+    const isAuthorizedAdmin = isAdminRequested && user && PASTORAL_ROLES.includes(user.role);
+
+    const sql = isAuthorizedAdmin
       ? `SELECT * FROM devotionals ORDER BY available_date DESC LIMIT 100`
       : `SELECT * FROM devotionals WHERE status = 'PUBLISHED' ORDER BY available_date DESC LIMIT 100`;
 

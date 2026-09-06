@@ -52,7 +52,15 @@ export const getEvents = async (event: APIGatewayProxyEvent): Promise<APIGateway
       ...e,
       type: Number(e.type) || 0,
       is_featured: Boolean(e.is_featured),
-      lots: lotsRow.filter((l: any) => l.event_id === e.id)
+      show_as_popup: Boolean(e.show_as_popup),
+      lots: lotsRow
+        .filter((l: any) => l.event_id === e.id)
+        .map((l: any) => ({
+          ...l,
+          price: Number(l.price) || 0,
+          total_capacity: Number(l.total_capacity) || 0,
+          available_capacity: Number(l.available_capacity) || 0
+        }))
     }));
 
     return apiResponse(200, { data: resultData });
@@ -82,7 +90,13 @@ export const getEventById = async (event: APIGatewayProxyEvent): Promise<APIGate
         ...ev,
         type: Number(ev.type) || 0,
         is_featured: Boolean(ev.is_featured),
-        lots: lotsRow
+        show_as_popup: Boolean(ev.show_as_popup),
+        lots: lotsRow.map((l: any) => ({
+          ...l,
+          price: Number(l.price) || 0,
+          total_capacity: Number(l.total_capacity) || 0,
+          available_capacity: Number(l.available_capacity) || 0
+        }))
       }
     });
   } catch (error: any) {
@@ -92,47 +106,36 @@ export const getEventById = async (event: APIGatewayProxyEvent): Promise<APIGate
 
 // POST /events
 export const createOrUpdateEvent = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
-  const connection = await getConnection();
+  let connection: any;
   try {
     const auth = await requireAuth(event);
-    if ('errorResponse' in auth) {
-      connection.release();
-      return auth.errorResponse;
-    }
+    if ('errorResponse' in auth) return auth.errorResponse;
 
     const roleCheck = enforceRole(auth.user, EVENT_ADMIN_ROLES);
-    if (!roleCheck.allowed) {
-      connection.release();
-      return roleCheck.errorResponse!;
-    }
+    if (!roleCheck.allowed) return roleCheck.errorResponse!;
 
-    if (!event.body) {
-      connection.release();
-      return apiResponse(400, { message: 'Body obrigatório' });
-    }
-    const data = JSON.parse(event.body);
+    connection = await getConnection();
+    const data = JSON.parse(event.body || '{}');
 
     const tenantCheck = enforceTenant(auth.user, data.organization_id);
-    if (!tenantCheck.allowed) {
-      connection.release();
-      return tenantCheck.errorResponse!;
-    }
+    if (!tenantCheck.allowed) return tenantCheck.errorResponse!;
     const orgValue = tenantCheck.effectiveOrgId;
 
     const isUpdate = !!data.id;
     const id = data.id || uuidv4();
     const type = data.type || 0;
     const isFeatured = data.is_featured ? 1 : 0;
+    const showAsPopup = data.show_as_popup ? 1 : 0;
     const campusValue = data.campus_id || 'campus_sede';
 
     await connection.beginTransaction();
 
     if (isUpdate) {
-      const q = `UPDATE events SET type=?, is_featured=?, title=?, description=?, image_url=?, video_url=?, start_date=?, end_date=?, location=?, status=?, campus_id=? WHERE id=?`;
-      await connection.query(q, [type, isFeatured, data.title, data.description, data.image_url, data.video_url || null, data.start_date, data.end_date, data.location, data.status || 'PUBLISHED', campusValue, id]);
+      const q = `UPDATE events SET type=?, is_featured=?, show_as_popup=?, title=?, description=?, image_url=?, video_url=?, start_date=?, end_date=?, location=?, status=?, campus_id=? WHERE id=? AND organization_id=?`;
+      await connection.query(q, [type, isFeatured, showAsPopup, data.title, data.description, data.image_url, data.video_url || null, data.start_date, data.end_date, data.location, data.status || 'PUBLISHED', campusValue, id, orgValue]);
     } else {
-      const q = `INSERT INTO events (id, type, is_featured, title, description, image_url, video_url, start_date, end_date, location, status, organization_id, campus_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
-      await connection.query(q, [id, type, isFeatured, data.title, data.description, data.image_url, data.video_url || null, data.start_date, data.end_date, data.location, data.status || 'PUBLISHED', orgValue, campusValue]);
+      const q = `INSERT INTO events (id, type, is_featured, show_as_popup, title, description, image_url, video_url, start_date, end_date, location, status, organization_id, campus_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+      await connection.query(q, [id, type, isFeatured, showAsPopup, data.title, data.description, data.image_url, data.video_url || null, data.start_date, data.end_date, data.location, data.status || 'PUBLISHED', orgValue, campusValue]);
     }
 
     // Gerenciamento de LOTES
@@ -167,8 +170,10 @@ export const createOrUpdateEvent = async (event: APIGatewayProxyEvent): Promise<
 
     return apiResponse(isUpdate ? 200 : 201, { message: 'Evento salvo com sucesso!', id });
   } catch (e: any) {
-    await connection.rollback();
-    connection.release();
+    if (connection) {
+      await connection.rollback();
+      connection.release();
+    }
     return apiResponse(500, { message: 'Erro ao salvar evento' });
   }
 };

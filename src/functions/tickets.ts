@@ -319,3 +319,108 @@ export const scanTicket = async (event: APIGatewayProxyEvent): Promise<APIGatewa
     return apiResponse(500, { message: 'Falha no Scanner' });
   }
 };
+
+// GET /tickets/{id}/pass (Dados estruturados para Passaporte / Carteira Digital)
+export const getTicketPass = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  try {
+    const id = event.pathParameters?.id;
+    if (!id) return apiResponse(400, { message: 'ID do ingresso obrigatório' });
+
+    const { rows } = await query(
+      `SELECT t.*, e.title as event_title, e.description as event_description, 
+              e.start_date as event_date, e.location as event_location, 
+              COALESCE(e.cover_url, e.image_url) as event_image,
+              COALESCE(l.name, 'Geral') as lot_name,
+              o.name as organization_name
+       FROM event_tickets t
+       JOIN events e ON t.event_id = e.id
+       LEFT JOIN event_lots l ON t.lot_id = l.id
+       LEFT JOIN organizations o ON t.organization_id = o.id
+       WHERE t.id = ? OR t.qrcode_token = ? OR t.short_code = ? LIMIT 1`,
+      [id, id, id]
+    );
+
+    if (rows.length === 0) {
+      return apiResponse(404, { message: 'Ingresso não encontrado' });
+    }
+
+    const ticket = rows[0];
+    const startDate = ticket.event_date ? new Date(ticket.event_date) : new Date();
+    const endDate = new Date(startDate.getTime() + 3 * 60 * 60 * 1000); // Duração estimada 3h
+    const formatDateForCal = (d: Date) => d.toISOString().replace(/-|:|\.\d\d\d/g, "");
+
+    const googleCalendarUrl = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(ticket.event_title)}&dates=${formatDateForCal(startDate)}/${formatDateForCal(endDate)}&details=${encodeURIComponent(`Ingresso: ${ticket.short_code}\nTitular: ${ticket.attendee_name || 'Participante'}\nLote: ${ticket.lot_name}`)}&location=${encodeURIComponent(ticket.event_location || 'Templo Principal')}`;
+
+    return apiResponse(200, {
+      data: {
+        ...ticket,
+        google_calendar_url: googleCalendarUrl,
+        apple_wallet_available: true,
+        google_wallet_available: true,
+        calendar_download_url: `/tickets/${ticket.id}/calendar.ics`
+      }
+    });
+  } catch (err: any) {
+    console.error('Erro ao buscar dados do passaporte:', err);
+    return apiResponse(500, { message: 'Erro ao gerar passaporte' });
+  }
+};
+
+// GET /tickets/{id}/calendar.ics (Download de arquivo iCalendar para Apple / Android)
+export const getTicketCalendar = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  try {
+    const id = event.pathParameters?.id;
+    if (!id) return apiResponse(400, { message: 'ID do ingresso obrigatório' });
+
+    const { rows } = await query(
+      `SELECT t.*, e.title as event_title, e.description as event_description, 
+              e.start_date as event_date, e.location as event_location
+       FROM event_tickets t
+       JOIN events e ON t.event_id = e.id
+       WHERE t.id = ? OR t.qrcode_token = ? OR t.short_code = ? LIMIT 1`,
+      [id, id, id]
+    );
+
+    if (rows.length === 0) {
+      return apiResponse(404, { message: 'Ingresso não encontrado' });
+    }
+
+    const ticket = rows[0];
+    const startDate = ticket.event_date ? new Date(ticket.event_date) : new Date();
+    const endDate = new Date(startDate.getTime() + 3 * 60 * 60 * 1000);
+    const formatDateForCal = (d: Date) => d.toISOString().replace(/-|:|\.\d\d\d/g, "");
+
+    const icsContent = [
+      'BEGIN:VCALENDAR',
+      'VERSION:2.0',
+      'PRODID:-//Faith-Hub//Event Tickets//PT',
+      'CALSCALE:GREGORIAN',
+      'METHOD:PUBLISH',
+      'BEGIN:VEVENT',
+      `UID:${ticket.id}@faithhub.app`,
+      `DTSTAMP:${formatDateForCal(new Date())}`,
+      `DTSTART:${formatDateForCal(startDate)}`,
+      `DTEND:${formatDateForCal(endDate)}`,
+      `SUMMARY:${ticket.event_title}`,
+      `DESCRIPTION:Ingresso ${ticket.short_code} - Titular: ${ticket.attendee_name || 'Participante'}`,
+      `LOCATION:${ticket.event_location || 'Templo Principal'}`,
+      'STATUS:CONFIRMED',
+      'END:VEVENT',
+      'END:VCALENDAR'
+    ].join('\r\n');
+
+    return {
+      statusCode: 200,
+      headers: {
+        'Content-Type': 'text/calendar; charset=utf-8',
+        'Content-Disposition': `attachment; filename="ingresso-${ticket.short_code || 'evento'}.ics"`,
+        'Access-Control-Allow-Origin': '*'
+      },
+      body: icsContent
+    };
+  } catch (err: any) {
+    console.error('Erro ao gerar arquivo ICS:', err);
+    return apiResponse(500, { message: 'Erro ao gerar arquivo de calendário' });
+  }
+};
+

@@ -16,7 +16,7 @@ export const createOrUpdateBroadcast = async (event: APIGatewayProxyEvent): Prom
     if (!roleCheck.allowed) return roleCheck.errorResponse!;
 
     const body = JSON.parse(event.body || '{}');
-    const { id, title, description, observation, youtube_url, is_available, scheduled_for, organization_id, campus_id } = body;
+    const { id, title, description, observation, youtube_url, is_available, is_featured, show_as_popup, scheduled_for, organization_id, campus_id } = body;
 
     const tenantCheck = enforceTenant(auth.user, organization_id);
     if (!tenantCheck.allowed) return tenantCheck.errorResponse!;
@@ -26,15 +26,18 @@ export const createOrUpdateBroadcast = async (event: APIGatewayProxyEvent): Prom
     const campusValue = campus_id || 'campus_sede';
 
     const q = `
-      INSERT INTO broadcasts (id, title, description, observation, youtube_url, is_available, scheduled_for, organization_id, campus_id) 
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO broadcasts (id, title, description, observation, youtube_url, is_available, is_featured, show_as_popup, scheduled_for, organization_id, campus_id) 
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON DUPLICATE KEY UPDATE 
         title = VALUES(title),
         description = VALUES(description),
         observation = VALUES(observation),
         youtube_url = VALUES(youtube_url),
         is_available = VALUES(is_available),
+        is_featured = VALUES(is_featured),
+        show_as_popup = VALUES(show_as_popup),
         scheduled_for = VALUES(scheduled_for),
+        organization_id = VALUES(organization_id),
         campus_id = VALUES(campus_id),
         updated_at = NOW()
     `;
@@ -46,6 +49,8 @@ export const createOrUpdateBroadcast = async (event: APIGatewayProxyEvent): Prom
       observation || null,
       youtube_url,
       is_available ? 1 : 0,
+      is_featured ? 1 : 0,
+      show_as_popup ? 1 : 0,
       scheduled_for || null,
       orgValue,
       campusValue
@@ -77,7 +82,7 @@ export const getBroadcasts = async (event: APIGatewayProxyEvent): Promise<APIGat
 
     const orgId = user ? enforceTenant(user, requestedOrgId).effectiveOrgId : (requestedOrgId || 'org_default');
 
-    let sql = `SELECT * FROM broadcasts WHERE organization_id = ?`;
+    let sql = `SELECT * FROM broadcasts WHERE (organization_id = ? OR (id = 'default' AND organization_id = 'org_default'))`;
     const params: any[] = [orgId];
 
     if (campusId && campusId !== 'all') {
@@ -85,7 +90,7 @@ export const getBroadcasts = async (event: APIGatewayProxyEvent): Promise<APIGat
       params.push(campusId);
     }
 
-    sql += ` ORDER BY scheduled_for ASC, created_at DESC`;
+    sql += ` ORDER BY (id = 'default') DESC, scheduled_for ASC, created_at DESC`;
 
     const { rows } = await query(sql, params);
     return apiResponse(200, rows);
@@ -104,6 +109,7 @@ export const getActiveBroadcast = async (event: APIGatewayProxyEvent): Promise<A
 
     const orgId = user ? enforceTenant(user, requestedOrgId).effectiveOrgId : (requestedOrgId || 'org_default');
 
+    // 1. Tenta buscar broadcast agendado/ao vivo ativo para a organização
     let sql = `SELECT * FROM broadcasts WHERE organization_id = ? AND is_available = 1 AND id != 'default'`;
     const params: any[] = [orgId];
 
@@ -120,13 +126,38 @@ export const getActiveBroadcast = async (event: APIGatewayProxyEvent): Promise<A
       return apiResponse(200, rows[0]);
     }
 
+    // 2. Tenta buscar o canal fixo da própria organização
     const { rows: defRows } = await query(
-      `SELECT * FROM broadcasts WHERE (organization_id = ? OR organization_id = 'org_default') AND id = 'default' LIMIT 1`,
+      `SELECT * FROM broadcasts WHERE organization_id = ? AND id = 'default' LIMIT 1`,
       [orgId]
     );
 
-    if (defRows.length > 0) {
+    if (defRows.length > 0 && defRows[0].youtube_url) {
       return apiResponse(200, defRows[0]);
+    }
+
+    // 3. Tenta buscar o youtube_url configurado nas configurações da igreja (church_settings)
+    const { rows: settingsRows } = await query(
+      `SELECT youtube_url, church_name FROM church_settings WHERE organization_id = ? LIMIT 1`,
+      [orgId]
+    );
+
+    if (settingsRows.length > 0 && settingsRows[0].youtube_url) {
+      return apiResponse(200, {
+        id: 'default',
+        title: `Culto Oficial • ${settingsRows[0].church_name || 'Ao Vivo'}`,
+        description: 'Transmissão oficial do canal da igreja',
+        youtube_url: settingsRows[0].youtube_url,
+        is_available: 1
+      });
+    }
+
+    // 4. Fallback padrão global
+    const { rows: fallbackRows } = await query(
+      `SELECT * FROM broadcasts WHERE id = 'default' LIMIT 1`
+    );
+    if (fallbackRows.length > 0) {
+      return apiResponse(200, fallbackRows[0]);
     }
 
     return apiResponse(404, { message: 'Nenhuma transmissão ativa no momento' });

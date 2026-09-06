@@ -72,8 +72,8 @@ export const createOrUpdateProduct = async (event: APIGatewayProxyEvent): Promis
     ];
 
     if (isUpdate) {
-      const uQ = `UPDATE pdv_products SET name=?, description=?, price=?, category=?, image_urls=?, status=?, campus_id=? WHERE id=?`;
-      await query(uQ, [...qValues, campusValue, id]);
+      const uQ = `UPDATE pdv_products SET name=?, description=?, price=?, category=?, image_urls=?, status=?, campus_id=? WHERE id=? AND organization_id=?`;
+      await query(uQ, [...qValues, campusValue, id, orgValue]);
     } else {
       const iQ = `INSERT INTO pdv_products (name, description, price, category, image_urls, status, organization_id, campus_id, id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`;
       await query(iQ, [...qValues, orgValue, campusValue, id]);

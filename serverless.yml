@@ -1,5 +1,6 @@
 service: faith-hub-backend
 frameworkVersion: '3'
+useDotenv: true
 
 provider:
   name: aws
@@ -428,13 +429,6 @@ functions:
           method: DELETE
           path: /events/{id}
 
-  createMockEvent:
-    handler: src/functions/events.createMockEvent
-    events:
-      - httpApi:
-          method: POST
-          path: /events/mock
-
   checkoutTicket:
     handler: src/functions/tickets.checkout
     events:
@@ -455,6 +449,20 @@ functions:
       - httpApi:
           method: POST
           path: /tickets/scan
+
+  getTicketPass:
+    handler: src/functions/tickets.getTicketPass
+    events:
+      - httpApi:
+          method: GET
+          path: /tickets/{id}/pass
+
+  getTicketCalendar:
+    handler: src/functions/tickets.getTicketCalendar
+    events:
+      - httpApi:
+          method: GET
+          path: /tickets/{id}/calendar.ics
 
   getDevotionals:
     handler: src/functions/devotionals.getDevotionals
@@ -546,6 +554,27 @@ functions:
       - httpApi:
           method: DELETE
           path: /prayers/{id}
+
+  respondPrayerPastoral:
+    handler: src/functions/prayers.respondPrayerPastoral
+    events:
+      - httpApi:
+          method: POST
+          path: /prayers/{id}/respond
+
+  submitTestimony:
+    handler: src/functions/prayers.submitTestimony
+    events:
+      - httpApi:
+          method: POST
+          path: /prayers/{id}/testimony
+
+  updatePrayerStatus:
+    handler: src/functions/prayers.updatePrayerStatus
+    events:
+      - httpApi:
+          method: PATCH
+          path: /prayers/{id}/status
 
   listOrganizations:
     handler: src/functions/organizations.listOrganizations

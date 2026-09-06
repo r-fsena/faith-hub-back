@@ -3,12 +3,20 @@ import { v4 as uuidv4 } from 'uuid';
 import { query, apiResponse } from '../db';
 import { requireAuth, enforceRole, enforceTenant, getAuthenticatedUser } from '../services/authMiddleware';
 import { logSecurityEvent } from '../services/auditLogService';
+import { checkRateLimit } from '../services/rateLimiter';
 
 const STORE_ADMIN_ROLES = ['SUPERADMIN', 'PASTOR', 'ADMIN', 'LEADER', 'VOLUNTEER'];
 
 // POST /pdv/orders
 export const createOrder = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   try {
+    const rateCheck = checkRateLimit(event, {
+      maxRequests: 20,
+      windowSeconds: 60,
+      identifierPrefix: 'pdv_create_order'
+    });
+    if (!rateCheck.allowed) return rateCheck.errorResponse!;
+
     const user = await getAuthenticatedUser(event);
     const body = JSON.parse(event.body || '{}');
     const {

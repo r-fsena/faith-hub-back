@@ -1,10 +1,14 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { apiResponse, query } from '../db';
+import { requireAuth, enforceRole, enforceTenant, getAuthenticatedUser } from '../services/authMiddleware';
+import { logSecurityEvent } from '../services/auditLogService';
 import {
   evaluateTenantFlags,
   setFeatureFlagOverride,
   EnvironmentScope
 } from '../services/featureFlagService';
+
+const FF_ADMIN_ROLES = ['SUPERADMIN', 'PASTOR', 'ADMIN'];
 
 /**
  * GET /feature-flags
@@ -17,10 +21,13 @@ export const getFeatureFlags = async (
   event: APIGatewayProxyEvent
 ): Promise<APIGatewayProxyResult> => {
   try {
-    const orgId =
+    const user = await getAuthenticatedUser(event);
+    const requestedOrgId =
       event.queryStringParameters?.organization_id ||
       event.headers?.['x-organization-id'] ||
       'org_default';
+
+    const orgId = user ? enforceTenant(user, requestedOrgId).effectiveOrgId : requestedOrgId;
 
     const campusId =
       event.queryStringParameters?.campus_id ||
@@ -57,6 +64,12 @@ export const toggleFeatureFlag = async (
   event: APIGatewayProxyEvent
 ): Promise<APIGatewayProxyResult> => {
   try {
+    const auth = await requireAuth(event);
+    if ('errorResponse' in auth) return auth.errorResponse;
+
+    const roleCheck = enforceRole(auth.user, FF_ADMIN_ROLES);
+    if (!roleCheck.allowed) return roleCheck.errorResponse!;
+
     const body = JSON.parse(event.body || '{}');
     const {
       organization_id,
@@ -66,18 +79,21 @@ export const toggleFeatureFlag = async (
       is_enabled,
       config_payload,
       category,
-      description,
-      updated_by
+      description
     } = body;
 
-    if (!organization_id || !feature_key || is_enabled === undefined) {
+    const tenantCheck = enforceTenant(auth.user, organization_id);
+    if (!tenantCheck.allowed) return tenantCheck.errorResponse!;
+    const orgId = tenantCheck.effectiveOrgId;
+
+    if (!feature_key || is_enabled === undefined) {
       return apiResponse(400, {
-        error: 'Campos obrigatórios: organization_id, feature_key e is_enabled'
+        error: 'Campos obrigatórios: feature_key e is_enabled'
       });
     }
 
     await setFeatureFlagOverride({
-      organizationId: organization_id,
+      organizationId: orgId,
       campusId: campus_id || null,
       environment: environment as EnvironmentScope,
       featureKey: feature_key,
@@ -85,11 +101,20 @@ export const toggleFeatureFlag = async (
       configPayload: config_payload,
       category,
       description,
-      updatedBy: updated_by || 'Admin'
+      updatedBy: auth.user.name || auth.user.email || 'Admin'
     });
 
-    // Retorna as flags atualizadas para atualizar imediatamente o front
-    const updated = await evaluateTenantFlags(organization_id, campus_id, environment);
+    await logSecurityEvent({
+      organizationId: orgId,
+      user: auth.user,
+      action: 'TOGGLE_FEATURE_FLAG',
+      resource: 'tenant_feature_flags',
+      resourceId: feature_key,
+      details: { is_enabled: Boolean(is_enabled), environment },
+      event
+    });
+
+    const updated = await evaluateTenantFlags(orgId, campus_id, environment as EnvironmentScope);
 
     return apiResponse(200, {
       message: `Feature flag '${feature_key}' atualizada com sucesso para a organização.`,
@@ -109,19 +134,29 @@ export const batchUpdateFeatureFlags = async (
   event: APIGatewayProxyEvent
 ): Promise<APIGatewayProxyResult> => {
   try {
-    const body = JSON.parse(event.body || '{}');
-    const { organization_id, campus_id, environment = 'all', flags, updated_by } = body;
+    const auth = await requireAuth(event);
+    if ('errorResponse' in auth) return auth.errorResponse;
 
-    if (!organization_id || !flags || !Array.isArray(flags)) {
+    const roleCheck = enforceRole(auth.user, FF_ADMIN_ROLES);
+    if (!roleCheck.allowed) return roleCheck.errorResponse!;
+
+    const body = JSON.parse(event.body || '{}');
+    const { organization_id, campus_id, environment = 'all', flags } = body;
+
+    const tenantCheck = enforceTenant(auth.user, organization_id);
+    if (!tenantCheck.allowed) return tenantCheck.errorResponse!;
+    const orgId = tenantCheck.effectiveOrgId;
+
+    if (!flags || !Array.isArray(flags)) {
       return apiResponse(400, {
-        error: 'Campos obrigatórios: organization_id e array de flags'
+        error: 'Campo obrigatório: array de flags'
       });
     }
 
     for (const item of flags) {
       if (item.feature_key !== undefined && item.is_enabled !== undefined) {
         await setFeatureFlagOverride({
-          organizationId: organization_id,
+          organizationId: orgId,
           campusId: campus_id || null,
           environment: environment as EnvironmentScope,
           featureKey: item.feature_key,
@@ -129,12 +164,21 @@ export const batchUpdateFeatureFlags = async (
           configPayload: item.config_payload,
           category: item.category,
           description: item.description,
-          updatedBy: updated_by || 'Admin'
+          updatedBy: auth.user.name || auth.user.email || 'Admin'
         });
       }
     }
 
-    const updated = await evaluateTenantFlags(organization_id, campus_id, environment);
+    await logSecurityEvent({
+      organizationId: orgId,
+      user: auth.user,
+      action: 'BATCH_UPDATE_FEATURE_FLAGS',
+      resource: 'tenant_feature_flags',
+      details: { total_flags: flags.length, environment },
+      event
+    });
+
+    const updated = await evaluateTenantFlags(orgId, campus_id, environment as EnvironmentScope);
 
     return apiResponse(200, {
       message: `${flags.length} Feature flags atualizadas em lote com sucesso!`,
@@ -154,17 +198,35 @@ export const resetTenantFlags = async (
   event: APIGatewayProxyEvent
 ): Promise<APIGatewayProxyResult> => {
   try {
+    const auth = await requireAuth(event);
+    if ('errorResponse' in auth) return auth.errorResponse;
+
+    const roleCheck = enforceRole(auth.user, FF_ADMIN_ROLES);
+    if (!roleCheck.allowed) return roleCheck.errorResponse!;
+
     const orgId = event.pathParameters?.id;
     if (!orgId || orgId === 'global') {
       return apiResponse(400, { error: 'ID de organização válido é necessário' });
     }
 
-    await query(`DELETE FROM tenant_feature_flags WHERE organization_id = ?`, [orgId]);
+    const tenantCheck = enforceTenant(auth.user, orgId);
+    if (!tenantCheck.allowed) return tenantCheck.errorResponse!;
 
-    const updated = await evaluateTenantFlags(orgId);
+    await query(`DELETE FROM tenant_feature_flags WHERE organization_id = ?`, [tenantCheck.effectiveOrgId]);
+
+    await logSecurityEvent({
+      organizationId: tenantCheck.effectiveOrgId,
+      user: auth.user,
+      action: 'RESET_TENANT_FEATURE_FLAGS',
+      resource: 'tenant_feature_flags',
+      resourceId: tenantCheck.effectiveOrgId,
+      event
+    });
+
+    const updated = await evaluateTenantFlags(tenantCheck.effectiveOrgId);
 
     return apiResponse(200, {
-      message: `Overrides de Feature Flags da organização '${orgId}' foram resetados para os padrões.`,
+      message: `Overrides de Feature Flags da organização '${tenantCheck.effectiveOrgId}' foram resetados para os padrões.`,
       result: updated
     });
   } catch (error: any) {
@@ -172,3 +234,4 @@ export const resetTenantFlags = async (
     return apiResponse(500, { error: error.message });
   }
 };
+

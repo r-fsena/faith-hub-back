@@ -42,6 +42,13 @@ export const DEFAULT_BIBLE_CONFIG = {
   pastoral_note: 'Recomendamos a leitura diária da Palavra de Deus para edificação de sua fé e família.'
 };
 
+export const DEFAULT_STORE_CONFIG = {
+  store_title: 'Loja Oficial',
+  store_subtitle: 'Livros, vestuário, devocionais e itens com retirada expressa',
+  store_tab_title: 'Loja',
+  store_counter_label: 'Balcão da Loja da Igreja'
+};
+
 const DEFAULT_SETTINGS = {
   id: 'default_church',
   church_name: 'Igreja Faith Hub',
@@ -72,7 +79,8 @@ const DEFAULT_SETTINGS = {
   offline_mode: false,
   organization_id: 'org_default',
   kanban_config: DEFAULT_KANBAN_CONFIG,
-  bible_config: DEFAULT_BIBLE_CONFIG
+  bible_config: DEFAULT_BIBLE_CONFIG,
+  store_config: DEFAULT_STORE_CONFIG
 };
 
 function formatSettings(item: any) {
@@ -94,11 +102,31 @@ function formatSettings(item: any) {
     }
   }
 
+  let store = item.store_config;
+  if (store && typeof store === 'string') {
+    try {
+      store = JSON.parse(store);
+    } catch {
+      store = null;
+    }
+  }
+
+  let popupNotice = item.popup_notice;
+  if (popupNotice && typeof popupNotice === 'string') {
+    try {
+      popupNotice = JSON.parse(popupNotice);
+    } catch {
+      popupNotice = null;
+    }
+  }
+
   return {
     ...DEFAULT_SETTINGS,
     ...item,
     kanban_config: kanban || DEFAULT_KANBAN_CONFIG,
     bible_config: bible || DEFAULT_BIBLE_CONFIG,
+    store_config: store || DEFAULT_STORE_CONFIG,
+    popup_notice: popupNotice || null,
     offline_mode: Boolean(item.offline_mode)
   };
 }
@@ -222,8 +250,14 @@ export const updateSettings = async (event: APIGatewayProxyEvent): Promise<APIGa
     }
 
     const sloganValue = body.slogan !== undefined ? body.slogan : (body.tagline !== undefined ? body.tagline : '');
+    const instagramValue = body.instagram_url !== undefined ? body.instagram_url : (body.instagram !== undefined ? body.instagram : '');
+    const youtubeValue = body.youtube_url !== undefined ? body.youtube_url : (body.youtube !== undefined ? body.youtube : '');
+    const facebookValue = body.facebook_url !== undefined ? body.facebook_url : (body.facebook !== undefined ? body.facebook : '');
+    const websiteValue = body.website_url !== undefined ? body.website_url : (body.website !== undefined ? body.website : '');
     const kanbanValue = body.kanban_config ? (typeof body.kanban_config === 'string' ? body.kanban_config : JSON.stringify(body.kanban_config)) : JSON.stringify(DEFAULT_KANBAN_CONFIG);
     const bibleValue = body.bible_config ? (typeof body.bible_config === 'string' ? body.bible_config : JSON.stringify(body.bible_config)) : JSON.stringify(DEFAULT_BIBLE_CONFIG);
+    const storeValue = body.store_config ? (typeof body.store_config === 'string' ? body.store_config : JSON.stringify(body.store_config)) : JSON.stringify(DEFAULT_STORE_CONFIG);
+    const popupNoticeValue = body.popup_notice ? (typeof body.popup_notice === 'string' ? body.popup_notice : JSON.stringify(body.popup_notice)) : null;
 
     const settings = {
       ...DEFAULT_SETTINGS,
@@ -232,8 +266,14 @@ export const updateSettings = async (event: APIGatewayProxyEvent): Promise<APIGa
       organization_id: orgId,
       pwa_slug: pwaSlug,
       slogan: sloganValue,
+      instagram_url: instagramValue,
+      youtube_url: youtubeValue,
+      facebook_url: facebookValue,
+      website_url: websiteValue,
       kanban_config: body.kanban_config || DEFAULT_KANBAN_CONFIG,
-      bible_config: body.bible_config || DEFAULT_BIBLE_CONFIG
+      bible_config: body.bible_config || DEFAULT_BIBLE_CONFIG,
+      store_config: body.store_config || DEFAULT_STORE_CONFIG,
+      popup_notice: body.popup_notice || null
     };
 
     const sql = `
@@ -243,8 +283,8 @@ export const updateSettings = async (event: APIGatewayProxyEvent): Promise<APIGa
         instagram_url, youtube_url, facebook_url, website_url,
         logo_icon_url, logo_header_url, banner_url,
         primary_color, secondary_color, pwa_theme_color, pwa_short_name, pwa_slug, offline_mode,
-        organization_id, kanban_config, bible_config
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        organization_id, kanban_config, bible_config, store_config, popup_notice
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON DUPLICATE KEY UPDATE
         church_name = VALUES(church_name),
         slogan = VALUES(slogan),
@@ -275,6 +315,8 @@ export const updateSettings = async (event: APIGatewayProxyEvent): Promise<APIGa
         organization_id = VALUES(organization_id),
         kanban_config = VALUES(kanban_config),
         bible_config = VALUES(bible_config),
+        store_config = VALUES(store_config),
+        popup_notice = VALUES(popup_notice),
         updated_at = NOW()
     `;
 
@@ -308,10 +350,22 @@ export const updateSettings = async (event: APIGatewayProxyEvent): Promise<APIGa
       settings.offline_mode ? 1 : 0,
       settings.organization_id,
       kanbanValue,
-      bibleValue
+      bibleValue,
+      storeValue,
+      popupNoticeValue
     ];
 
     await query(sql, params);
+
+    // Se informou YouTube URL, sincroniza também na tabela de transmissões
+    if (youtubeValue) {
+      await query(
+        `INSERT INTO broadcasts (id, title, description, youtube_url, is_available, organization_id, campus_id, created_at, updated_at)
+         VALUES ('default', 'Canal de Transmissão Oficial', 'Culto e programações da igreja', ?, 1, ?, 'campus_sede', NOW(), NOW())
+         ON DUPLICATE KEY UPDATE youtube_url = VALUES(youtube_url), organization_id = VALUES(organization_id), is_available = 1, updated_at = NOW()`,
+        [youtubeValue, orgId]
+      ).catch(() => {});
+    }
 
     if (orgId && orgId !== 'org_default') {
       await query(

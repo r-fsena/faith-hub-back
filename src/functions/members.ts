@@ -38,7 +38,12 @@ export const invite: APIGatewayProxyHandlerV2 = async (event) => {
 
     if (!event.body) throw new Error("Missing request body");
     const body = JSON.parse(event.body);
-    const { email, name, role, cpf, baptismDate, cellGroupId, phone, invitedBy, organization_id, campus_id, campus_ids } = body;
+    const { 
+      email, name, role, cpf, baptismDate, cellGroupId, phone, invitedBy, 
+      birth_date, birthDate,
+      address_street, address_number, address_complement, address_neighborhood, address_city, address_state, address_zip, address,
+      organization_id, campus_id, campus_ids 
+    } = body;
 
     const tenantCheck = enforceTenant(auth.user, organization_id);
     if (!tenantCheck.allowed) {
@@ -72,10 +77,24 @@ export const invite: APIGatewayProxyHandlerV2 = async (event) => {
     const primaryCampus = campusList[0] || 'campus_sede';
     const campusIdsJson = JSON.stringify(campusList);
 
+    const pBirthDate = birth_date || birthDate || null;
+    const pStreet = address_street || null;
+    const pNumber = address_number || null;
+    const pComplement = address_complement || null;
+    const pNeighborhood = address_neighborhood || null;
+    const pCity = address_city || null;
+    const pState = address_state || null;
+    const pZip = address_zip || null;
+    const pAddressFull = address || (pStreet ? `${pStreet}, ${pNumber || 'S/N'}${pComplement ? ` - ${pComplement}` : ''} - ${pNeighborhood || ''}, ${pCity || ''} - ${pState || ''}` : null);
+
     // MySQL Insert
     const insertQuery = `
-      INSERT INTO members (id, name, email, role, status, cpf, baptism_date, cell_group_id, phone, invited_by, organization_id, campus_id, campus_ids)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO members (
+        id, name, email, role, status, cpf, baptism_date, cell_group_id, phone, invited_by, 
+        birth_date, address_street, address_number, address_complement, address_neighborhood, address_city, address_state, address_zip, address,
+        organization_id, campus_id, campus_ids
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
     await query(insertQuery, [
@@ -89,6 +108,15 @@ export const invite: APIGatewayProxyHandlerV2 = async (event) => {
       cellGroupId || null,
       phone || null,
       invitedBy || auth.user.email,
+      pBirthDate,
+      pStreet,
+      pNumber,
+      pComplement,
+      pNeighborhood,
+      pCity,
+      pState,
+      pZip,
+      pAddressFull,
       orgValue,
       primaryCampus,
       campusIdsJson
@@ -104,7 +132,12 @@ export const invite: APIGatewayProxyHandlerV2 = async (event) => {
       event: event as any
     });
 
-    const newUser = { id: cognitoUserId, name, email, role: roleValue, status: 'Pendente', cpf, baptism_date: baptismDate, cell_group_id: cellGroupId, phone, invited_by: invitedBy, organization_id: orgValue, campus_id: primaryCampus, campus_ids: campusList };
+    const newUser = { 
+      id: cognitoUserId, name, email, role: roleValue, status: 'Pendente', 
+      cpf, baptism_date: baptismDate, cell_group_id: cellGroupId, phone, invited_by: invitedBy, 
+      birth_date: pBirthDate, address_street: pStreet, address_number: pNumber, address_complement: pComplement, address_neighborhood: pNeighborhood, address_city: pCity, address_state: pState, address_zip: pZip, address: pAddressFull,
+      organization_id: orgValue, campus_id: primaryCampus, campus_ids: campusList 
+    };
 
     return {
       statusCode: 201,
@@ -206,6 +239,8 @@ export const list: APIGatewayProxyHandlerV2 = async (event) => {
     const campusId = event.queryStringParameters?.campus_id;
     const requestedOrgId = event.queryStringParameters?.organization_id;
     const email = event.queryStringParameters?.email;
+    const birthdays = event.queryStringParameters?.birthdays; // 'today', 'month', 'upcoming'
+    const birthMonth = event.queryStringParameters?.birth_month;
 
     const tenantCheck = enforceTenant(auth.user, requestedOrgId);
     if (!tenantCheck.allowed) {
@@ -237,7 +272,19 @@ export const list: APIGatewayProxyHandlerV2 = async (event) => {
       params.push(groupId);
     }
 
-    listQuery += ` ORDER BY m.name ASC;`;
+    if (birthdays === 'today') {
+      listQuery += ` AND m.birth_date IS NOT NULL AND MONTH(m.birth_date) = MONTH(CURRENT_DATE()) AND DAY(m.birth_date) = DAY(CURRENT_DATE())`;
+      listQuery += ` ORDER BY m.name ASC;`;
+    } else if (birthdays === 'month') {
+      listQuery += ` AND m.birth_date IS NOT NULL AND MONTH(m.birth_date) = MONTH(CURRENT_DATE())`;
+      listQuery += ` ORDER BY DAY(m.birth_date) ASC, m.name ASC;`;
+    } else if (birthMonth) {
+      listQuery += ` AND m.birth_date IS NOT NULL AND MONTH(m.birth_date) = ?`;
+      params.push(parseInt(birthMonth));
+      listQuery += ` ORDER BY DAY(m.birth_date) ASC, m.name ASC;`;
+    } else {
+      listQuery += ` ORDER BY m.name ASC;`;
+    }
 
     const dbResult = await query(listQuery, params);
 
@@ -325,7 +372,11 @@ export const update: APIGatewayProxyHandlerV2 = async (event) => {
     }
 
     const body = JSON.parse(event.body || '{}');
-    const { name, cpf, baptismDate, cellGroupId, role, phone, address, avatar_url, campus_id, campus_ids } = body;
+    const { 
+      name, cpf, baptismDate, cellGroupId, role, phone, address, avatar_url, campus_id, campus_ids,
+      birth_date, birthDate,
+      address_street, address_number, address_complement, address_neighborhood, address_city, address_state, address_zip
+    } = body;
 
     // Membro regular não pode alterar o próprio papel (Role escalation prevention)
     if (role && String(role).toUpperCase() === 'SUPERADMIN' && !auth.user.isSuperAdmin) {
@@ -343,6 +394,15 @@ export const update: APIGatewayProxyHandlerV2 = async (event) => {
     const pCampus = campus_id !== undefined ? campus_id : null;
     const pCampusIds = campus_ids !== undefined ? JSON.stringify(campus_ids) : null;
 
+    const pBirthDate = birth_date !== undefined ? birth_date : (birthDate !== undefined ? birthDate : null);
+    const pStreet = address_street !== undefined ? address_street : null;
+    const pNumber = address_number !== undefined ? address_number : null;
+    const pComplement = address_complement !== undefined ? address_complement : null;
+    const pNeighborhood = address_neighborhood !== undefined ? address_neighborhood : null;
+    const pCity = address_city !== undefined ? address_city : null;
+    const pState = address_state !== undefined ? address_state : null;
+    const pZip = address_zip !== undefined ? address_zip : null;
+
     const updateQuery = `
       UPDATE members 
       SET 
@@ -356,11 +416,23 @@ export const update: APIGatewayProxyHandlerV2 = async (event) => {
         avatar_url = COALESCE(?, avatar_url),
         campus_id = COALESCE(?, campus_id),
         campus_ids = COALESCE(?, campus_ids),
+        birth_date = COALESCE(?, birth_date),
+        address_street = COALESCE(?, address_street),
+        address_number = COALESCE(?, address_number),
+        address_complement = COALESCE(?, address_complement),
+        address_neighborhood = COALESCE(?, address_neighborhood),
+        address_city = COALESCE(?, address_city),
+        address_state = COALESCE(?, address_state),
+        address_zip = COALESCE(?, address_zip),
         updated_at = NOW()
       WHERE id = ?
     `;
 
-    await query(updateQuery, [pName, pCpf, pBaptism, pCell, pRole, pPhone, pAddress, pAvatar, pCampus, pCampusIds, id]);
+    await query(updateQuery, [
+      pName, pCpf, pBaptism, pCell, pRole, pPhone, pAddress, pAvatar, pCampus, pCampusIds,
+      pBirthDate, pStreet, pNumber, pComplement, pNeighborhood, pCity, pState, pZip,
+      id
+    ]);
 
     await logSecurityEvent({
       organizationId: existingRows[0].organization_id,
@@ -443,7 +515,11 @@ export const requestCell: APIGatewayProxyHandlerV2 = async (event) => {
 export const selfRegister: APIGatewayProxyHandlerV2 = async (event) => {
   try {
     if (!event.body) throw new Error("Missing request body");
-    const { id, email, name, phone, birthdate, address, organization_id, campus_id } = JSON.parse(event.body);
+    const { 
+      id, email, name, phone, birthdate, birth_date, birthDate, address,
+      address_street, address_number, address_complement, address_neighborhood, address_city, address_state, address_zip,
+      organization_id, campus_id 
+    } = JSON.parse(event.body);
 
     if (!email) throw new Error("Email is required");
 
@@ -453,15 +529,33 @@ export const selfRegister: APIGatewayProxyHandlerV2 = async (event) => {
     const primaryCampus = campus_id || 'campus_sede';
     const campusIdsJson = JSON.stringify([primaryCampus]);
 
+    const effectiveBirthDate = birth_date || birthdate || birthDate || null;
+    const pStreet = address_street || null;
+    const pNumber = address_number || null;
+    const pComplement = address_complement || null;
+    const pNeighborhood = address_neighborhood || null;
+    const pCity = address_city || null;
+    const pState = address_state || null;
+    const pZip = address_zip || null;
+    const pAddressFull = address || (pStreet ? `${pStreet}, ${pNumber || 'S/N'}${pComplement ? ` - ${pComplement}` : ''} - ${pNeighborhood || ''}, ${pCity || ''} - ${pState || ''}` : null);
+
     const checkSql = `SELECT id FROM members WHERE id = ? OR LOWER(email) = LOWER(?) LIMIT 1`;
     const checkRes = await query(checkSql, [memberId, email]);
 
     if (checkRes.rows.length === 0) {
       const insertSql = `
-        INSERT INTO members (id, name, email, phone, address, role, status, organization_id, campus_id, campus_ids)
-        VALUES (?, ?, ?, ?, ?, 'Membro', 'Ativo', ?, ?, ?)
+        INSERT INTO members (
+          id, name, email, phone, birth_date, 
+          address_street, address_number, address_complement, address_neighborhood, address_city, address_state, address_zip, address,
+          role, status, organization_id, campus_id, campus_ids
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Membro', 'Ativo', ?, ?, ?)
       `;
-      await query(insertSql, [memberId, memberName, email, phone || null, address || null, orgValue, primaryCampus, campusIdsJson]);
+      await query(insertSql, [
+        memberId, memberName, email, phone || null, effectiveBirthDate,
+        pStreet, pNumber, pComplement, pNeighborhood, pCity, pState, pZip, pAddressFull,
+        orgValue, primaryCampus, campusIdsJson
+      ]);
     } else {
       const existingId = checkRes.rows[0].id;
       const updateSql = `
@@ -469,21 +563,24 @@ export const selfRegister: APIGatewayProxyHandlerV2 = async (event) => {
         SET 
           name = COALESCE(?, name),
           phone = COALESCE(?, phone),
+          birth_date = COALESCE(?, birth_date),
+          address_street = COALESCE(?, address_street),
+          address_number = COALESCE(?, address_number),
+          address_complement = COALESCE(?, address_complement),
+          address_neighborhood = COALESCE(?, address_neighborhood),
+          address_city = COALESCE(?, address_city),
+          address_state = COALESCE(?, address_state),
+          address_zip = COALESCE(?, address_zip),
           address = COALESCE(?, address),
           status = 'Ativo',
           updated_at = NOW()
         WHERE id = ?
       `;
-      await query(updateSql, [name || null, phone || null, address || null, existingId]);
-    }
-
-    if (birthdate) {
-      try {
-        await query(
-          `INSERT INTO member_details (member_id, birth_date) VALUES (?, ?) ON DUPLICATE KEY UPDATE birth_date = ?`,
-          [memberId, birthdate, birthdate]
-        );
-      } catch (e) {}
+      await query(updateSql, [
+        name || null, phone || null, effectiveBirthDate,
+        pStreet, pNumber, pComplement, pNeighborhood, pCity, pState, pZip, pAddressFull,
+        existingId
+      ]);
     }
 
     return {
