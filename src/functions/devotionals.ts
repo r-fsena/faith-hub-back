@@ -81,6 +81,7 @@ export const createOrUpdateDevotional = async (event: APIGatewayProxyEvent): Pro
     const body = JSON.parse(event.body || '{}');
     const isUpdate = !!body.id;
     const id = body.id || uuidv4();
+    const notifyMembers = body.notify_members ? 1 : 0;
 
     const qValues = [
       body.available_date,
@@ -103,17 +104,18 @@ export const createOrUpdateDevotional = async (event: APIGatewayProxyEvent): Pro
       const sql = `
         UPDATE devotionals SET 
           available_date=?, title=?, source_type=?, source_name=?, suggested_song_title=?, suggested_song_youtube_id=?, 
-          central_text=?, context_text=?, prayer_indication=?, pastoral_author_name=?, pastoral_author_role=?, pastoral_author_avatar=?, pastoral_comment=?, status=?
+          central_text=?, context_text=?, prayer_indication=?, pastoral_author_name=?, pastoral_author_role=?, pastoral_author_avatar=?, pastoral_comment=?, status=?,
+          notify_members=?, notification_sent_at=CASE WHEN ? = 1 AND notification_sent_at IS NULL THEN NOW() ELSE notification_sent_at END
         WHERE id=?
       `;
-      await query(sql, [...qValues, id]);
+      await query(sql, [...qValues, notifyMembers, notifyMembers, id]);
     } else {
       const sql = `
         INSERT INTO devotionals 
-          (available_date, title, source_type, source_name, suggested_song_title, suggested_song_youtube_id, central_text, context_text, prayer_indication, pastoral_author_name, pastoral_author_role, pastoral_author_avatar, pastoral_comment, status, id) 
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          (available_date, title, source_type, source_name, suggested_song_title, suggested_song_youtube_id, central_text, context_text, prayer_indication, pastoral_author_name, pastoral_author_role, pastoral_author_avatar, pastoral_comment, status, notify_members, notification_sent_at, id) 
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CASE WHEN ? = 1 THEN NOW() ELSE NULL END, ?)
       `;
-      await query(sql, [...qValues, id]);
+      await query(sql, [...qValues, notifyMembers, notifyMembers, id]);
     }
 
     await logSecurityEvent({

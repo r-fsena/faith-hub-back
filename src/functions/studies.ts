@@ -155,11 +155,13 @@ export const createOrUpdateStudyBook = async (event: APIGatewayProxyEvent): Prom
     const statusValue = status || 'ACTIVE';
     const colorValue = cover_color || 'linear-gradient(135deg, #1e3a8a, #3b82f6)';
 
+    const notifyMembers = body.notify_members ? 1 : 0;
+
     const q = `
       INSERT INTO study_books (
         id, organization_id, campus_id, target_group_id, title, subtitle,
-        preface, author_name, cover_color, cover_url, status
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        preface, author_name, cover_color, cover_url, status, notify_members, notification_sent_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CASE WHEN ? = 1 THEN NOW() ELSE NULL END)
       ON DUPLICATE KEY UPDATE
         campus_id = VALUES(campus_id),
         target_group_id = VALUES(target_group_id),
@@ -170,6 +172,8 @@ export const createOrUpdateStudyBook = async (event: APIGatewayProxyEvent): Prom
         cover_color = VALUES(cover_color),
         cover_url = VALUES(cover_url),
         status = VALUES(status),
+        notify_members = VALUES(notify_members),
+        notification_sent_at = CASE WHEN VALUES(notify_members) = 1 AND notification_sent_at IS NULL THEN NOW() ELSE notification_sent_at END,
         updated_at = NOW()
     `;
 
@@ -184,7 +188,9 @@ export const createOrUpdateStudyBook = async (event: APIGatewayProxyEvent): Prom
       author_name || auth.user.name || 'Pastor da Comunidade',
       colorValue,
       cover_url || null,
-      statusValue
+      statusValue,
+      notifyMembers,
+      notifyMembers
     ]);
 
     // Se capítulos foram passados no payload, processa-os

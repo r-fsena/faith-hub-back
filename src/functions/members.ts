@@ -10,6 +10,7 @@ import { query } from "../db";
 import { v4 as uuidv4 } from "uuid";
 import { requireAuth, enforceRole, enforceTenant, getAuthenticatedUser } from "../services/authMiddleware";
 import { logSecurityEvent } from "../services/auditLogService";
+import { checkRateLimit } from "../services/rateLimiter";
 
 const cognitoClient = new CognitoIdentityProviderClient({ region: process.env.AWS_REGION || "us-east-2" });
 const USER_POOL_ID = process.env.USER_POOL_ID as string;
@@ -206,6 +207,19 @@ export const updateStatus: APIGatewayProxyHandlerV2 = async (event) => {
 // 3. Reset de Senha Forçado
 export const resetPassword: APIGatewayProxyHandlerV2 = async (event) => {
   try {
+    const rateLimit = checkRateLimit(event as any, {
+      maxRequests: 5,
+      windowSeconds: 60,
+      identifierPrefix: 'reset-password'
+    });
+    if (!rateLimit.allowed) {
+      return {
+        statusCode: rateLimit.errorResponse?.statusCode || 429,
+        headers,
+        body: rateLimit.errorResponse?.body || JSON.stringify({ error: "Muitas tentativas de reset. Aguarde um instante." })
+      };
+    }
+
     const auth = await requireAuth(event as any);
     if ('errorResponse' in auth) {
       return { statusCode: auth.errorResponse.statusCode, headers, body: auth.errorResponse.body };
@@ -290,6 +304,9 @@ export const list: APIGatewayProxyHandlerV2 = async (event) => {
 
     const formattedMembers = dbResult.rows.map((m: any) => ({
       ...m,
+      birth_date: m.birth_date 
+        ? (m.birth_date instanceof Date ? m.birth_date.toISOString().split('T')[0] : String(m.birth_date).split('T')[0])
+        : null,
       campus_ids: typeof m.campus_ids === 'string' ? JSON.parse(m.campus_ids || '[]') : (m.campus_ids || [])
     }));
 
@@ -514,6 +531,19 @@ export const requestCell: APIGatewayProxyHandlerV2 = async (event) => {
 // 8. Auto-cadastro / Sincronização de usuário logado (PWA / Mobile)
 export const selfRegister: APIGatewayProxyHandlerV2 = async (event) => {
   try {
+    const rateLimit = checkRateLimit(event as any, {
+      maxRequests: 10,
+      windowSeconds: 60,
+      identifierPrefix: 'self-register'
+    });
+    if (!rateLimit.allowed) {
+      return {
+        statusCode: rateLimit.errorResponse?.statusCode || 429,
+        headers,
+        body: rateLimit.errorResponse?.body || JSON.stringify({ error: "Limite de cadastros por minuto excedido. Aguarde alguns instantes." })
+      };
+    }
+
     if (!event.body) throw new Error("Missing request body");
     const { 
       id, email, name, phone, birthdate, birth_date, birthDate, address,

@@ -9,18 +9,26 @@ provider:
   httpApi:
     cors:
       allowedOrigins:
-        - '*'
         - 'https://faithhubs.com'
+        - 'https://www.faithhubs.com'
         - 'https://admin.faithhubs.com'
         - 'https://app.faithhubs.com'
         - 'https://pwa.faithhubs.com'
+        - 'https://studio.faithhubs.com'
         - 'https://d2lyt83fsceg0b.amplifyapp.com'
+        - 'https://main.d2lyt83fsceg0b.amplifyapp.com'
         - 'https://d312p1jp7kl7kp.amplifyapp.com'
+        - 'https://main.d312p1jp7kl7kp.amplifyapp.com'
         - 'https://dcd98qkjlz7f5.amplifyapp.com'
+        - 'https://main.dcd98qkjlz7f5.amplifyapp.com'
         - 'http://localhost:5173'
-        - 'http://localhost:8081'
+        - 'http://localhost:5174'
         - 'http://localhost:3000'
+        - 'http://localhost:8081'
         - 'http://localhost:19006'
+        - 'http://127.0.0.1:5173'
+        - 'http://127.0.0.1:5174'
+        - 'http://127.0.0.1:3000'
       allowedHeaders:
         - Content-Type
         - Authorization
@@ -28,6 +36,8 @@ provider:
         - X-Api-Key
         - X-Amz-Security-Token
         - asaas-access-token
+        - x-organization-id
+        - x-campus-id
       allowedMethods:
         - GET
         - POST

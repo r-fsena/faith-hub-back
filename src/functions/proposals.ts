@@ -362,14 +362,30 @@ export const acceptProposal = async (event: APIGatewayProxyEvent): Promise<APIGa
   }
 };
 
-// 5. Simular Pagamento e Testar Provisionamento Instantâneo (POST /proposals/{id}/simulate-payment)
+// 5. Simular Pagamento e Testar Provisionamento Instantâneo (POST /proposals/{id}/simulate-payment) - Apenas SUPERADMIN
 export const simulatePayment = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   try {
+    const auth = await requireAuth(event);
+    if ('errorResponse' in auth) return auth.errorResponse;
+
+    const roleCheck = enforceRole(auth.user, ['SUPERADMIN']);
+    if (!roleCheck.allowed) return roleCheck.errorResponse!;
+
     const id = event.pathParameters?.id;
     if (!id) return apiResponse(400, { message: 'ID da proposta ausente' });
 
-    console.log(`⚡ Simulando pagamento e disparando provisionamento da proposta: ${id}`);
+    console.log(`⚡ Simulando pagamento e disparando provisionamento da proposta: ${id} por ${auth.user.email}`);
     const result = await ProvisioningService.provisionFromProposal(id);
+
+    await logSecurityEvent({
+      organizationId: auth.user.organizationId,
+      user: auth.user,
+      action: 'SIMULATE_PAYMENT_PROVISION',
+      resource: 'saas_proposals',
+      resourceId: id,
+      details: { proposalId: id, triggeredBy: auth.user.email },
+      event
+    });
 
     return apiResponse(200, {
       message: 'Pagamento confirmado e Ambiente provisionado com sucesso!',
@@ -381,15 +397,31 @@ export const simulatePayment = async (event: APIGatewayProxyEvent): Promise<APIG
   }
 };
 
-// 6. Listar Assinaturas do SaaS (GET /saas-subscriptions)
+// 6. Listar Assinaturas do SaaS (GET /saas-subscriptions) - SUPERADMIN ou ADMIN com isolamento de tenant
 export const listSubscriptions = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   try {
-    const { rows } = await query(`
+    const auth = await requireAuth(event);
+    if ('errorResponse' in auth) return auth.errorResponse;
+
+    const roleCheck = enforceRole(auth.user, ['SUPERADMIN', 'ADMIN']);
+    if (!roleCheck.allowed) return roleCheck.errorResponse!;
+
+    let sql = `
       SELECT s.*, o.name as church_name
       FROM saas_subscriptions s
       LEFT JOIN organizations o ON s.organization_id = o.id
-      ORDER BY s.created_at DESC
-    `);
+    `;
+    const params: any[] = [];
+
+    // Se não for SuperAdmin, restringe estritamente à congregação do usuário autenticado
+    if (!auth.user.isSuperAdmin) {
+      sql += ` WHERE s.organization_id = ?`;
+      params.push(auth.user.organizationId);
+    }
+
+    sql += ` ORDER BY s.created_at DESC`;
+
+    const { rows } = await query(sql, params);
     return apiResponse(200, rows);
   } catch (error: any) {
     console.error('Erro ao listar assinaturas:', error);

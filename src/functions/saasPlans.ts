@@ -1,8 +1,10 @@
 // Gestão de Planos & Preços SaaS do Faith-Hub
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { query, apiResponse } from '../db';
+import { requireAuth, enforceRole } from '../services/authMiddleware';
+import { logSecurityEvent } from '../services/auditLogService';
 
-// 1. Listar Planos SaaS (GET /saas-plans)
+// 1. Listar Planos SaaS (GET /saas-plans) - Rota pública para tabelas de preços
 export const listPlans = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   try {
     const { rows } = await query(`
@@ -27,9 +29,15 @@ export const listPlans = async (event: APIGatewayProxyEvent): Promise<APIGateway
   }
 };
 
-// 2. Criar ou Atualizar Plano SaaS (POST /saas-plans)
+// 2. Criar ou Atualizar Plano SaaS (POST /saas-plans) - Apenas SUPERADMIN
 export const createOrUpdatePlan = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   try {
+    const auth = await requireAuth(event);
+    if ('errorResponse' in auth) return auth.errorResponse;
+
+    const roleCheck = enforceRole(auth.user, ['SUPERADMIN']);
+    if (!roleCheck.allowed) return roleCheck.errorResponse!;
+
     const body = JSON.parse(event.body || '{}');
     const {
       id,
@@ -85,6 +93,16 @@ export const createOrUpdatePlan = async (event: APIGatewayProxyEvent): Promise<A
       status || 'ACTIVE'
     ]);
 
+    await logSecurityEvent({
+      organizationId: auth.user.organizationId,
+      user: auth.user,
+      action: 'UPSERT_SAAS_PLAN',
+      resource: 'saas_plans',
+      resourceId: planId,
+      details: { planId, name, monthly_price },
+      event
+    });
+
     return apiResponse(200, {
       message: 'Plano salvo com sucesso!',
       plan: {
@@ -101,13 +119,29 @@ export const createOrUpdatePlan = async (event: APIGatewayProxyEvent): Promise<A
   }
 };
 
-// 3. Excluir / Desativar Plano SaaS (DELETE /saas-plans/{id})
+// 3. Excluir / Desativar Plano SaaS (DELETE /saas-plans/{id}) - Apenas SUPERADMIN
 export const deletePlan = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   try {
+    const auth = await requireAuth(event);
+    if ('errorResponse' in auth) return auth.errorResponse;
+
+    const roleCheck = enforceRole(auth.user, ['SUPERADMIN']);
+    if (!roleCheck.allowed) return roleCheck.errorResponse!;
+
     const id = event.pathParameters?.id;
     if (!id) return apiResponse(400, { message: 'ID do plano não informado' });
 
     await query(`DELETE FROM saas_plans WHERE id = ?`, [id]);
+
+    await logSecurityEvent({
+      organizationId: auth.user.organizationId,
+      user: auth.user,
+      action: 'DELETE_SAAS_PLAN',
+      resource: 'saas_plans',
+      resourceId: id,
+      details: { planId: id },
+      event
+    });
 
     return apiResponse(200, { message: 'Plano excluído com sucesso!' });
   } catch (error: any) {

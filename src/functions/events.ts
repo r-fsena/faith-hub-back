@@ -53,6 +53,7 @@ export const getEvents = async (event: APIGatewayProxyEvent): Promise<APIGateway
       type: Number(e.type) || 0,
       is_featured: Boolean(e.is_featured),
       show_as_popup: Boolean(e.show_as_popup),
+      notify_members: Boolean(e.notify_members),
       lots: lotsRow
         .filter((l: any) => l.event_id === e.id)
         .map((l: any) => ({
@@ -91,6 +92,7 @@ export const getEventById = async (event: APIGatewayProxyEvent): Promise<APIGate
         type: Number(ev.type) || 0,
         is_featured: Boolean(ev.is_featured),
         show_as_popup: Boolean(ev.show_as_popup),
+        notify_members: Boolean(ev.notify_members),
         lots: lotsRow.map((l: any) => ({
           ...l,
           price: Number(l.price) || 0,
@@ -127,15 +129,33 @@ export const createOrUpdateEvent = async (event: APIGatewayProxyEvent): Promise<
     const isFeatured = data.is_featured ? 1 : 0;
     const showAsPopup = data.show_as_popup ? 1 : 0;
     const campusValue = data.campus_id || 'campus_sede';
+    const notifyMembers = data.notify_members ? 1 : 0;
 
     await connection.beginTransaction();
 
     if (isUpdate) {
-      const q = `UPDATE events SET type=?, is_featured=?, show_as_popup=?, title=?, description=?, image_url=?, video_url=?, start_date=?, end_date=?, location=?, status=?, campus_id=? WHERE id=? AND organization_id=?`;
-      await connection.query(q, [type, isFeatured, showAsPopup, data.title, data.description, data.image_url, data.video_url || null, data.start_date, data.end_date, data.location, data.status || 'PUBLISHED', campusValue, id, orgValue]);
+      const q = `
+        UPDATE events SET 
+          type=?, is_featured=?, show_as_popup=?, title=?, description=?, image_url=?, video_url=?, start_date=?, end_date=?, location=?, status=?, campus_id=?,
+          notify_members=?, notification_sent_at=CASE WHEN ? = 1 AND notification_sent_at IS NULL THEN NOW() ELSE notification_sent_at END 
+        WHERE id=? AND organization_id=?
+      `;
+      await connection.query(q, [
+        type, isFeatured, showAsPopup, data.title, data.description, data.image_url, data.video_url || null, 
+        data.start_date, data.end_date, data.location, data.status || 'PUBLISHED', campusValue, 
+        notifyMembers, notifyMembers, id, orgValue
+      ]);
     } else {
-      const q = `INSERT INTO events (id, type, is_featured, show_as_popup, title, description, image_url, video_url, start_date, end_date, location, status, organization_id, campus_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
-      await connection.query(q, [id, type, isFeatured, showAsPopup, data.title, data.description, data.image_url, data.video_url || null, data.start_date, data.end_date, data.location, data.status || 'PUBLISHED', orgValue, campusValue]);
+      const q = `
+        INSERT INTO events (
+          id, type, is_featured, show_as_popup, title, description, image_url, video_url, start_date, end_date, location, status, organization_id, campus_id, notify_members, notification_sent_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CASE WHEN ? = 1 THEN NOW() ELSE NULL END)
+      `;
+      await connection.query(q, [
+        id, type, isFeatured, showAsPopup, data.title, data.description, data.image_url, data.video_url || null, 
+        data.start_date, data.end_date, data.location, data.status || 'PUBLISHED', orgValue, campusValue, 
+        notifyMembers, notifyMembers
+      ]);
     }
 
     // Gerenciamento de LOTES
