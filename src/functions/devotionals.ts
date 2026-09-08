@@ -1,48 +1,87 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { v4 as uuidv4 } from 'uuid';
 import { query, apiResponse } from '../db';
-import { requireAuth, enforceRole, getAuthenticatedUser } from '../services/authMiddleware';
+import { requireAuth, enforceRole, enforceTenant, getAuthenticatedUser } from '../services/authMiddleware';
 import { logSecurityEvent } from '../services/auditLogService';
 
 const PASTORAL_ROLES = ['SUPERADMIN', 'PASTOR', 'ADMIN', 'LEADER'];
 
-// GET /devotionals?admin=true
+// GET /devotionals?admin=true&organization_id=...
 export const getDevotionals = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   try {
     const user = await getAuthenticatedUser(event);
     const isAdminRequested = event.queryStringParameters?.admin === 'true';
     const isAuthorizedAdmin = isAdminRequested && user && PASTORAL_ROLES.includes(user.role);
+    const requestedOrgId = event.queryStringParameters?.organization_id;
+    const campusId = event.queryStringParameters?.campus_id;
 
-    const sql = isAuthorizedAdmin
-      ? `SELECT * FROM devotionals ORDER BY available_date DESC LIMIT 100`
-      : `SELECT * FROM devotionals WHERE status = 'PUBLISHED' ORDER BY available_date DESC LIMIT 100`;
+    const orgId = user ? enforceTenant(user, requestedOrgId).effectiveOrgId : requestedOrgId;
 
-    const { rows } = await query(sql);
+    if (!orgId) {
+      return apiResponse(200, []);
+    }
+
+    let sql = isAuthorizedAdmin
+      ? `SELECT * FROM devotionals WHERE organization_id = ?`
+      : `SELECT * FROM devotionals WHERE organization_id = ? AND status = 'PUBLISHED'`;
+    const params: any[] = [orgId];
+
+    if (campusId && campusId !== 'all') {
+      sql += ` AND (campus_id = ? OR campus_id IS NULL)`;
+      params.push(campusId);
+    }
+
+    sql += ` ORDER BY available_date DESC LIMIT 100`;
+
+    const { rows } = await query(sql, params);
     return apiResponse(200, rows);
   } catch (error: any) {
     return apiResponse(500, { message: 'Erro ao buscar devocionais' });
   }
 };
 
-// GET /devotionals/today?user_id=123
+// GET /devotionals/today?user_id=123&organization_id=...
 export const getTodayDevotional = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   try {
     const user = await getAuthenticatedUser(event);
     const userId = event.queryStringParameters?.user_id || user?.userId;
+    const requestedOrgId = event.queryStringParameters?.organization_id;
+    const campusId = event.queryStringParameters?.campus_id;
     const dateParam = event.queryStringParameters?.date;
     const targetDate = dateParam || new Date().toISOString().split('T')[0];
 
-    const { rows: devoRows } = await query(
-      `SELECT * FROM devotionals WHERE available_date = ? AND status = 'PUBLISHED' LIMIT 1`,
-      [targetDate]
-    );
+    const orgId = user ? enforceTenant(user, requestedOrgId).effectiveOrgId : requestedOrgId;
+
+    if (!orgId) {
+      return apiResponse(404, { message: 'Organização não informada' });
+    }
+
+    let sqlToday = `SELECT * FROM devotionals WHERE available_date = ? AND status = 'PUBLISHED' AND organization_id = ?`;
+    const paramsToday: any[] = [targetDate, orgId];
+
+    if (campusId && campusId !== 'all') {
+      sqlToday += ` AND (campus_id = ? OR campus_id IS NULL)`;
+      paramsToday.push(campusId);
+    }
+
+    sqlToday += ` LIMIT 1`;
+
+    const { rows: devoRows } = await query(sqlToday, paramsToday);
 
     if (devoRows.length === 0) {
-      const { rows: latestRows } = await query(
-        `SELECT * FROM devotionals WHERE status = 'PUBLISHED' ORDER BY available_date DESC LIMIT 1`
-      );
+      let sqlLatest = `SELECT * FROM devotionals WHERE status = 'PUBLISHED' AND organization_id = ?`;
+      const paramsLatest: any[] = [orgId];
+
+      if (campusId && campusId !== 'all') {
+        sqlLatest += ` AND (campus_id = ? OR campus_id IS NULL)`;
+        paramsLatest.push(campusId);
+      }
+
+      sqlLatest += ` ORDER BY available_date DESC LIMIT 1`;
+
+      const { rows: latestRows } = await query(sqlLatest, paramsLatest);
       if (latestRows.length === 0) {
-        return apiResponse(404, { message: 'Nenhum devocional disponível no momento.' });
+        return apiResponse(404, { message: 'Nenhum devocional disponível para esta congregação.' });
       }
       devoRows.push(latestRows[0]);
     }
@@ -82,6 +121,8 @@ export const createOrUpdateDevotional = async (event: APIGatewayProxyEvent): Pro
     const isUpdate = !!body.id;
     const id = body.id || uuidv4();
     const notifyMembers = body.notify_members ? 1 : 0;
+    const orgValue = auth.user.organizationId || body.organization_id || 'org_default';
+    const campusValue = body.campus_id || null;
 
     const qValues = [
       body.available_date,
@@ -105,21 +146,22 @@ export const createOrUpdateDevotional = async (event: APIGatewayProxyEvent): Pro
         UPDATE devotionals SET 
           available_date=?, title=?, source_type=?, source_name=?, suggested_song_title=?, suggested_song_youtube_id=?, 
           central_text=?, context_text=?, prayer_indication=?, pastoral_author_name=?, pastoral_author_role=?, pastoral_author_avatar=?, pastoral_comment=?, status=?,
+          organization_id=COALESCE(?, organization_id), campus_id=COALESCE(?, campus_id),
           notify_members=?, notification_sent_at=CASE WHEN ? = 1 AND notification_sent_at IS NULL THEN NOW() ELSE notification_sent_at END
         WHERE id=?
       `;
-      await query(sql, [...qValues, notifyMembers, notifyMembers, id]);
+      await query(sql, [...qValues, orgValue, campusValue, notifyMembers, notifyMembers, id]);
     } else {
       const sql = `
         INSERT INTO devotionals 
-          (available_date, title, source_type, source_name, suggested_song_title, suggested_song_youtube_id, central_text, context_text, prayer_indication, pastoral_author_name, pastoral_author_role, pastoral_author_avatar, pastoral_comment, status, notify_members, notification_sent_at, id) 
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CASE WHEN ? = 1 THEN NOW() ELSE NULL END, ?)
+          (available_date, title, source_type, source_name, suggested_song_title, suggested_song_youtube_id, central_text, context_text, prayer_indication, pastoral_author_name, pastoral_author_role, pastoral_author_avatar, pastoral_comment, status, organization_id, campus_id, notify_members, notification_sent_at, id) 
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CASE WHEN ? = 1 THEN NOW() ELSE NULL END, ?)
       `;
-      await query(sql, [...qValues, notifyMembers, notifyMembers, id]);
+      await query(sql, [...qValues, orgValue, campusValue, notifyMembers, notifyMembers, id]);
     }
 
     await logSecurityEvent({
-      organizationId: auth.user.organizationId,
+      organizationId: orgValue,
       user: auth.user,
       action: isUpdate ? 'UPDATE_DEVOTIONAL' : 'CREATE_DEVOTIONAL',
       resource: 'devotionals',

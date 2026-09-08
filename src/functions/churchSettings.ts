@@ -206,6 +206,10 @@ export const getSettings = async (event: APIGatewayProxyEvent): Promise<APIGatew
       }
     }
 
+    if (orgId || rawSlug) {
+      return apiResponse(404, { error: 'Igreja ou congregação não encontrada para o identificador informado' });
+    }
+
     const { rows: defaultRows } = await query(
       `SELECT * FROM church_settings WHERE organization_id = 'org_default' OR id = 'default_church' ORDER BY updated_at DESC LIMIT 1`
     );

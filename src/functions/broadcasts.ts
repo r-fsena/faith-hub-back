@@ -82,7 +82,7 @@ export const getBroadcasts = async (event: APIGatewayProxyEvent): Promise<APIGat
 
     const orgId = user ? enforceTenant(user, requestedOrgId).effectiveOrgId : (requestedOrgId || 'org_default');
 
-    let sql = `SELECT * FROM broadcasts WHERE (organization_id = ? OR (id = 'default' AND organization_id = 'org_default'))`;
+    let sql = `SELECT * FROM broadcasts WHERE organization_id = ?`;
     const params: any[] = [orgId];
 
     if (campusId && campusId !== 'all') {
@@ -90,7 +90,7 @@ export const getBroadcasts = async (event: APIGatewayProxyEvent): Promise<APIGat
       params.push(campusId);
     }
 
-    sql += ` ORDER BY (id = 'default') DESC, scheduled_for ASC, created_at DESC`;
+    sql += ` ORDER BY scheduled_for ASC, created_at DESC`;
 
     const { rows } = await query(sql, params);
     return apiResponse(200, rows);
@@ -150,14 +150,6 @@ export const getActiveBroadcast = async (event: APIGatewayProxyEvent): Promise<A
         youtube_url: settingsRows[0].youtube_url,
         is_available: 1
       });
-    }
-
-    // 4. Fallback padrão global
-    const { rows: fallbackRows } = await query(
-      `SELECT * FROM broadcasts WHERE id = 'default' LIMIT 1`
-    );
-    if (fallbackRows.length > 0) {
-      return apiResponse(200, fallbackRows[0]);
     }
 
     return apiResponse(404, { message: 'Nenhuma transmissão ativa no momento' });
