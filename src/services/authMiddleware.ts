@@ -100,13 +100,15 @@ export async function getAuthenticatedUser(event: APIGatewayProxyEvent): Promise
       }
     }
 
-    // Anti-Forging Guard: SuperAdmin status is ONLY granted if verified by API Gateway OR present in DB with SUPERADMIN role
+    // Anti-Forging Guard: SuperAdmin status is ONLY granted if verified by API Gateway OR present in DB with SUPERADMIN/MASTER role
+    const MASTER_ROLES = ['SUPERADMIN', 'SUPER_ADMIN', 'MASTER_ADMIN', 'MASTER', 'ADMIN_MASTER'];
     const isSuperAdminEmail = SUPER_ADMIN_EMAILS.includes(email);
     const dbRole = (memberRecord?.role || 'MEMBER').toUpperCase();
-    const isSuperAdmin = (isSuperAdminEmail || dbRole === 'SUPERADMIN') && (isVerifiedByGateway || Boolean(memberRecord));
+    const isMasterRole = MASTER_ROLES.includes(dbRole) || memberRecord?.organization_id === 'org_master';
+    const isSuperAdmin = (isSuperAdminEmail || isMasterRole) && (isVerifiedByGateway || Boolean(memberRecord));
 
-    const orgId = memberRecord?.organization_id || (isSuperAdmin ? 'org_default' : 'org_default');
-    const role = isSuperAdmin ? 'SUPERADMIN' : dbRole;
+    const orgId = memberRecord?.organization_id || (isSuperAdmin ? 'org_master' : 'org_default');
+    const role = isSuperAdmin ? (dbRole === 'MASTER_ADMIN' ? 'MASTER_ADMIN' : 'SUPERADMIN') : dbRole;
 
     let campusList: string[] = [];
     if (memberRecord?.campus_ids) {

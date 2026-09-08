@@ -67,9 +67,10 @@ export const invite: APIGatewayProxyHandlerV2 = async (event) => {
     const cognitoUserId = response.User?.Username || uuidv4();
 
     let roleValue = role || 'MEMBER';
-    // Anti-Privilege Escalation: Apenas SuperAdmins podem atribuir o papel de SUPERADMIN
-    if (String(roleValue).toUpperCase() === 'SUPERADMIN' && !auth.user.isSuperAdmin) {
-      return { statusCode: 403, headers, body: JSON.stringify({ error: "Apenas SuperAdmins podem conceder permissão de SUPERADMIN" }) };
+    // Anti-Privilege Escalation: Apenas SuperAdmins podem atribuir papéis de administração Master
+    const isMasterRole = ['SUPERADMIN', 'SUPER_ADMIN', 'MASTER_ADMIN', 'MASTER', 'ADMIN_MASTER'].includes(String(roleValue).toUpperCase());
+    if (isMasterRole && !auth.user.isSuperAdmin) {
+      return { statusCode: 403, headers, body: JSON.stringify({ error: "Apenas Administradores Master podem conceder permissões globais" }) };
     }
 
     const campusList = Array.isArray(campus_ids) && campus_ids.length > 0 
@@ -255,6 +256,26 @@ export const list: APIGatewayProxyHandlerV2 = async (event) => {
     const email = event.queryStringParameters?.email;
     const birthdays = event.queryStringParameters?.birthdays; // 'today', 'month', 'upcoming'
     const birthMonth = event.queryStringParameters?.birth_month;
+    const isMaster = event.queryStringParameters?.is_master === 'true' || requestedOrgId === 'org_master';
+
+    // Se for listagem da Equipe Master Global (Studio)
+    if (isMaster) {
+      if (!auth.user.isSuperAdmin) {
+        return { statusCode: 403, headers, body: JSON.stringify({ error: "Acesso negado: apenas administradores Master podem visualizar a equipe global" }) };
+      }
+      const dbResult = await query(`
+        SELECT id, name, email, role, status, phone, organization_id, campus_id, created_at, updated_at
+        FROM members
+        WHERE organization_id = 'org_master' 
+           OR role IN ('SUPERADMIN', 'SUPER_ADMIN', 'MASTER_ADMIN', 'MASTER', 'ADMIN_MASTER')
+        ORDER BY created_at ASC
+      `);
+      return {
+        statusCode: 200,
+        headers,
+        body: JSON.stringify({ data: dbResult.rows })
+      };
+    }
 
     const tenantCheck = enforceTenant(auth.user, requestedOrgId);
     if (!tenantCheck.allowed) {
@@ -396,8 +417,9 @@ export const update: APIGatewayProxyHandlerV2 = async (event) => {
     } = body;
 
     // Membro regular não pode alterar o próprio papel (Role escalation prevention)
-    if (role && String(role).toUpperCase() === 'SUPERADMIN' && !auth.user.isSuperAdmin) {
-      return { statusCode: 403, headers, body: JSON.stringify({ error: "Apenas SuperAdmins podem conceder permissão de SUPERADMIN" }) };
+    const isEscalatingToMaster = ['SUPERADMIN', 'SUPER_ADMIN', 'MASTER_ADMIN', 'MASTER', 'ADMIN_MASTER'].includes(String(role || '').toUpperCase());
+    if (role && isEscalatingToMaster && !auth.user.isSuperAdmin) {
+      return { statusCode: 403, headers, body: JSON.stringify({ error: "Apenas SuperAdmins podem conceder permissão Master" }) };
     }
     const pRole = isLeadership && role !== undefined ? role : null;
 
