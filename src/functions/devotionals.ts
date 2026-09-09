@@ -15,7 +15,8 @@ export const getDevotionals = async (event: APIGatewayProxyEvent): Promise<APIGa
     const requestedOrgId = event.queryStringParameters?.organization_id;
     const campusId = event.queryStringParameters?.campus_id;
 
-    const orgId = user ? enforceTenant(user, requestedOrgId).effectiveOrgId : requestedOrgId;
+    const tenantCheck = user ? enforceTenant(user, requestedOrgId) : null;
+    const orgId = tenantCheck ? tenantCheck.effectiveOrgId : (requestedOrgId || 'org_default');
 
     if (!orgId) {
       return apiResponse(200, []);
@@ -50,7 +51,8 @@ export const getTodayDevotional = async (event: APIGatewayProxyEvent): Promise<A
     const dateParam = event.queryStringParameters?.date;
     const targetDate = dateParam || new Date().toISOString().split('T')[0];
 
-    const orgId = user ? enforceTenant(user, requestedOrgId).effectiveOrgId : requestedOrgId;
+    const tenantCheck = user ? enforceTenant(user, requestedOrgId) : null;
+    const orgId = tenantCheck ? tenantCheck.effectiveOrgId : (requestedOrgId || 'org_default');
 
     if (!orgId) {
       return apiResponse(404, { message: 'Organização não informada' });
@@ -121,8 +123,11 @@ export const createOrUpdateDevotional = async (event: APIGatewayProxyEvent): Pro
     const isUpdate = !!body.id;
     const id = body.id || uuidv4();
     const notifyMembers = body.notify_members ? 1 : 0;
-    const orgValue = auth.user.organizationId || body.organization_id || 'org_default';
-    const campusValue = body.campus_id || null;
+
+    const tenantCheck = enforceTenant(auth.user, body.organization_id);
+    if (!tenantCheck.allowed) return tenantCheck.errorResponse!;
+    const orgValue = tenantCheck.effectiveOrgId;
+    const campusValue = body.campus_id && body.campus_id !== 'all' ? body.campus_id : null;
 
     const qValues = [
       body.available_date,
@@ -146,7 +151,7 @@ export const createOrUpdateDevotional = async (event: APIGatewayProxyEvent): Pro
         UPDATE devotionals SET 
           available_date=?, title=?, source_type=?, source_name=?, suggested_song_title=?, suggested_song_youtube_id=?, 
           central_text=?, context_text=?, prayer_indication=?, pastoral_author_name=?, pastoral_author_role=?, pastoral_author_avatar=?, pastoral_comment=?, status=?,
-          organization_id=COALESCE(?, organization_id), campus_id=COALESCE(?, campus_id),
+          organization_id=COALESCE(?, organization_id), campus_id=?,
           notify_members=?, notification_sent_at=CASE WHEN ? = 1 AND notification_sent_at IS NULL THEN NOW() ELSE notification_sent_at END
         WHERE id=?
       `;
@@ -170,8 +175,12 @@ export const createOrUpdateDevotional = async (event: APIGatewayProxyEvent): Pro
       event
     });
 
-    return apiResponse(isUpdate ? 200 : 201, { message: 'Devocional salvo com sucesso!', id });
+    return apiResponse(200, {
+      message: isUpdate ? 'Devocional atualizado com sucesso!' : 'Devocional criado com sucesso!',
+      id
+    });
   } catch (error: any) {
+    console.error('Erro ao salvar devocional:', error);
     return apiResponse(500, { message: 'Erro ao salvar devocional' });
   }
 };
@@ -188,11 +197,17 @@ export const deleteDevotional = async (event: APIGatewayProxyEvent): Promise<API
     const id = event.pathParameters?.id;
     if (!id) return apiResponse(400, { message: 'ID ausente' });
 
+    const { rows } = await query(`SELECT organization_id FROM devotionals WHERE id = ? LIMIT 1`, [id]);
+    if (rows.length === 0) return apiResponse(404, { message: 'Devocional não encontrado' });
+
+    const tenantCheck = enforceTenant(auth.user, rows[0].organization_id);
+    if (!tenantCheck.allowed) return tenantCheck.errorResponse!;
+
     await query(`DELETE FROM devotional_notes WHERE devotional_id = ?`, [id]);
     await query(`DELETE FROM devotionals WHERE id = ?`, [id]);
 
     await logSecurityEvent({
-      organizationId: auth.user.organizationId,
+      organizationId: tenantCheck.effectiveOrgId,
       user: auth.user,
       action: 'DELETE_DEVOTIONAL',
       resource: 'devotionals',
