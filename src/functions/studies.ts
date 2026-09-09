@@ -50,7 +50,16 @@ export const getStudyBooks = async (event: APIGatewayProxyEvent): Promise<APIGat
     q += ` GROUP BY sb.id ORDER BY sb.created_at DESC`;
 
     const { rows } = await query(q, params);
-    return apiResponse(200, rows);
+    const parsedBooks = rows.map(b => ({
+      ...b,
+      first_scheduled_date: b.first_scheduled_date 
+        ? (b.first_scheduled_date instanceof Date ? b.first_scheduled_date.toISOString().split('T')[0] : String(b.first_scheduled_date).split('T')[0])
+        : null,
+      last_scheduled_date: b.last_scheduled_date
+        ? (b.last_scheduled_date instanceof Date ? b.last_scheduled_date.toISOString().split('T')[0] : String(b.last_scheduled_date).split('T')[0])
+        : null
+    }));
+    return apiResponse(200, parsedBooks);
   } catch (err: any) {
     console.error('Erro ao listar livros de estudo:', err);
     return apiResponse(500, { error: 'Erro ao listar livros de estudo' });
@@ -96,13 +105,35 @@ export const getStudyBookById = async (event: APIGatewayProxyEvent): Promise<API
       completedChapterIds = compRows.map(r => r.chapter_id);
     }
 
-    const parsedChapters = chapterRows.map(ch => ({
-      ...ch,
-      completed: completedChapterIds.includes(ch.id),
-      discussion_questions: typeof ch.discussion_questions === 'string' 
-        ? JSON.parse(ch.discussion_questions || '[]') 
-        : (ch.discussion_questions || [])
-    }));
+    const parsedChapters = chapterRows.map((ch, idx) => {
+      let schedDate: string | null = null;
+      if (ch.scheduled_date) {
+        if (ch.scheduled_date instanceof Date) {
+          schedDate = ch.scheduled_date.toISOString().split('T')[0];
+        } else if (typeof ch.scheduled_date === 'string') {
+          schedDate = ch.scheduled_date.split('T')[0];
+        }
+      }
+
+      // Se data for nula, vazia ou começar com '0000': calcula a partir de hoje a cada 1 semana
+      if (!schedDate || schedDate.startsWith('0000') || schedDate === 'null') {
+        const d = new Date();
+        d.setDate(d.getDate() + (idx * 7));
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        schedDate = `${y}-${m}-${day}`;
+      }
+
+      return {
+        ...ch,
+        scheduled_date: schedDate,
+        completed: completedChapterIds.includes(ch.id),
+        discussion_questions: typeof ch.discussion_questions === 'string' 
+          ? JSON.parse(ch.discussion_questions || '[]') 
+          : (ch.discussion_questions || [])
+      };
+    });
 
     return apiResponse(200, {
       ...book,
@@ -203,6 +234,16 @@ export const createOrUpdateStudyBook = async (event: APIGatewayProxyEvent): Prom
           ? JSON.stringify(ch.discussion_questions) 
           : (typeof ch.discussion_questions === 'string' ? ch.discussion_questions : null);
 
+        let chapterDate = ch.scheduled_date ? String(ch.scheduled_date).split('T')[0] : null;
+        if (!chapterDate || chapterDate.startsWith('0000') || chapterDate === 'null') {
+          const d = new Date();
+          d.setDate(d.getDate() + (i * 7));
+          const y = d.getFullYear();
+          const m = String(d.getMonth() + 1).padStart(2, '0');
+          const day = String(d.getDate()).padStart(2, '0');
+          chapterDate = `${y}-${m}-${day}`;
+        }
+
         await query(`
           INSERT INTO study_chapters (
             id, book_id, chapter_number, title, verse_reference, icebreaker,
@@ -234,7 +275,7 @@ export const createOrUpdateStudyBook = async (event: APIGatewayProxyEvent): Prom
           ch.practical_challenge || null,
           ch.media_type || 'NONE',
           ch.media_link || null,
-          ch.scheduled_date || null,
+          chapterDate,
           ch.status || 'ACTIVE'
         ]);
       }
