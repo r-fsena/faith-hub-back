@@ -25,7 +25,18 @@ const headers = {
 
 const LEADERSHIP_ROLES = ['SUPERADMIN', 'PASTOR', 'ADMIN', 'LEADER'];
 
-// 1. Convidar Membro (Protegido por Role e Tenant)
+let columnChecked = false;
+async function ensureOperationalColumn() {
+  if (columnChecked) return;
+  try {
+    await query(`ALTER TABLE members ADD COLUMN operational_permissions TEXT;`);
+  } catch (e: any) {
+    // Coluna já existe
+  }
+  columnChecked = true;
+}
+
+// 1. Convidar / Cadastrar Membro
 export const invite: APIGatewayProxyHandlerV2 = async (event) => {
   try {
     const auth = await requireAuth(event as any);
@@ -44,7 +55,8 @@ export const invite: APIGatewayProxyHandlerV2 = async (event) => {
       email, name, role, cpf, baptismDate, cellGroupId, phone, invitedBy, 
       birth_date, birthDate,
       address_street, address_number, address_complement, address_neighborhood, address_city, address_state, address_zip, address,
-      organization_id, campus_id, campus_ids 
+      organization_id, campus_id, campus_ids,
+      operational_permissions 
     } = body;
 
     const tenantCheck = enforceTenant(auth.user, organization_id);
@@ -52,6 +64,8 @@ export const invite: APIGatewayProxyHandlerV2 = async (event) => {
       return { statusCode: 403, headers, body: JSON.stringify({ error: "Acesso negado: organização inválida" }) };
     }
     const orgValue = tenantCheck.effectiveOrgId;
+
+    await ensureOperationalColumn();
 
     const command = new AdminCreateUserCommand({
       UserPoolId: USER_POOL_ID,
@@ -89,15 +103,18 @@ export const invite: APIGatewayProxyHandlerV2 = async (event) => {
     const pState = address_state || null;
     const pZip = address_zip || null;
     const pAddressFull = address || (pStreet ? `${pStreet}, ${pNumber || 'S/N'}${pComplement ? ` - ${pComplement}` : ''} - ${pNeighborhood || ''}, ${pCity || ''} - ${pState || ''}` : null);
+    const pOperational = operational_permissions !== undefined 
+      ? (Array.isArray(operational_permissions) ? JSON.stringify(operational_permissions) : String(operational_permissions)) 
+      : null;
 
     // MySQL Insert
     const insertQuery = `
       INSERT INTO members (
         id, name, email, role, status, cpf, baptism_date, cell_group_id, phone, invited_by, 
         birth_date, address_street, address_number, address_complement, address_neighborhood, address_city, address_state, address_zip, address,
-        organization_id, campus_id, campus_ids
+        organization_id, campus_id, campus_ids, operational_permissions
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
     await query(insertQuery, [
@@ -122,7 +139,8 @@ export const invite: APIGatewayProxyHandlerV2 = async (event) => {
       pAddressFull,
       orgValue,
       primaryCampus,
-      campusIdsJson
+      campusIdsJson,
+      pOperational
     ]);
 
     await logSecurityEvent({
@@ -139,7 +157,8 @@ export const invite: APIGatewayProxyHandlerV2 = async (event) => {
       id: cognitoUserId, name, email, role: roleValue, status: 'Pendente', 
       cpf, baptism_date: baptismDate, cell_group_id: cellGroupId, phone, invited_by: invitedBy, 
       birth_date: pBirthDate, address_street: pStreet, address_number: pNumber, address_complement: pComplement, address_neighborhood: pNeighborhood, address_city: pCity, address_state: pState, address_zip: pZip, address: pAddressFull,
-      organization_id: orgValue, campus_id: primaryCampus, campus_ids: campusList 
+      organization_id: orgValue, campus_id: primaryCampus, campus_ids: campusList,
+      operational_permissions: pOperational 
     };
 
     return {
@@ -524,8 +543,11 @@ export const update: APIGatewayProxyHandlerV2 = async (event) => {
     const { 
       name, cpf, baptismDate, cellGroupId, role, phone, address, avatar_url, campus_id, campus_ids,
       birth_date, birthDate,
-      address_street, address_number, address_complement, address_neighborhood, address_city, address_state, address_zip
+      address_street, address_number, address_complement, address_neighborhood, address_city, address_state, address_zip,
+      operational_permissions
     } = body;
+
+    await ensureOperationalColumn();
 
     // Membro regular não pode alterar o próprio papel (Role escalation prevention)
     const isEscalatingToMaster = ['SUPERADMIN', 'SUPER_ADMIN', 'MASTER_ADMIN', 'MASTER', 'ADMIN_MASTER'].includes(String(role || '').toUpperCase());
@@ -552,6 +574,9 @@ export const update: APIGatewayProxyHandlerV2 = async (event) => {
     const pCity = address_city !== undefined ? address_city : null;
     const pState = address_state !== undefined ? address_state : null;
     const pZip = address_zip !== undefined ? address_zip : null;
+    const pOperational = operational_permissions !== undefined 
+      ? (Array.isArray(operational_permissions) ? JSON.stringify(operational_permissions) : String(operational_permissions)) 
+      : null;
 
     const updateQuery = `
       UPDATE members 
@@ -574,6 +599,7 @@ export const update: APIGatewayProxyHandlerV2 = async (event) => {
         address_city = COALESCE(?, address_city),
         address_state = COALESCE(?, address_state),
         address_zip = COALESCE(?, address_zip),
+        operational_permissions = COALESCE(?, operational_permissions),
         updated_at = NOW()
       WHERE id = ?
     `;
@@ -581,6 +607,7 @@ export const update: APIGatewayProxyHandlerV2 = async (event) => {
     await query(updateQuery, [
       pName, pCpf, pBaptism, pCell, pRole, pPhone, pAddress, pAvatar, pCampus, pCampusIds,
       pBirthDate, pStreet, pNumber, pComplement, pNeighborhood, pCity, pState, pZip,
+      pOperational,
       id
     ]);
 
