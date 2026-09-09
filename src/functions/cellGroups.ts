@@ -16,7 +16,7 @@ export const createOrUpdateGroup = async (event: APIGatewayProxyEvent): Promise<
     if (!roleCheck.allowed) return roleCheck.errorResponse!;
 
     const body = JSON.parse(event.body || '{}');
-    const { id, name, leader_id, description, address, neighborhood, meeting_day, meeting_time, whatsapp_contact, status, focus, organization_id, campus_id } = body;
+    const { id, name, leader_id, description, address, neighborhood, meeting_day, meeting_time, whatsapp_contact, status, focus, organization_id, campus_id, latitude, longitude } = body;
 
     const tenantCheck = enforceTenant(auth.user, organization_id);
     if (!tenantCheck.allowed) return tenantCheck.errorResponse!;
@@ -26,8 +26,8 @@ export const createOrUpdateGroup = async (event: APIGatewayProxyEvent): Promise<
     const campusValue = campus_id || 'campus_sede';
 
     const q = `
-      INSERT INTO cell_groups (id, name, leader_id, description, address, neighborhood, meeting_day, meeting_time, whatsapp_contact, status, focus, organization_id, campus_id) 
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, 'ACTIVE'), COALESCE(?, '@GERAL'), ?, ?)
+      INSERT INTO cell_groups (id, name, leader_id, description, address, neighborhood, meeting_day, meeting_time, whatsapp_contact, status, focus, organization_id, campus_id, latitude, longitude) 
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, 'ACTIVE'), COALESCE(?, '@GERAL'), ?, ?, ?, ?)
       ON DUPLICATE KEY UPDATE 
         name = VALUES(name),
         leader_id = VALUES(leader_id),
@@ -40,6 +40,8 @@ export const createOrUpdateGroup = async (event: APIGatewayProxyEvent): Promise<
         status = VALUES(status),
         focus = VALUES(focus),
         campus_id = VALUES(campus_id),
+        latitude = VALUES(latitude),
+        longitude = VALUES(longitude),
         updated_at = NOW()
     `;
 
@@ -56,7 +58,9 @@ export const createOrUpdateGroup = async (event: APIGatewayProxyEvent): Promise<
       status,
       focus,
       orgValue,
-      campusValue
+      campusValue,
+      latitude ? Number(latitude) : null,
+      longitude ? Number(longitude) : null
     ]);
 
     await logSecurityEvent({
