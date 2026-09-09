@@ -5,7 +5,7 @@ import crypto from 'crypto';
 import { query, apiResponse } from '../db';
 import { AsaasService } from '../services/asaasService';
 import { ProvisioningService } from '../services/provisioningService';
-import { requireAuth, enforceRole } from '../services/authMiddleware';
+import { requireAuth, enforceRole, enforceTenant } from '../services/authMiddleware';
 import { logSecurityEvent } from '../services/auditLogService';
 
 // 1. Criar Nova Proposta Comercial (POST /proposals) - Apenas SuperAdmin
@@ -406,17 +406,40 @@ export const listSubscriptions = async (event: APIGatewayProxyEvent): Promise<AP
     const roleCheck = enforceRole(auth.user, ['SUPERADMIN', 'ADMIN']);
     if (!roleCheck.allowed) return roleCheck.errorResponse!;
 
+    const requestedOrgId = event.queryStringParameters?.organization_id;
+    const tenantCheck = enforceTenant(auth.user, requestedOrgId);
+    if (!tenantCheck.allowed) return tenantCheck.errorResponse!;
+
+    const targetOrgId = requestedOrgId || (!auth.user.isSuperAdmin ? auth.user.organizationId : null);
+
     let sql = `
-      SELECT s.*, o.name as church_name
-      FROM saas_subscriptions s
-      LEFT JOIN organizations o ON s.organization_id = o.id
+      SELECT 
+        COALESCE(s.id, CONCAT('sub_auto_', o.id)) as id,
+        o.id as organization_id,
+        o.name as church_name,
+        o.plan as org_plan,
+        COALESCE(p.name, o.plan, 'Pro') as plan_name,
+        p.description as plan_description,
+        COALESCE(p.badge_text, 'Ativo') as plan_badge,
+        COALESCE(s.value, IF(s.cycle = 'YEARLY', p.yearly_price, p.monthly_price), '399.90') as value,
+        COALESCE(s.cycle, 'MONTHLY') as cycle,
+        COALESCE(s.billing_type, 'PIX') as billing_type,
+        COALESCE(s.next_due_date, DATE_ADD(CURDATE(), INTERVAL 1 MONTH)) as next_due_date,
+        COALESCE(s.status, 'ACTIVE') as status,
+        p.features as plan_features,
+        p.max_members,
+        p.max_campuses,
+        s.created_at,
+        s.updated_at
+      FROM organizations o
+      LEFT JOIN saas_subscriptions s ON s.organization_id = o.id
+      LEFT JOIN saas_plans p ON p.id = o.plan
     `;
     const params: any[] = [];
 
-    // Se não for SuperAdmin, restringe estritamente à congregação do usuário autenticado
-    if (!auth.user.isSuperAdmin) {
-      sql += ` WHERE s.organization_id = ?`;
-      params.push(auth.user.organizationId);
+    if (targetOrgId) {
+      sql += ` WHERE o.id = ?`;
+      params.push(targetOrgId);
     }
 
     sql += ` ORDER BY s.created_at DESC`;
