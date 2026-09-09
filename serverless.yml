@@ -150,6 +150,13 @@ functions:
           path: /members/self-register
           method: post
 
+  batchImportMembers:
+    handler: src/functions/members.batchImport
+    events:
+      - httpApi:
+          path: /members/batch-import
+          method: post
+
 
   getPdvProducts:
     handler: src/functions/pdv_products.getProducts

@@ -756,3 +756,270 @@ export const selfRegister: APIGatewayProxyHandlerV2 = async (event) => {
     return { statusCode: 500, headers, body: JSON.stringify({ error: "Erro ao sincronizar membro" }) };
   }
 };
+
+// 12. Importação de Membros em Lote (Batch Import com Senha Temporária no Cognito)
+export const batchImport: APIGatewayProxyHandlerV2 = async (event) => {
+  try {
+    const auth = await requireAuth(event as any);
+    if ('errorResponse' in auth) {
+      return { statusCode: auth.errorResponse.statusCode, headers, body: auth.errorResponse.body };
+    }
+
+    const roleCheck = enforceRole(auth.user, LEADERSHIP_ROLES);
+    if (!roleCheck.allowed) {
+      return { statusCode: 403, headers, body: JSON.stringify({ error: "Acesso negado para importar membros" }) };
+    }
+
+    if (!event.body) {
+      return { statusCode: 400, headers, body: JSON.stringify({ error: "Corpo da requisição ausente" }) };
+    }
+
+    const body = JSON.parse(event.body);
+    const { 
+      members: rawMembers, 
+      defaultPassword = 'MembroFaith@2026', 
+      organization_id, 
+      campus_id,
+      campus_ids
+    } = body;
+
+    if (!Array.isArray(rawMembers) || rawMembers.length === 0) {
+      return { statusCode: 400, headers, body: JSON.stringify({ error: "Nenhum membro informado na planilha" }) };
+    }
+
+    const tenantCheck = enforceTenant(auth.user, organization_id);
+    if (!tenantCheck.allowed) {
+      return { statusCode: 403, headers, body: JSON.stringify({ error: "Acesso negado: organização inválida" }) };
+    }
+    const orgValue = tenantCheck.effectiveOrgId;
+
+    const campusList = Array.isArray(campus_ids) && campus_ids.length > 0 
+      ? campus_ids 
+      : (campus_id ? [campus_id] : ['campus_sede']);
+    const primaryCampus = campusList[0] || 'campus_sede';
+    const campusIdsJson = JSON.stringify(campusList);
+
+    // Mapeia todas as células da organização para associação automática por nome
+    const cellGroupsRes = await query(
+      `SELECT id, name FROM cell_groups WHERE organization_id = ?`, 
+      [orgValue]
+    );
+    const cellGroups = cellGroupsRes.rows || [];
+    const cellMap = new Map<string, string>();
+    for (const c of cellGroups) {
+      if (c.name) {
+        cellMap.set(c.name.trim().toLowerCase(), c.id);
+      }
+      cellMap.set(c.id, c.id);
+    }
+
+    const results = {
+      total: rawMembers.length,
+      created: 0,
+      updated: 0,
+      errors: [] as { email: string; name: string; error: string }[]
+    };
+
+    for (const item of rawMembers) {
+      const email = String(item.email || '').trim().toLowerCase();
+      const name = String(item.name || '').trim();
+
+      if (!email || !name) {
+        results.errors.push({ email, name, error: "Nome e e-mail são obrigatórios" });
+        continue;
+      }
+
+      // Prevenção de escalonamento de privilégio
+      let roleValue = item.role || 'Membro';
+      const isMasterRole = ['SUPERADMIN', 'SUPER_ADMIN', 'MASTER_ADMIN', 'MASTER', 'ADMIN_MASTER'].includes(String(roleValue).toUpperCase());
+      if (isMasterRole && !auth.user.isSuperAdmin) {
+        roleValue = 'Membro';
+      }
+
+      // Resolução da Célula
+      let resolvedCellId: string | null = null;
+      if (item.cell_id && cellMap.has(item.cell_id)) {
+        resolvedCellId = cellMap.get(item.cell_id)!;
+      } else if (item.cell_name) {
+        const cKey = String(item.cell_name).trim().toLowerCase();
+        if (cellMap.has(cKey)) {
+          resolvedCellId = cellMap.get(cKey)!;
+        }
+      }
+
+      // Normalização de Data de Nascimento (suporta DD/MM/AAAA ou AAAA-MM-DD)
+      let normBirthDate: string | null = null;
+      if (item.birth_date) {
+        const rawDate = String(item.birth_date).trim();
+        if (rawDate.includes('/')) {
+          const parts = rawDate.split('/');
+          if (parts.length === 3) {
+            normBirthDate = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+          }
+        } else if (rawDate.length === 10) {
+          normBirthDate = rawDate;
+        }
+      }
+
+      const pStreet = item.address_street || null;
+      const pNumber = item.address_number || null;
+      const pComplement = item.address_complement || null;
+      const pNeighborhood = item.address_neighborhood || null;
+      const pCity = item.address_city || null;
+      const pState = item.address_state || null;
+      const pZip = item.address_zip || null;
+      const pAddressFull = pStreet 
+        ? `${pStreet}, ${pNumber || 'S/N'}${pComplement ? ` - ${pComplement}` : ''} - ${pNeighborhood || ''}, ${pCity || ''} - ${pState || ''}` 
+        : null;
+
+      let cognitoUserId: string | null = null;
+      let isNewCognitoUser = false;
+
+      // 1. Tenta criar usuário no Cognito com TemporaryPassword
+      try {
+        const createCmd = new AdminCreateUserCommand({
+          UserPoolId: USER_POOL_ID,
+          Username: email,
+          TemporaryPassword: defaultPassword,
+          UserAttributes: [
+            { Name: "email", Value: email },
+            { Name: "name", Value: name },
+            { Name: "email_verified", Value: "true" }
+          ],
+          MessageAction: "SUPPRESS" // Não envia e-mails automáticos na importação em lote
+        });
+        const cognitoRes = await cognitoClient.send(createCmd);
+        cognitoUserId = cognitoRes.User?.Username || uuidv4();
+        isNewCognitoUser = true;
+      } catch (cogErr: any) {
+        if (cogErr.name === 'UsernameExistsException') {
+          // Usuário já existe no Cognito: busca ID para vincular no banco
+          try {
+            const getCmd = new AdminGetUserCommand({
+              UserPoolId: USER_POOL_ID,
+              Username: email
+            });
+            const existingUser = await cognitoClient.send(getCmd);
+            cognitoUserId = existingUser.Username || email;
+          } catch {
+            cognitoUserId = email;
+          }
+        } else {
+          results.errors.push({ email, name, error: cogErr.message || "Erro no Cognito" });
+          continue;
+        }
+      }
+
+      // 2. Insere ou Atualiza no MySQL
+      try {
+        const checkSql = `SELECT id FROM members WHERE email = ? AND organization_id = ? LIMIT 1`;
+        const checkRes = await query(checkSql, [email, orgValue]);
+
+        if (checkRes.rows.length === 0) {
+          const insertSql = `
+            INSERT INTO members (
+              id, name, email, phone, birth_date, role, status,
+              cell_group_id, address_street, address_number, address_complement, 
+              address_neighborhood, address_city, address_state, address_zip, address,
+              organization_id, campus_id, campus_ids, invited_by
+            )
+            VALUES (?, ?, ?, ?, ?, ?, 'Ativo', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          `;
+          await query(insertSql, [
+            cognitoUserId || uuidv4(),
+            name,
+            email,
+            item.phone || null,
+            normBirthDate,
+            roleValue,
+            resolvedCellId,
+            pStreet,
+            pNumber,
+            pComplement,
+            pNeighborhood,
+            pCity,
+            pState,
+            pZip,
+            pAddressFull,
+            orgValue,
+            primaryCampus,
+            campusIdsJson,
+            auth.user.email
+          ]);
+          results.created++;
+        } else {
+          const existingId = checkRes.rows[0].id;
+          const updateSql = `
+            UPDATE members SET
+              name = COALESCE(?, name),
+              phone = COALESCE(?, phone),
+              birth_date = COALESCE(?, birth_date),
+              role = COALESCE(?, role),
+              cell_group_id = COALESCE(?, cell_group_id),
+              address_street = COALESCE(?, address_street),
+              address_number = COALESCE(?, address_number),
+              address_complement = COALESCE(?, address_complement),
+              address_neighborhood = COALESCE(?, address_neighborhood),
+              address_city = COALESCE(?, address_city),
+              address_state = COALESCE(?, address_state),
+              address_zip = COALESCE(?, address_zip),
+              address = COALESCE(?, address),
+              updated_at = NOW()
+            WHERE id = ? AND organization_id = ?
+          `;
+          await query(updateSql, [
+            name,
+            item.phone || null,
+            normBirthDate,
+            roleValue,
+            resolvedCellId,
+            pStreet,
+            pNumber,
+            pComplement,
+            pNeighborhood,
+            pCity,
+            pState,
+            pZip,
+            pAddressFull,
+            existingId,
+            orgValue
+          ]);
+          results.updated++;
+        }
+      } catch (dbErr: any) {
+        results.errors.push({ email, name, error: dbErr.message || "Erro no banco de dados" });
+      }
+    }
+
+    await logSecurityEvent({
+      organizationId: orgValue,
+      user: auth.user,
+      action: 'BATCH_IMPORT_MEMBERS',
+      resource: 'members',
+      details: {
+        total: results.total,
+        created: results.created,
+        updated: results.updated,
+        errorsCount: results.errors.length
+      },
+      event: event as any
+    });
+
+    return {
+      statusCode: 200,
+      headers,
+      body: JSON.stringify({
+        message: `Importação processada: ${results.created} criados, ${results.updated} atualizados.`,
+        ...results
+      })
+    };
+  } catch (error: any) {
+    console.error("Erro no batchImport:", error);
+    return { 
+      statusCode: 500, 
+      headers, 
+      body: JSON.stringify({ error: "Erro interno ao processar importação em lote" }) 
+    };
+  }
+};
+
