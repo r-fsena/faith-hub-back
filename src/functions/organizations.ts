@@ -133,6 +133,38 @@ export const createOrUpdateOrganization = async (event: APIGatewayProxyEvent): P
         `UPDATE church_settings SET church_name = ?, pwa_slug = ?, primary_color = ?, secondary_color = ?, status = ?, updated_at = NOW() WHERE organization_id = ?`,
         [name, cleanSlug, primary_color || '#0f766e', secondary_color || '#14b8a6', status || 'ACTIVE', id]
       );
+    } else {
+      const campusId = `campus_${cleanSlug.replace(/-/g, '_')}_sede`;
+      await query(`
+        INSERT INTO campuses (
+          id, organization_id, name, slug, is_headquarters, status
+        ) VALUES (?, ?, ?, 'sede', 1, 'ACTIVE')
+        ON DUPLICATE KEY UPDATE name = VALUES(name)
+      `, [
+        campusId,
+        orgId,
+        `${name} - Sede`
+      ]);
+
+      const settingsId = `settings_${cleanSlug.replace(/-/g, '_')}`;
+      await query(`
+        INSERT INTO church_settings (
+          id, church_name, slogan, cnpj, primary_color, secondary_color,
+          pwa_theme_color, pwa_short_name, pwa_slug, organization_id, campus_id, offline_mode, status
+        ) VALUES (?, ?, '', ?, ?, ?, ?, ?, ?, ?, ?, 0, 'ACTIVE')
+        ON DUPLICATE KEY UPDATE church_name = VALUES(church_name)
+      `, [
+        settingsId,
+        name,
+        cnpj || '',
+        primary_color || '#0f766e',
+        secondary_color || '#14b8a6',
+        primary_color || '#0f766e',
+        name.slice(0, 12),
+        cleanSlug,
+        orgId,
+        campusId
+      ]);
     }
 
     await logSecurityEvent({

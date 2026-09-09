@@ -91,14 +91,16 @@ export class ProvisioningService {
     ]);
 
     // 5. Cria a Congregação Sede Principal (campuses)
+    const headquartersName = `${proposal.church_name} - Sede`;
     await query(`
       INSERT INTO campuses (
         id, organization_id, name, slug, pastor_name, phone, whatsapp, email, address, city, state, is_headquarters, status
-      ) VALUES (?, ?, 'Sede Principal', 'sede', ?, ?, ?, ?, '', '', '', 1, 'ACTIVE')
+      ) VALUES (?, ?, ?, 'sede', ?, ?, ?, ?, '', '', '', 1, 'ACTIVE')
       ON DUPLICATE KEY UPDATE name = VALUES(name)
     `, [
       campusId,
       orgId,
+      headquartersName,
       proposal.contact_name,
       proposal.contact_phone || '',
       proposal.contact_phone || '',
