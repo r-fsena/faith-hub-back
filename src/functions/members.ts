@@ -3,7 +3,8 @@ import {
   AdminCreateUserCommand,
   AdminDisableUserCommand,
   AdminEnableUserCommand,
-  AdminResetUserPasswordCommand
+  AdminResetUserPasswordCommand,
+  AdminGetUserCommand
 } from "@aws-sdk/client-cognito-identity-provider";
 import { APIGatewayProxyHandlerV2 } from "aws-lambda";
 import { query } from "../db";
@@ -160,56 +161,101 @@ export const updateStatus: APIGatewayProxyHandlerV2 = async (event) => {
       return { statusCode: auth.errorResponse.statusCode, headers, body: auth.errorResponse.body };
     }
 
-    const roleCheck = enforceRole(auth.user, ['SUPERADMIN', 'PASTOR', 'ADMIN']);
+    const roleCheck = enforceRole(auth.user, ['SUPERADMIN', 'PASTOR', 'ADMIN', 'MASTER_ADMIN', 'SUPER_ADMIN', 'MASTER', 'ADMIN_MASTER']);
     if (!roleCheck.allowed) {
       return { statusCode: 403, headers, body: JSON.stringify({ error: "Acesso negado para alterar status de membros" }) };
     }
 
     if (!event.body) throw new Error("Missing request body");
     const { email, action } = JSON.parse(event.body);
+    const cleanEmail = String(email || '').trim().toLowerCase();
 
-    const { rows: memberRows } = await query(`SELECT organization_id FROM members WHERE email = ? LIMIT 1`, [email]);
-    if (memberRows.length === 0) {
-      return { statusCode: 404, headers, body: JSON.stringify({ error: "Membro não encontrado" }) };
+    if (!cleanEmail) {
+      return { statusCode: 400, headers, body: JSON.stringify({ error: "E-mail é obrigatório" }) };
     }
 
-    const tenantCheck = enforceTenant(auth.user, memberRows[0].organization_id);
+    const { rows: memberRows } = await query(
+      `SELECT id, organization_id, email, status FROM members WHERE LOWER(TRIM(email)) = ? LIMIT 1`, 
+      [cleanEmail]
+    );
+
+    if (memberRows.length === 0) {
+      return { statusCode: 404, headers, body: JSON.stringify({ error: "Membro não encontrado no banco de dados" }) };
+    }
+
+    const targetOrgId = memberRows[0].organization_id;
+    // Master admins/Superadmins can manage any member, including other master users
+    const isMasterTarget = targetOrgId === 'org_master';
+    if (isMasterTarget && !auth.user.isSuperAdmin) {
+      return { statusCode: 403, headers, body: JSON.stringify({ error: "Apenas administradores Master podem alterar o status de outro Master" }) };
+    }
+
+    const tenantCheck = enforceTenant(auth.user, targetOrgId);
     if (!tenantCheck.allowed) {
       return { statusCode: 403, headers, body: JSON.stringify({ error: "Acesso negado a membros de outra organização" }) };
     }
 
-    const CommandClass = action === 'disable' ? AdminDisableUserCommand : AdminEnableUserCommand;
-    const command = new CommandClass({
-      UserPoolId: USER_POOL_ID,
-      Username: email
-    });
-    await cognitoClient.send(command);
+    // 1. Tenta atualizar no Cognito com resolução segura de Username
+    try {
+      let targetUsername = cleanEmail;
+      try {
+        const cognitoUser = await cognitoClient.send(new AdminGetUserCommand({
+          UserPoolId: USER_POOL_ID,
+          Username: cleanEmail
+        }));
+        if (cognitoUser?.Username) {
+          targetUsername = cognitoUser.Username;
+        }
+      } catch (err: any) {
+        console.warn(`[UPDATE_STATUS] Usuário ${cleanEmail} não localizado no Cognito por email:`, err.message);
+      }
 
+      const CommandClass = action === 'disable' ? AdminDisableUserCommand : AdminEnableUserCommand;
+      await cognitoClient.send(new CommandClass({
+        UserPoolId: USER_POOL_ID,
+        Username: targetUsername
+      }));
+    } catch (cognitoError: any) {
+      console.warn(`[UPDATE_STATUS] Aviso ao sincronizar com Cognito para ${cleanEmail}:`, cognitoError.name, cognitoError.message);
+      // Se não encontrado no Cognito, não impede a alteração de status no banco
+    }
+
+    // 2. Atualiza no MySQL DB
     const statusValue = action === 'disable' ? 'INACTIVE' : 'ACTIVE';
-    const updateQuery = `UPDATE members SET status = ?, updated_at = NOW() WHERE email = ?`;
-    await query(updateQuery, [statusValue, email]);
+    const updateQuery = `UPDATE members SET status = ?, updated_at = NOW() WHERE LOWER(TRIM(email)) = ?`;
+    await query(updateQuery, [statusValue, cleanEmail]);
 
     await logSecurityEvent({
       organizationId: tenantCheck.effectiveOrgId,
       user: auth.user,
       action: action === 'disable' ? 'DISABLE_MEMBER' : 'ENABLE_MEMBER',
       resource: 'members',
-      details: { email, new_status: statusValue },
+      details: { email: cleanEmail, new_status: statusValue },
       event: event as any
     });
 
-    return { statusCode: 200, headers, body: JSON.stringify({ message: `Status alterado para ${action}` }) };
+    return { 
+      statusCode: 200, 
+      headers, 
+      body: JSON.stringify({ 
+        message: `Status alterado para ${statusValue} com sucesso.` 
+      }) 
+    };
   } catch (error: any) {
     console.error('Erro ao atualizar status do membro:', error);
-    return { statusCode: 500, headers, body: JSON.stringify({ error: "Erro ao atualizar status do membro" }) };
+    return { 
+      statusCode: 500, 
+      headers, 
+      body: JSON.stringify({ error: error.message || "Erro ao atualizar status do membro" }) 
+    };
   }
 };
 
-// 3. Reset de Senha Forçado
+// 3. Reset de Senha / Reenvio de Convite
 export const resetPassword: APIGatewayProxyHandlerV2 = async (event) => {
   try {
     const rateLimit = checkRateLimit(event as any, {
-      maxRequests: 5,
+      maxRequests: 10,
       windowSeconds: 60,
       identifierPrefix: 'reset-password'
     });
@@ -226,19 +272,84 @@ export const resetPassword: APIGatewayProxyHandlerV2 = async (event) => {
       return { statusCode: auth.errorResponse.statusCode, headers, body: auth.errorResponse.body };
     }
 
+    const roleCheck = enforceRole(auth.user, ['SUPERADMIN', 'PASTOR', 'ADMIN', 'MASTER_ADMIN', 'SUPER_ADMIN', 'MASTER', 'ADMIN_MASTER']);
+    if (!roleCheck.allowed) {
+      return { statusCode: 403, headers, body: JSON.stringify({ error: "Acesso negado para redefinir senhas" }) };
+    }
+
     if (!event.body) throw new Error("Missing request body");
     const { email } = JSON.parse(event.body);
+    const cleanEmail = String(email || '').trim().toLowerCase();
 
-    const command = new AdminResetUserPasswordCommand({
-      UserPoolId: USER_POOL_ID,
-      Username: email
-    });
-    await cognitoClient.send(command);
+    if (!cleanEmail) {
+      return { statusCode: 400, headers, body: JSON.stringify({ error: "E-mail obrigatório" }) };
+    }
 
-    return { statusCode: 200, headers, body: JSON.stringify({ message: "E-mail de redefinição enviado pelo AWS Cognito." }) };
+    // Identifica o status atual do usuário no Cognito
+    let cognitoUser: any = null;
+    try {
+      cognitoUser = await cognitoClient.send(new AdminGetUserCommand({
+        UserPoolId: USER_POOL_ID,
+        Username: cleanEmail
+      }));
+    } catch (err: any) {
+      console.warn(`[RESET_PASSWORD] Usuário ${cleanEmail} não encontrado inicialmente pelo email:`, err.message);
+    }
+
+    const targetUsername = cognitoUser?.Username || cleanEmail;
+    const userStatus = cognitoUser?.UserStatus;
+
+    // Se o usuário estiver em FORCE_CHANGE_PASSWORD (ainda não concluiu primeiro acesso),
+    // o comando AdminResetUserPassword falha por restrição da AWS.
+    // O comando correto é AdminCreateUserCommand com MessageAction: 'RESEND' usando o e-mail.
+    if (userStatus === 'FORCE_CHANGE_PASSWORD') {
+      await cognitoClient.send(new AdminCreateUserCommand({
+        UserPoolId: USER_POOL_ID,
+        Username: cleanEmail,
+        MessageAction: 'RESEND'
+      }));
+      return { 
+        statusCode: 200, 
+        headers, 
+        body: JSON.stringify({ message: "Convite e senha provisória reenviados com sucesso pelo AWS Cognito." }) 
+      };
+    }
+
+    // Se já estiver confirmado ou em outro estado, envia o reset padrão
+    try {
+      const command = new AdminResetUserPasswordCommand({
+        UserPoolId: USER_POOL_ID,
+        Username: cleanEmail
+      });
+      await cognitoClient.send(command);
+      return { 
+        statusCode: 200, 
+        headers, 
+        body: JSON.stringify({ message: "E-mail de redefinição enviado com sucesso pelo AWS Cognito." }) 
+      };
+    } catch (resetErr: any) {
+      // Fallback: se o reset falhar por estado não confirmado, tenta RESEND usando o e-mail
+      if (resetErr.name === 'NotAuthorizedException' || resetErr.message?.includes('cannot be reset')) {
+        await cognitoClient.send(new AdminCreateUserCommand({
+          UserPoolId: USER_POOL_ID,
+          Username: cleanEmail,
+          MessageAction: 'RESEND'
+        }));
+        return { 
+          statusCode: 200, 
+          headers, 
+          body: JSON.stringify({ message: "Convite de ativação reenviado com sucesso pelo AWS Cognito." }) 
+        };
+      }
+      throw resetErr;
+    }
   } catch (error: any) {
     console.error('Erro ao solicitar reset de senha:', error);
-    return { statusCode: 500, headers, body: JSON.stringify({ error: "Erro ao processar reset de senha" }) };
+    return { 
+      statusCode: 500, 
+      headers, 
+      body: JSON.stringify({ error: error.message || "Erro ao processar reenvio de acesso" }) 
+    };
   }
 };
 
