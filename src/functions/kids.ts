@@ -3,6 +3,7 @@ import { query, apiResponse } from '../db';
 import { randomUUID } from 'crypto';
 import { requireAuth, enforceRole, enforceTenant, getAuthenticatedUser } from '../services/authMiddleware';
 import { logSecurityEvent } from '../services/auditLogService';
+import { checkRateLimit } from '../services/rateLimiter';
 
 const KIDS_ADMIN_ROLES = ['SUPERADMIN', 'PASTOR', 'ADMIN', 'LEADER', 'VOLUNTEER'];
 
@@ -119,23 +120,44 @@ export const saveRoom = async (event: APIGatewayProxyEvent): Promise<APIGatewayP
 };
 
 // ==========================================
-// 2. GET /kids/families (Lista Famílias / Membros com filhos) - PROTEGIDO
+// 2. GET /kids/families (Lista Famílias / Membros com filhos para Totem ou Gestão)
 // ==========================================
 export const getFamilies = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   try {
-    const auth = await requireAuth(event);
-    if ('errorResponse' in auth) return auth.errorResponse;
-
-    const roleCheck = enforceRole(auth.user, KIDS_ADMIN_ROLES);
-    if (!roleCheck.allowed) return roleCheck.errorResponse!;
-
+    const user = await getAuthenticatedUser(event);
     const requestedOrgId = event.queryStringParameters?.organization_id;
-    const tenantCheck = enforceTenant(auth.user, requestedOrgId);
-    if (!tenantCheck.allowed) return tenantCheck.errorResponse!;
-    const orgId = tenantCheck.effectiveOrgId;
-
-    const search = event.queryStringParameters?.search;
+    const search = event.queryStringParameters?.search?.trim() || '';
     const campusId = event.queryStringParameters?.campus_id;
+
+    let orgId: string;
+    let isPrivilegedStaff = false;
+
+    if (user) {
+      const tenantCheck = enforceTenant(user, requestedOrgId);
+      if (!tenantCheck.allowed) return tenantCheck.errorResponse!;
+      orgId = tenantCheck.effectiveOrgId;
+      isPrivilegedStaff = KIDS_ADMIN_ROLES.includes(user.role) || user.isSuperAdmin;
+    } else {
+      // Modo Totem de Autoatendimento / Kiosk da Congregação
+      if (!requestedOrgId) {
+        return apiResponse(400, { message: 'organization_id é obrigatório para consulta no Totem.' });
+      }
+      // Proteção de Rate Limiting por IP para rotas de totem público
+      const rateLimitCheck = checkRateLimit(event, {
+        maxRequests: 60,
+        windowSeconds: 60,
+        identifierPrefix: `totem_families_${requestedOrgId}`
+      });
+      if (!rateLimitCheck.allowed) {
+        return rateLimitCheck.errorResponse || apiResponse(429, { message: 'Muitas consultas simultâneas no totem. Aguarde alguns instantes.' });
+      }
+      orgId = requestedOrgId;
+    }
+
+    // Se NÃO for staff administrativo (ex: totem público ou membro comum), exige pelo menos 2 caracteres na busca
+    if (!isPrivilegedStaff && search.length < 2) {
+      return apiResponse(200, { data: [] });
+    }
 
     let sql = `
       SELECT 
@@ -177,8 +199,20 @@ export const getFamilies = async (event: APIGatewayProxyEvent): Promise<APIGatew
     }
 
     if (search) {
-      sql += ` AND (m.name LIKE ? OR m.email LIKE ? OR m.phone LIKE ?)`;
-      params.push(`%${search}%`, `%${search}%`, `%${search}%`);
+      const cleanDigits = search.replace(/\D/g, '');
+      if (cleanDigits.length >= 4) {
+        // Se houver 4+ dígitos, busca também por telefone desmascarado
+        sql += ` AND (
+          m.name LIKE ? 
+          OR m.email LIKE ? 
+          OR m.phone LIKE ? 
+          OR REPLACE(REPLACE(REPLACE(REPLACE(m.phone, '(', ''), ')', ''), '-', ''), ' ', '') LIKE ?
+        )`;
+        params.push(`%${search}%`, `%${search}%`, `%${search}%`, `%${cleanDigits}%`);
+      } else {
+        sql += ` AND (m.name LIKE ? OR m.email LIKE ? OR m.phone LIKE ?)`;
+        params.push(`%${search}%`, `%${search}%`, `%${search}%`);
+      }
     }
 
     sql += ` ORDER BY m.name ASC LIMIT 100`;
@@ -192,7 +226,7 @@ export const getFamilies = async (event: APIGatewayProxyEvent): Promise<APIGatew
 
     return apiResponse(200, { data: formatted });
   } catch (error: any) {
-    console.error('Erro ao buscar famílias:', error);
+    console.error('Erro ao buscar famílias no totem Kids:', error);
     return apiResponse(500, { message: 'Erro ao buscar famílias' });
   }
 };

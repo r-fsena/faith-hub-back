@@ -85,6 +85,7 @@ async function runFeatureFlagsMigration() {
       { key: 'pdv.mobile_inapp_ordering', cat: 'PDV', desc: 'Autoatendimento de pedidos pelo App/PWA dos membros', def: 1 },
       { key: 'pdv.counter_quick_sale', cat: 'PDV', desc: 'Frente de caixa rápida para operadores de balcão', def: 1 },
       { key: 'pdv.delivery_mode_home', cat: 'PDV', desc: 'Opção de entrega a domicílio além da retirada no local', def: 0 },
+      { key: 'pdv.catalog_layout', cat: 'PDV', desc: 'Layout do catálogo no App (Lista ou Grade) e permissão de alternância', def: 1, config: { layout: 'list', allow_user_toggle: true } },
 
       // Devocionais
       { key: 'devotionals.module_enabled', cat: 'Devocionais', desc: 'Habilita os devocionais diários', def: 1 },
