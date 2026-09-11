@@ -118,7 +118,8 @@ async function runFeatureFlagsMigration() {
       { key: 'system.custom_domain', cat: 'Sistema', desc: 'Habilita roteamento por domínio próprio CNAME da igreja', def: 1 },
       { key: 'system.custom_theme_colors', cat: 'Sistema', desc: 'Customização de paleta de cores e logomarcas', def: 1 },
       { key: 'system.pwa_offline_sync', cat: 'Sistema', desc: 'Modo offline com sincronização em segundo plano no PWA', def: 1 },
-      { key: 'system.saas_subscription_portal', cat: 'Sistema', desc: 'Visualização de faturas e planos pelo tenant no admin', def: 1 }
+      { key: 'system.saas_subscription_portal', cat: 'Sistema', desc: 'Visualização de faturas e planos pelo tenant no admin', def: 1 },
+      { key: 'pwa.v2_experience', cat: 'Sistema', desc: 'Nova experiência de aplicativo nativo V2 (fluidez, abas rápidas e UI dock)', def: 0 }
     ];
 
     // Inserir flags globais padrão
