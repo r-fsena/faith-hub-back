@@ -49,6 +49,31 @@ export const DEFAULT_STORE_CONFIG = {
   store_counter_label: 'Balcão da Loja da Igreja'
 };
 
+export const DEFAULT_WELCOME_SCREEN_CONFIG = {
+  enabled: true,
+  hero_image_url: 'https://images.unsplash.com/photo-1511632765486-a01980e01a18?auto=format&fit=crop&w=1200&q=80',
+  headline: 'Viva o propósito da sua vida em comunidade',
+  subtitle: 'Acompanhe devocionais, conecte-se à sua célula e participe de encontros que transformam vidas.',
+  allow_guest_browse: true,
+  slides: [
+    {
+      badge: 'CÉLULAS',
+      title: 'Conecte-se em um Grupo',
+      description: 'Amizades reais e comunhão nos lares da nossa congregação.'
+    },
+    {
+      badge: 'PALAVRA',
+      title: 'Devocionais Diários',
+      description: 'Mensagens em vídeo e estudos bíblicos preparados pelos pastores.'
+    },
+    {
+      badge: 'EVENTOS',
+      title: 'Eventos & Ministério Kids',
+      description: 'Inscrições com QR Code express e check-in seguro para seus filhos.'
+    }
+  ]
+};
+
 const DEFAULT_SETTINGS = {
   id: 'default_church',
   church_name: 'Igreja Faith Hub',
@@ -80,7 +105,8 @@ const DEFAULT_SETTINGS = {
   organization_id: 'org_default',
   kanban_config: DEFAULT_KANBAN_CONFIG,
   bible_config: DEFAULT_BIBLE_CONFIG,
-  store_config: DEFAULT_STORE_CONFIG
+  store_config: DEFAULT_STORE_CONFIG,
+  welcome_screen_config: DEFAULT_WELCOME_SCREEN_CONFIG
 };
 
 function formatSettings(item: any) {
@@ -120,12 +146,22 @@ function formatSettings(item: any) {
     }
   }
 
+  let welcomeScreen = item.welcome_screen_config;
+  if (welcomeScreen && typeof welcomeScreen === 'string') {
+    try {
+      welcomeScreen = JSON.parse(welcomeScreen);
+    } catch {
+      welcomeScreen = null;
+    }
+  }
+
   return {
     ...DEFAULT_SETTINGS,
     ...item,
     kanban_config: kanban || DEFAULT_KANBAN_CONFIG,
     bible_config: bible || DEFAULT_BIBLE_CONFIG,
     store_config: store || DEFAULT_STORE_CONFIG,
+    welcome_screen_config: welcomeScreen || DEFAULT_WELCOME_SCREEN_CONFIG,
     popup_notice: popupNotice || null,
     offline_mode: Boolean(item.offline_mode)
   };
@@ -262,6 +298,9 @@ export const updateSettings = async (event: APIGatewayProxyEvent): Promise<APIGa
     const bibleValue = body.bible_config ? (typeof body.bible_config === 'string' ? body.bible_config : JSON.stringify(body.bible_config)) : JSON.stringify(DEFAULT_BIBLE_CONFIG);
     const storeValue = body.store_config ? (typeof body.store_config === 'string' ? body.store_config : JSON.stringify(body.store_config)) : JSON.stringify(DEFAULT_STORE_CONFIG);
     const popupNoticeValue = body.popup_notice ? (typeof body.popup_notice === 'string' ? body.popup_notice : JSON.stringify(body.popup_notice)) : null;
+    const welcomeScreenValue = body.welcome_screen_config 
+      ? (typeof body.welcome_screen_config === 'string' ? body.welcome_screen_config : JSON.stringify(body.welcome_screen_config))
+      : (body.welcomeScreenConfig ? JSON.stringify(body.welcomeScreenConfig) : JSON.stringify(DEFAULT_WELCOME_SCREEN_CONFIG));
 
     const settings = {
       ...DEFAULT_SETTINGS,
@@ -277,7 +316,8 @@ export const updateSettings = async (event: APIGatewayProxyEvent): Promise<APIGa
       kanban_config: body.kanban_config || DEFAULT_KANBAN_CONFIG,
       bible_config: body.bible_config || DEFAULT_BIBLE_CONFIG,
       store_config: body.store_config || DEFAULT_STORE_CONFIG,
-      popup_notice: body.popup_notice || null
+      popup_notice: body.popup_notice || null,
+      welcome_screen_config: body.welcome_screen_config || DEFAULT_WELCOME_SCREEN_CONFIG
     };
 
     const sql = `
@@ -287,8 +327,8 @@ export const updateSettings = async (event: APIGatewayProxyEvent): Promise<APIGa
         instagram_url, youtube_url, facebook_url, website_url,
         logo_icon_url, logo_header_url, banner_url,
         primary_color, secondary_color, pwa_theme_color, pwa_short_name, pwa_slug, offline_mode,
-        organization_id, kanban_config, bible_config, store_config, popup_notice
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        organization_id, kanban_config, bible_config, store_config, popup_notice, welcome_screen_config
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON DUPLICATE KEY UPDATE
         church_name = VALUES(church_name),
         slogan = VALUES(slogan),
@@ -321,6 +361,7 @@ export const updateSettings = async (event: APIGatewayProxyEvent): Promise<APIGa
         bible_config = VALUES(bible_config),
         store_config = VALUES(store_config),
         popup_notice = VALUES(popup_notice),
+        welcome_screen_config = VALUES(welcome_screen_config),
         updated_at = NOW()
     `;
 
@@ -356,7 +397,8 @@ export const updateSettings = async (event: APIGatewayProxyEvent): Promise<APIGa
       kanbanValue,
       bibleValue,
       storeValue,
-      popupNoticeValue
+      popupNoticeValue,
+      welcomeScreenValue
     ];
 
     await query(sql, params);
