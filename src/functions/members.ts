@@ -496,10 +496,13 @@ export const get: APIGatewayProxyHandlerV2 = async (event) => {
     }
 
     const memberData = dbResult.rows[0];
+    const isSelf = rawId === 'me' || rawId === 'user_me' || auth.user.userId === memberData.id || (auth.user.email && auth.user.email.toLowerCase() === (memberData.email || '').toLowerCase());
 
-    const tenantCheck = enforceTenant(auth.user, memberData.organization_id);
-    if (!tenantCheck.allowed) {
-      return { statusCode: 403, headers, body: JSON.stringify({ error: "Acesso negado" }) };
+    if (!isSelf) {
+      const tenantCheck = enforceTenant(auth.user, memberData.organization_id);
+      if (!tenantCheck.allowed) {
+        return { statusCode: 403, headers, body: JSON.stringify({ error: "Acesso negado" }) };
+      }
     }
 
     memberData.campus_ids = typeof memberData.campus_ids === 'string' ? JSON.parse(memberData.campus_ids || '[]') : (memberData.campus_ids || []);
@@ -519,24 +522,45 @@ export const update: APIGatewayProxyHandlerV2 = async (event) => {
       return { statusCode: auth.errorResponse.statusCode, headers, body: auth.errorResponse.body };
     }
 
-    const id = event.pathParameters?.id;
-    if (!id) throw new Error("Missing member ID");
+    const rawId = event.pathParameters?.id;
+    if (!rawId) throw new Error("Missing member ID");
 
-    const { rows: existingRows } = await query(`SELECT organization_id FROM members WHERE id = ? LIMIT 1`, [id]);
+    const effectiveId = (rawId === 'me' || rawId === 'user_me') ? auth.user.userId : rawId;
+    const effectiveEmail = (rawId === 'me' || rawId === 'user_me') ? (auth.user.email || '') : '';
+
+    let { rows: existingRows } = await query(
+      `SELECT id, organization_id, email FROM members WHERE (id = ? AND id != '') OR (email IS NOT NULL AND LOWER(email) = LOWER(?)) LIMIT 1`, 
+      [effectiveId, effectiveEmail || effectiveId]
+    );
+
     if (existingRows.length === 0) {
-      return { statusCode: 404, headers, body: JSON.stringify({ error: "Membro não encontrado" }) };
+      if (rawId === 'me' || rawId === 'user_me' || auth.user.email) {
+        const newId = auth.user.userId || uuidv4();
+        const userOrg = auth.user.organizationId || 'org_default';
+        await query(
+          `INSERT INTO members (id, name, email, role, status, organization_id, campus_id, campus_ids)
+           VALUES (?, ?, ?, 'Membro', 'Ativo', ?, 'campus_sede', '["campus_sede"]')`,
+          [newId, auth.user.name || 'Membro', auth.user.email, userOrg]
+        );
+        existingRows = [{ id: newId, organization_id: userOrg, email: auth.user.email }];
+      } else {
+        return { statusCode: 404, headers, body: JSON.stringify({ error: "Membro não encontrado" }) };
+      }
     }
 
-    const isSelf = auth.user.userId === id;
+    const targetMemberId = existingRows[0].id;
+    const isSelf = rawId === 'me' || rawId === 'user_me' || auth.user.userId === targetMemberId || (auth.user.email && auth.user.email.toLowerCase() === (existingRows[0].email || '').toLowerCase());
     const isLeadership = ['SUPERADMIN', 'PASTOR', 'ADMIN', 'LEADER'].includes(auth.user.role);
 
     if (!isSelf && !isLeadership) {
       return { statusCode: 403, headers, body: JSON.stringify({ error: "Permissão insuficiente para alterar outro perfil" }) };
     }
 
-    const tenantCheck = enforceTenant(auth.user, existingRows[0].organization_id);
-    if (!tenantCheck.allowed) {
-      return { statusCode: 403, headers, body: JSON.stringify({ error: "Acesso negado" }) };
+    if (!isSelf) {
+      const tenantCheck = enforceTenant(auth.user, existingRows[0].organization_id);
+      if (!tenantCheck.allowed) {
+        return { statusCode: 403, headers, body: JSON.stringify({ error: "Acesso negado" }) };
+      }
     }
 
     const body = JSON.parse(event.body || '{}');
@@ -608,7 +632,7 @@ export const update: APIGatewayProxyHandlerV2 = async (event) => {
       pName, pCpf, pBaptism, pCell, pRole, pPhone, pAddress, pAvatar, pCampus, pCampusIds,
       pBirthDate, pStreet, pNumber, pComplement, pNeighborhood, pCity, pState, pZip,
       pOperational,
-      id
+      targetMemberId
     ]);
 
     await logSecurityEvent({
@@ -616,11 +640,11 @@ export const update: APIGatewayProxyHandlerV2 = async (event) => {
       user: auth.user,
       action: 'UPDATE_MEMBER_PROFILE',
       resource: 'members',
-      resourceId: id,
+      resourceId: targetMemberId,
       event: event as any
     });
 
-    return { statusCode: 200, headers, body: JSON.stringify({ message: "Perfil atualizado", id }) };
+    return { statusCode: 200, headers, body: JSON.stringify({ message: "Perfil atualizado", id: targetMemberId }) };
   } catch (error: any) {
     console.error('Erro ao atualizar membro:', error);
     return { statusCode: 500, headers, body: JSON.stringify({ error: "Erro ao atualizar membro" }) };
@@ -708,7 +732,7 @@ export const selfRegister: APIGatewayProxyHandlerV2 = async (event) => {
     const { 
       id, email, name, phone, birthdate, birth_date, birthDate, address,
       address_street, address_number, address_complement, address_neighborhood, address_city, address_state, address_zip,
-      organization_id, campus_id 
+      organization_id, campus_id, avatar_url 
     } = JSON.parse(event.body);
 
     if (!email) throw new Error("Email is required");
@@ -728,6 +752,7 @@ export const selfRegister: APIGatewayProxyHandlerV2 = async (event) => {
     const pState = address_state || null;
     const pZip = address_zip || null;
     const pAddressFull = address || (pStreet ? `${pStreet}, ${pNumber || 'S/N'}${pComplement ? ` - ${pComplement}` : ''} - ${pNeighborhood || ''}, ${pCity || ''} - ${pState || ''}` : null);
+    const pAvatar = avatar_url || null;
 
     const checkSql = `SELECT id FROM members WHERE id = ? OR LOWER(email) = LOWER(?) LIMIT 1`;
     const checkRes = await query(checkSql, [memberId, email]);
@@ -737,14 +762,14 @@ export const selfRegister: APIGatewayProxyHandlerV2 = async (event) => {
         INSERT INTO members (
           id, name, email, phone, birth_date, 
           address_street, address_number, address_complement, address_neighborhood, address_city, address_state, address_zip, address,
-          role, status, organization_id, campus_id, campus_ids
+          avatar_url, role, status, organization_id, campus_id, campus_ids
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Membro', 'Ativo', ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Membro', 'Ativo', ?, ?, ?)
       `;
       await query(insertSql, [
         memberId, memberName, email, phone || null, effectiveBirthDate,
         pStreet, pNumber, pComplement, pNeighborhood, pCity, pState, pZip, pAddressFull,
-        orgValue, primaryCampus, campusIdsJson
+        pAvatar, orgValue, primaryCampus, campusIdsJson
       ]);
     } else {
       const existingId = checkRes.rows[0].id;
@@ -762,6 +787,8 @@ export const selfRegister: APIGatewayProxyHandlerV2 = async (event) => {
           address_state = COALESCE(?, address_state),
           address_zip = COALESCE(?, address_zip),
           address = COALESCE(?, address),
+          avatar_url = COALESCE(?, avatar_url),
+          organization_id = CASE WHEN (organization_id = 'org_default' OR organization_id IS NULL) AND ? IS NOT NULL AND ? != 'org_default' THEN ? ELSE organization_id END,
           status = 'Ativo',
           updated_at = NOW()
         WHERE id = ?
@@ -769,6 +796,8 @@ export const selfRegister: APIGatewayProxyHandlerV2 = async (event) => {
       await query(updateSql, [
         name || null, phone || null, effectiveBirthDate,
         pStreet, pNumber, pComplement, pNeighborhood, pCity, pState, pZip, pAddressFull,
+        pAvatar,
+        orgValue, orgValue, orgValue,
         existingId
       ]);
     }
