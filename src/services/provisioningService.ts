@@ -111,14 +111,27 @@ export class ProvisioningService {
     let cognitoUserId = uuidv4();
     try {
       if (USER_POOL_ID) {
+        const userAttributes: { Name: string; Value: string }[] = [
+          { Name: 'email', Value: proposal.contact_email },
+          { Name: 'name', Value: proposal.contact_name },
+          { Name: 'email_verified', Value: 'true' }
+        ];
+
+        if (proposal.contact_phone) {
+          const cleanPhone = String(proposal.contact_phone).replace(/\D/g, '');
+          if (cleanPhone.length >= 10) {
+            const e164 = String(proposal.contact_phone).startsWith('+')
+              ? String(proposal.contact_phone)
+              : (cleanPhone.startsWith('55') ? `+${cleanPhone}` : `+55${cleanPhone}`);
+            userAttributes.push({ Name: 'phone_number', Value: e164 });
+            userAttributes.push({ Name: 'phone_number_verified', Value: 'true' });
+          }
+        }
+
         const command = new AdminCreateUserCommand({
           UserPoolId: USER_POOL_ID,
           Username: proposal.contact_email,
-          UserAttributes: [
-            { Name: 'email', Value: proposal.contact_email },
-            { Name: 'name', Value: proposal.contact_name },
-            { Name: 'email_verified', Value: 'true' }
-          ],
+          UserAttributes: userAttributes,
           DesiredDeliveryMediums: ['EMAIL']
         });
 

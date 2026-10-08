@@ -67,14 +67,27 @@ export const invite: APIGatewayProxyHandlerV2 = async (event) => {
 
     await ensureOperationalColumn();
 
+    const userAttributes: { Name: string; Value: string }[] = [
+      { Name: "email", Value: email },
+      { Name: "name", Value: name },
+      { Name: "email_verified", Value: "true" }
+    ];
+
+    if (phone) {
+      const cleanPhone = String(phone).replace(/\D/g, '');
+      if (cleanPhone.length >= 10) {
+        const e164 = String(phone).startsWith('+')
+          ? String(phone)
+          : (cleanPhone.startsWith('55') ? `+${cleanPhone}` : `+55${cleanPhone}`);
+        userAttributes.push({ Name: "phone_number", Value: e164 });
+        userAttributes.push({ Name: "phone_number_verified", Value: "true" });
+      }
+    }
+
     const command = new AdminCreateUserCommand({
       UserPoolId: USER_POOL_ID,
       Username: email,
-      UserAttributes: [
-        { Name: "email", Value: email },
-        { Name: "name", Value: name },
-        { Name: "email_verified", Value: "true" }
-      ],
+      UserAttributes: userAttributes,
       DesiredDeliveryMediums: ["EMAIL"]
     });
 
@@ -933,15 +946,27 @@ export const batchImport: APIGatewayProxyHandlerV2 = async (event) => {
 
       // 1. Tenta criar usuário no Cognito com TemporaryPassword
       try {
+        const userAttributes: { Name: string; Value: string }[] = [
+          { Name: "email", Value: email },
+          { Name: "name", Value: name },
+          { Name: "email_verified", Value: "true" }
+        ];
+        if (item.phone) {
+          const cleanPhone = String(item.phone).replace(/\D/g, '');
+          if (cleanPhone.length >= 10) {
+            const e164 = String(item.phone).startsWith('+')
+              ? String(item.phone)
+              : (cleanPhone.startsWith('55') ? `+${cleanPhone}` : `+55${cleanPhone}`);
+            userAttributes.push({ Name: "phone_number", Value: e164 });
+            userAttributes.push({ Name: "phone_number_verified", Value: "true" });
+          }
+        }
+
         const createCmd = new AdminCreateUserCommand({
           UserPoolId: USER_POOL_ID,
           Username: email,
           TemporaryPassword: defaultPassword,
-          UserAttributes: [
-            { Name: "email", Value: email },
-            { Name: "name", Value: name },
-            { Name: "email_verified", Value: "true" }
-          ],
+          UserAttributes: userAttributes,
           MessageAction: "SUPPRESS" // Não envia e-mails automáticos na importação em lote
         });
         const cognitoRes = await cognitoClient.send(createCmd);
