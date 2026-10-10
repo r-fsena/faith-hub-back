@@ -71,21 +71,26 @@ export const getTodayDevotional = async (event: APIGatewayProxyEvent): Promise<A
     const { rows: devoRows } = await query(sqlToday, paramsToday);
 
     if (devoRows.length === 0) {
-      let sqlLatest = `SELECT * FROM devotionals WHERE status = 'PUBLISHED' AND organization_id = ?`;
-      const paramsLatest: any[] = [orgId];
+      if (event.queryStringParameters?.fallback === 'true') {
+        let sqlLatest = `SELECT * FROM devotionals WHERE status = 'PUBLISHED' AND organization_id = ?`;
+        const paramsLatest: any[] = [orgId];
 
-      if (campusId && campusId !== 'all') {
-        sqlLatest += ` AND (campus_id = ? OR campus_id IS NULL)`;
-        paramsLatest.push(campusId);
+        if (campusId && campusId !== 'all') {
+          sqlLatest += ` AND (campus_id = ? OR campus_id IS NULL)`;
+          paramsLatest.push(campusId);
+        }
+
+        sqlLatest += ` ORDER BY available_date DESC LIMIT 1`;
+
+        const { rows: latestRows } = await query(sqlLatest, paramsLatest);
+        if (latestRows.length > 0) {
+          devoRows.push(latestRows[0]);
+        } else {
+          return apiResponse(200, null);
+        }
+      } else {
+        return apiResponse(200, null);
       }
-
-      sqlLatest += ` ORDER BY available_date DESC LIMIT 1`;
-
-      const { rows: latestRows } = await query(sqlLatest, paramsLatest);
-      if (latestRows.length === 0) {
-        return apiResponse(404, { message: 'Nenhum devocional disponível para esta congregação.' });
-      }
-      devoRows.push(latestRows[0]);
     }
 
     const devotional = devoRows[0];
