@@ -31,10 +31,24 @@ export const getProducts = async (event: APIGatewayProxyEvent): Promise<APIGatew
 
     const { rows } = await query(sql, params);
 
+    const parseImages = (raw: any): string[] => {
+      if (Array.isArray(raw)) return raw.filter(Boolean);
+      if (typeof raw === 'string' && raw.trim()) {
+        try {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) return parsed.filter(Boolean);
+          return [raw.trim()];
+        } catch {
+          return [raw.trim()];
+        }
+      }
+      return [];
+    };
+
     const formatted = rows.map((r: any) => ({
       ...r,
       price: Number(r.price) || 0,
-      image_urls: typeof r.image_urls === 'string' ? JSON.parse(r.image_urls || '[]') : (r.image_urls || [])
+      image_urls: parseImages(r.image_urls)
     }));
 
     return apiResponse(200, formatted);
