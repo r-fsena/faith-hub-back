@@ -318,3 +318,181 @@ export const removeMember = async (event: APIGatewayProxyEvent): Promise<APIGate
     return apiResponse(500, { error: 'Erro ao remover membro da célula' });
   }
 };
+
+// POST /cell-groups/{id}/meetings -> Registrar reunião semanal e chamada da célula
+export const recordMeeting = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  try {
+    const auth = await requireAuth(event);
+    if ('errorResponse' in auth) return auth.errorResponse;
+
+    const groupId = event.pathParameters?.id;
+    if (!groupId) return apiResponse(400, { error: 'ID da célula faltante' });
+
+    const { rows: cellRows } = await query(`SELECT organization_id, campus_id, leader_id, name FROM cell_groups WHERE id = ? LIMIT 1`, [groupId]);
+    if (cellRows.length === 0) return apiResponse(404, { error: 'Célula não encontrada' });
+    const cell = cellRows[0];
+
+    const tenantCheck = enforceTenant(auth.user, cell.organization_id);
+    if (!tenantCheck.allowed) return tenantCheck.errorResponse!;
+
+    const body = JSON.parse(event.body || '{}');
+    const { 
+      meeting_date, 
+      study_topic, 
+      offerings_amount = 0, 
+      notes, 
+      attendees = [] 
+    } = body;
+
+    if (!meeting_date) {
+      return apiResponse(400, { error: 'Data da reunião é obrigatória (YYYY-MM-DD)' });
+    }
+
+    const meetingId = uuidv4();
+    const effectiveCampusId = cell.campus_id || 'campus_sede';
+    const leaderId = auth.user.userId || cell.leader_id || null;
+
+    // 1. Inserir cabeçalho da reunião
+    await query(
+      `INSERT INTO cell_meetings (id, organization_id, campus_id, cell_group_id, leader_id, meeting_date, study_topic, offerings_amount, notes)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        meetingId,
+        tenantCheck.effectiveOrgId,
+        effectiveCampusId,
+        groupId,
+        leaderId,
+        meeting_date,
+        study_topic || null,
+        Number(offerings_amount) || 0,
+        notes || null
+      ]
+    );
+
+    // 2. Inserir participantes (membros e visitantes)
+    let presentCount = 0;
+    let absentCount = 0;
+    let visitorCount = 0;
+
+    for (const att of attendees) {
+      const attId = uuidv4();
+      const status = att.status === 'ABSENT' ? 'ABSENT' : (att.status === 'JUSTIFIED' ? 'JUSTIFIED' : 'PRESENT');
+      
+      if (status === 'PRESENT') presentCount++;
+      else absentCount++;
+
+      if (att.visitor_name) visitorCount++;
+
+      await query(
+        `INSERT INTO cell_meeting_attendees 
+         (id, organization_id, meeting_id, member_id, visitor_name, visitor_phone, status, justification)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          attId,
+          tenantCheck.effectiveOrgId,
+          meetingId,
+          att.member_id || null,
+          att.visitor_name || null,
+          att.visitor_phone || null,
+          status,
+          att.justification || null
+        ]
+      );
+    }
+
+    await logSecurityEvent({
+      organizationId: tenantCheck.effectiveOrgId,
+      user: auth.user,
+      action: 'RECORD_CELL_MEETING',
+      resource: 'cell_meetings',
+      resourceId: meetingId,
+      details: { 
+        cell_name: cell.name, 
+        meeting_date, 
+        present_count: presentCount, 
+        absent_count: absentCount,
+        visitor_count: visitorCount
+      },
+      event
+    });
+
+    return apiResponse(201, {
+      message: 'Reunião e chamada registradas com sucesso!',
+      id: meetingId,
+      present_count: presentCount,
+      absent_count: absentCount,
+      visitor_count: visitorCount
+    });
+  } catch (err: any) {
+    console.error('Erro ao registrar reunião da célula:', err);
+    return apiResponse(500, { error: 'Erro ao registrar chamada da célula' });
+  }
+};
+
+// GET /cell-groups/{id}/meetings -> Listar histórico de reuniões da célula
+export const getCellMeetings = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  try {
+    const groupId = event.pathParameters?.id;
+    if (!groupId) return apiResponse(400, { error: 'ID da célula faltante' });
+
+    const q = `
+      SELECT 
+        cm.*,
+        COUNT(CASE WHEN cma.status = 'PRESENT' THEN 1 END) as present_count,
+        COUNT(CASE WHEN cma.status IN ('ABSENT', 'JUSTIFIED') THEN 1 END) as absent_count,
+        COUNT(CASE WHEN cma.visitor_name IS NOT NULL THEN 1 END) as visitor_count
+      FROM cell_meetings cm
+      LEFT JOIN cell_meeting_attendees cma ON cm.id = cma.meeting_id
+      WHERE cm.cell_group_id = ?
+      GROUP BY cm.id
+      ORDER BY cm.meeting_date DESC, cm.created_at DESC
+      LIMIT 30
+    `;
+
+    const { rows } = await query(q, [groupId]);
+    return apiResponse(200, rows);
+  } catch (err: any) {
+    console.error('Erro ao buscar histórico de reuniões:', err);
+    return apiResponse(500, { error: 'Erro ao listar histórico de reuniões' });
+  }
+};
+
+// GET /cell-groups/{id}/meetings/{meetingId} -> Detalhes da reunião com lista de presença
+export const getCellMeetingDetails = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  try {
+    const groupId = event.pathParameters?.id;
+    const meetingId = event.pathParameters?.meetingId;
+    if (!groupId || !meetingId) return apiResponse(400, { error: 'IDs faltantes' });
+
+    const { rows: meetingRows } = await query(
+      `SELECT * FROM cell_meetings WHERE id = ? AND cell_group_id = ? LIMIT 1`,
+      [meetingId, groupId]
+    );
+
+    if (meetingRows.length === 0) {
+      return apiResponse(404, { error: 'Reunião não encontrada' });
+    }
+
+    const { rows: attendees } = await query(
+      `SELECT 
+         cma.*,
+         m.name as member_name,
+         m.phone as member_phone,
+         m.email as member_email
+       FROM cell_meeting_attendees cma
+       LEFT JOIN members m ON cma.member_id = m.id
+       WHERE cma.meeting_id = ?
+       ORDER BY cma.status ASC, m.name ASC`,
+      [meetingId]
+    );
+
+    return apiResponse(200, {
+      ...meetingRows[0],
+      attendees
+    });
+  } catch (err: any) {
+    console.error('Erro ao buscar detalhes da reunião:', err);
+    return apiResponse(500, { error: 'Erro ao buscar detalhes da reunião' });
+  }
+};
+

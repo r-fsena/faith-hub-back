@@ -284,6 +284,49 @@ functions:
           method: DELETE
           path: /cell-groups/{id}/members/{memberId}
 
+  recordMeeting:
+    handler: src/functions/cellGroups.recordMeeting
+    events:
+      - httpApi:
+          method: POST
+          path: /cell-groups/{id}/meetings
+
+  getCellMeetings:
+    handler: src/functions/cellGroups.getCellMeetings
+    events:
+      - httpApi:
+          method: GET
+          path: /cell-groups/{id}/meetings
+
+  getCellMeetingDetails:
+    handler: src/functions/cellGroups.getCellMeetingDetails
+    events:
+      - httpApi:
+          method: GET
+          path: /cell-groups/{id}/meetings/{meetingId}
+
+  getAbsenteeismRadar:
+    handler: src/functions/pastoralCare.getAbsenteeismRadar
+    events:
+      - httpApi:
+          method: GET
+          path: /pastoral/absenteeism-radar
+
+  createCareLog:
+    handler: src/functions/pastoralCare.createCareLog
+    events:
+      - httpApi:
+          method: POST
+          path: /pastoral/care-logs
+
+  getMemberCareLogs:
+    handler: src/functions/pastoralCare.getMemberCareLogs
+    events:
+      - httpApi:
+          method: GET
+          path: /pastoral/care-logs/{memberId}
+
+
 
   getStudies:
     handler: src/functions/studies.getStudies
