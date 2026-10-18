@@ -725,12 +725,150 @@ export const getMemberTimeline360 = async (event: any): Promise<APIGatewayProxyR
   }
 };
 
+// GET /pastoral/pending-cell-reports -> Células sem chamada de presença nos últimos 7 dias
+export const getPendingCellReports = async (event: any): Promise<APIGatewayProxyResult> => {
+  try {
+    const auth = await requireAuth(event);
+    if ('errorResponse' in auth) return auth.errorResponse;
+
+    const roleCheck = enforceRole(auth.user, PASTORAL_ROLES);
+    if (!roleCheck.allowed) return roleCheck.errorResponse!;
+
+    const qp = event.queryStringParameters || {};
+    const tenantCheck = enforceTenant(auth.user, qp.organization_id);
+    if (!tenantCheck.allowed) return tenantCheck.errorResponse!;
+    const orgId = tenantCheck.effectiveOrgId;
+    const campusId = qp.campus_id;
+
+    let sql = `
+      SELECT 
+        cg.id as cell_id,
+        cg.name as cell_name,
+        cg.meeting_day,
+        cg.meeting_time,
+        cg.neighborhood,
+        cg.campus_id,
+        leader.id as leader_id,
+        leader.name as leader_name,
+        leader.phone as leader_phone,
+        leader.email as leader_email,
+        (
+          SELECT MAX(cm.meeting_date) 
+          FROM cell_meetings cm 
+          WHERE cm.cell_group_id = cg.id
+        ) as last_meeting_date,
+        DATEDIFF(CURRENT_DATE, (
+          SELECT MAX(cm.meeting_date) 
+          FROM cell_meetings cm 
+          WHERE cm.cell_group_id = cg.id
+        )) as days_since_last_meeting
+      FROM cell_groups cg
+      INNER JOIN members leader ON cg.leader_id = leader.id
+      WHERE cg.organization_id = ?
+        AND (
+          NOT EXISTS (
+            SELECT 1 FROM cell_meetings cm 
+            WHERE cm.cell_group_id = cg.id 
+              AND cm.meeting_date >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)
+          )
+        )
+    `;
+    const params: any[] = [orgId];
+    if (campusId && campusId !== 'all') {
+      sql += ` AND cg.campus_id = ?`;
+      params.push(campusId);
+    }
+
+    sql += ` ORDER BY days_since_last_meeting DESC`;
+
+    const { rows } = await query(sql, params);
+    return apiResponse(200, rows);
+  } catch (err: any) {
+    console.error('Erro ao consultar relatórios de células pendentes:', err);
+    return apiResponse(500, { error: 'Erro ao consultar relatórios pendentes de células' });
+  }
+};
+
+// POST /pastoral/remind-cell-leaders -> Gera lembretes WhatsApp para líderes pendentes
+export const remindCellLeaders = async (event: any): Promise<APIGatewayProxyResult> => {
+  try {
+    const auth = await requireAuth(event);
+    if ('errorResponse' in auth) return auth.errorResponse;
+
+    const roleCheck = enforceRole(auth.user, PASTORAL_ROLES);
+    if (!roleCheck.allowed) return roleCheck.errorResponse!;
+
+    const body = JSON.parse(event.body || '{}');
+    const tenantCheck = enforceTenant(auth.user, body.organization_id);
+    if (!tenantCheck.allowed) return tenantCheck.errorResponse!;
+    const orgId = tenantCheck.effectiveOrgId;
+
+    const { rows } = await query(`
+      SELECT 
+        cg.id as cell_id,
+        cg.name as cell_name,
+        cg.meeting_day,
+        leader.name as leader_name,
+        leader.phone as leader_phone
+      FROM cell_groups cg
+      INNER JOIN members leader ON cg.leader_id = leader.id
+      WHERE cg.organization_id = ?
+        AND NOT EXISTS (
+          SELECT 1 FROM cell_meetings cm 
+          WHERE cm.cell_group_id = cg.id 
+            AND cm.meeting_date >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)
+        )
+    `, [orgId]);
+
+    const reminders = rows.map((r: any) => {
+      const cleanPhone = (r.leader_phone || '').replace(/\D/g, '');
+      const text = `Paz do Senhor, Líder ${r.leader_name}! 🕊️ Passando para lembrar de registrar o relatório e a lista de presença da reunião da sua célula (${r.cell_name}) no aplicativo Faith-Hub. Seu envio é fundamental para o acompanhamento pastoral dos membros! Deus abençoe!`;
+      return {
+        cell_id: r.cell_id,
+        cell_name: r.cell_name,
+        leader_name: r.leader_name,
+        leader_phone: r.leader_phone,
+        whatsapp_url: cleanPhone ? `https://wa.me/55${cleanPhone}?text=${encodeURIComponent(text)}` : null,
+        message_text: text
+      };
+    });
+
+    await logSecurityEvent({
+      organizationId: orgId,
+      user: auth.user,
+      action: 'CELL_REPORTS_REMIND_DISPATCHED',
+      resource: 'cell_groups',
+      details: { total_pending_reminders: reminders.length },
+      event
+    });
+
+    return apiResponse(200, {
+      message: `${reminders.length} líderes com relatórios pendentes identificados`,
+      total: reminders.length,
+      reminders
+    });
+  } catch (err: any) {
+    console.error('Erro ao gerar lembretes de células:', err);
+    return apiResponse(500, { error: 'Erro ao gerar lembretes para líderes de células' });
+  }
+};
+
 // ==========================================
 // HANDLER CONSOLIDADO PARA SERVERLESS ROUTING
 // ==========================================
 export const pastoralHandler = async (event: any): Promise<APIGatewayProxyResult> => {
   const method = (event.requestContext?.http?.method || event.httpMethod || 'GET').toUpperCase();
   const rawPath = event.rawPath || event.path || '';
+
+  // /pastoral/pending-cell-reports
+  if (rawPath.includes('/pending-cell-reports') && method === 'GET') {
+    return getPendingCellReports(event);
+  }
+
+  // /pastoral/remind-cell-leaders
+  if (rawPath.includes('/remind-cell-leaders') && method === 'POST') {
+    return remindCellLeaders(event);
+  }
 
   // 1. /pastoral/absenteeism-radar
   if (rawPath.includes('/absenteeism-radar') && method === 'GET') {
