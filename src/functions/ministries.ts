@@ -586,17 +586,181 @@ export const respondRosterItem = async (event: APIGatewayProxyEvent): Promise<AP
   }
 };
 
+// ==========================================
+// FASE 3: AGENDA DE INDISPONIBILIDADES & CONFLITOS
+// ==========================================
+
+// GET /volunteers/blockouts
+export const getMyBlockouts = async (event: any): Promise<APIGatewayProxyResult> => {
+  try {
+    const auth = await requireAuth(event);
+    if ('errorResponse' in auth) return auth.errorResponse;
+
+    const targetUserId = auth.user.userId;
+    const orgId = auth.user.organizationId || (event.queryStringParameters?.organization_id) || 'org_default';
+
+    const sql = `
+      SELECT id, member_id, start_date, end_date, reason, created_at
+      FROM volunteer_blockouts
+      WHERE organization_id = ?
+        AND (member_id = ? OR member_id = (SELECT id FROM members WHERE email = ? LIMIT 1))
+      ORDER BY start_date DESC
+    `;
+
+    const { rows } = await query(sql, [orgId, targetUserId, auth.user.email]);
+    return apiResponse(200, rows);
+  } catch (err: any) {
+    console.error('Erro ao consultar blockouts:', err);
+    return apiResponse(500, { error: 'Erro ao buscar indisponibilidades' });
+  }
+};
+
+// POST /volunteers/blockouts
+export const createBlockout = async (event: any): Promise<APIGatewayProxyResult> => {
+  try {
+    const auth = await requireAuth(event);
+    if ('errorResponse' in auth) return auth.errorResponse;
+
+    const body = JSON.parse(event.body || '{}');
+    const { start_date, end_date, reason } = body;
+
+    if (!start_date || !end_date) {
+      return apiResponse(400, { error: 'start_date e end_date são obrigatórios' });
+    }
+
+    const orgId = auth.user.organizationId || body.organization_id || 'org_default';
+
+    // Resolver member_id correto
+    let memberId = body.member_id || auth.user.userId;
+    const { rows: memRows } = await query(
+      `SELECT id FROM members WHERE (id = ? OR email = ?) AND organization_id = ? LIMIT 1`,
+      [memberId, auth.user.email, orgId]
+    );
+    if (memRows.length > 0) {
+      memberId = memRows[0].id;
+    }
+
+    const id = uuidv4();
+    await query(`
+      INSERT INTO volunteer_blockouts (id, organization_id, member_id, start_date, end_date, reason)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `, [id, orgId, memberId, start_date, end_date, reason || null]);
+
+    return apiResponse(201, {
+      message: 'Bloqueio de data cadastrado com sucesso',
+      id,
+      start_date,
+      end_date,
+      reason
+    });
+  } catch (err: any) {
+    console.error('Erro ao cadastrar blockout:', err);
+    return apiResponse(500, { error: 'Erro ao cadastrar indisponibilidade' });
+  }
+};
+
+// DELETE /volunteers/blockouts/{id}
+export const deleteBlockout = async (event: any): Promise<APIGatewayProxyResult> => {
+  try {
+    const auth = await requireAuth(event);
+    if ('errorResponse' in auth) return auth.errorResponse;
+
+    const blockoutId = event.pathParameters?.id || event.pathParameters?.blockoutId;
+    if (!blockoutId) return apiResponse(400, { error: 'ID do bloqueio ausente' });
+
+    const orgId = auth.user.organizationId || 'org_default';
+
+    await query(`
+      DELETE FROM volunteer_blockouts 
+      WHERE id = ? AND organization_id = ?
+    `, [blockoutId, orgId]);
+
+    return apiResponse(200, { message: 'Bloqueio de data cancelado com sucesso' });
+  } catch (err: any) {
+    console.error('Erro ao excluir blockout:', err);
+    return apiResponse(500, { error: 'Erro ao remover bloqueio' });
+  }
+};
+
+// GET /ministries/conflicts?date=YYYY-MM-DD&time=HH:MM&schedule_id=...
+export const getScheduleConflicts = async (event: any): Promise<APIGatewayProxyResult> => {
+  try {
+    const auth = await requireAuth(event);
+    if ('errorResponse' in auth) return auth.errorResponse;
+
+    const qp = event.queryStringParameters || {};
+    const serviceDate = qp.date;
+    const scheduleId = qp.schedule_id || null;
+    const orgId = auth.user.organizationId || qp.organization_id || 'org_default';
+
+    if (!serviceDate) {
+      return apiResponse(400, { error: 'Parâmetro date é obrigatório (YYYY-MM-DD)' });
+    }
+
+    // 1. Voluntários com blockout ativo na data
+    const { rows: blockouts } = await query(`
+      SELECT vb.id, vb.member_id, m.name as member_name, vb.start_date, vb.end_date, vb.reason
+      FROM volunteer_blockouts vb
+      INNER JOIN members m ON vb.member_id = m.id
+      WHERE vb.organization_id = ? 
+        AND ? BETWEEN vb.start_date AND vb.end_date
+    `, [orgId, serviceDate]);
+
+    // 2. Voluntários já escalados em outros ministérios ou escalas no mesmo dia
+    const { rows: doubleBookings } = await query(`
+      SELECT 
+        sri.member_id,
+        m.name as member_name,
+        ss.id as schedule_id,
+        ss.title as service_title,
+        ss.service_time,
+        min.name as ministry_name,
+        mr.name as role_name,
+        sri.status as roster_status
+      FROM service_roster_items sri
+      INNER JOIN service_schedules ss ON sri.schedule_id = ss.id
+      INNER JOIN ministries min ON ss.ministry_id = min.id
+      INNER JOIN ministry_roles mr ON sri.role_id = mr.id
+      INNER JOIN members m ON sri.member_id = m.id
+      WHERE ss.organization_id = ?
+        AND ss.service_date = ?
+        AND (? IS NULL OR ss.id != ?)
+    `, [orgId, serviceDate, scheduleId, scheduleId]);
+
+    return apiResponse(200, {
+      date: serviceDate,
+      blockouts,
+      doubleBookings
+    });
+  } catch (err: any) {
+    console.error('Erro ao consultar conflitos de escala:', err);
+    return apiResponse(500, { error: 'Erro ao consultar conflitos de escala' });
+  }
+};
+
 // Handler consolidado para otimização do CloudFormation (ANY /ministries e ANY /volunteers)
 export const ministriesHandler = async (event: any): Promise<APIGatewayProxyResult> => {
   const method = (event.requestContext?.http?.method || event.httpMethod || 'GET').toUpperCase();
   const rawPath = event.rawPath || event.path || '';
 
-  // 1. /volunteers/my-schedules
+  // 1. /volunteers/blockouts
+  if (rawPath.startsWith('/volunteers/blockouts') || rawPath.startsWith('/volunteers/my-blockouts')) {
+    if (method === 'GET') return getMyBlockouts(event);
+    if (method === 'POST') return createBlockout(event);
+    if (method === 'DELETE') {
+      const parts = rawPath.split('/').filter(Boolean);
+      if (!event.pathParameters) event.pathParameters = {};
+      event.pathParameters.id = parts[parts.length - 1];
+      return deleteBlockout(event);
+    }
+  }
+
+  // 2. /volunteers/my-schedules
   if (rawPath.startsWith('/volunteers/my-schedules') && method === 'GET') {
     return getMySchedules(event);
   }
 
-  // 2. /volunteers/schedules/{id}/respond
+  // 3. /volunteers/schedules/{id}/respond
   if (rawPath.includes('/volunteers/schedules/') && rawPath.endsWith('/respond') && method === 'POST') {
     const parts = rawPath.split('/');
     const rosterItemId = parts[parts.indexOf('schedules') + 1];
@@ -605,7 +769,12 @@ export const ministriesHandler = async (event: any): Promise<APIGatewayProxyResu
     return respondRosterItem(event);
   }
 
-  // 3. /ministries/{id}/roles
+  // 4. /ministries/conflicts
+  if (rawPath.includes('/ministries/conflicts') && method === 'GET') {
+    return getScheduleConflicts(event);
+  }
+
+  // 5. /ministries/{id}/roles
   if (rawPath.includes('/roles')) {
     const parts = rawPath.split('/');
     const minIdx = parts.indexOf('ministries');
@@ -621,7 +790,7 @@ export const ministriesHandler = async (event: any): Promise<APIGatewayProxyResu
     if (method === 'POST') return createMinistryRole(event);
   }
 
-  // 4. /ministries/{id}/volunteers
+  // 6. /ministries/{id}/volunteers
   if (rawPath.includes('/volunteers')) {
     const parts = rawPath.split('/');
     const minIdx = parts.indexOf('ministries');
@@ -637,7 +806,7 @@ export const ministriesHandler = async (event: any): Promise<APIGatewayProxyResu
     if (method === 'POST') return addVolunteer(event);
   }
 
-  // 5. /ministries/{id}/schedules
+  // 7. /ministries/{id}/schedules
   if (rawPath.includes('/schedules')) {
     const parts = rawPath.split('/');
     const minIdx = parts.indexOf('ministries');
@@ -653,7 +822,7 @@ export const ministriesHandler = async (event: any): Promise<APIGatewayProxyResu
     if (method === 'POST') return createOrUpdateSchedule(event);
   }
 
-  // 6. /ministries ou /ministries/{id}
+  // 8. /ministries ou /ministries/{id}
   const parts = rawPath.split('/').filter(Boolean);
   if (parts.length === 2 && parts[0] === 'ministries') {
     if (!event.pathParameters) event.pathParameters = {};
