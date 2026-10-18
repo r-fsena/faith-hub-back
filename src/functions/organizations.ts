@@ -3,6 +3,7 @@ import { query, apiResponse } from '../db';
 import { v4 as uuidv4 } from 'uuid';
 import { requireAuth, enforceRole, enforceTenant, getAuthenticatedUser } from '../services/authMiddleware';
 import { logSecurityEvent } from '../services/auditLogService';
+import { seedDefaultMinistries } from '../services/ministrySeedService';
 
 // GET /organizations
 export const listOrganizations = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
@@ -165,6 +166,9 @@ export const createOrUpdateOrganization = async (event: APIGatewayProxyEvent): P
         orgId,
         campusId
       ]);
+
+      // Seed automático dos ministérios padrão para a nova igreja/tenant
+      await seedDefaultMinistries(orgId, campusId);
     }
 
     await logSecurityEvent({

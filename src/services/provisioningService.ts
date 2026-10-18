@@ -2,6 +2,7 @@
 import { CognitoIdentityProviderClient, AdminCreateUserCommand } from '@aws-sdk/client-cognito-identity-provider';
 import { v4 as uuidv4 } from 'uuid';
 import { query } from '../db';
+import { seedDefaultMinistries } from './ministrySeedService';
 
 const USER_POOL_ID = process.env.USER_POOL_ID || '';
 const AWS_REGION = process.env.AWS_REGION || 'us-east-2';
@@ -187,6 +188,9 @@ export class ProvisioningService {
           updated_at = NOW()
       WHERE id = ?
     `, [orgId, proposal.id]);
+
+    // 10. Cria os Ministérios Padrão e Funções do Novo Tenant
+    await seedDefaultMinistries(orgId, campusId);
 
     console.log(`🎉 Provisionamento concluído com sucesso!`);
     console.log(`- Organização: ${orgId} (${proposal.church_name})`);
