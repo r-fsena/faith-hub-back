@@ -306,26 +306,15 @@ functions:
           method: GET
           path: /cell-groups/{id}/meetings/{meetingId}
 
-  getAbsenteeismRadar:
-    handler: src/functions/pastoralCare.getAbsenteeismRadar
+  pastoralHandler:
+    handler: src/functions/pastoralCare.pastoralHandler
     events:
       - httpApi:
-          method: GET
-          path: /pastoral/absenteeism-radar
-
-  createCareLog:
-    handler: src/functions/pastoralCare.createCareLog
-    events:
+          method: ANY
+          path: /pastoral/{proxy+}
       - httpApi:
-          method: POST
-          path: /pastoral/care-logs
-
-  getMemberCareLogs:
-    handler: src/functions/pastoralCare.getMemberCareLogs
-    events:
-      - httpApi:
-          method: GET
-          path: /pastoral/care-logs/{memberId}
+          method: ANY
+          path: /pastoral
 
   ministriesHandler:
     handler: src/functions/ministries.ministriesHandler
