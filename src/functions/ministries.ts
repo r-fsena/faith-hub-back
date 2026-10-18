@@ -1094,6 +1094,11 @@ export const ministriesHandler = async (event: any): Promise<APIGatewayProxyResu
   const method = (event.requestContext?.http?.method || event.httpMethod || 'GET').toUpperCase();
   const rawPath = event.rawPath || event.path || '';
 
+  // Suporte a CORS Preflight OPTIONS
+  if (method === 'OPTIONS') {
+    return apiResponse(200, { ok: true });
+  }
+
   // 1. /volunteers/blockouts
   if (rawPath.startsWith('/volunteers/blockouts') || rawPath.startsWith('/volunteers/my-blockouts')) {
     if (method === 'GET') return getMyBlockouts(event);

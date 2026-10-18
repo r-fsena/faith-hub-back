@@ -860,6 +860,11 @@ export const pastoralHandler = async (event: any): Promise<APIGatewayProxyResult
   const method = (event.requestContext?.http?.method || event.httpMethod || 'GET').toUpperCase();
   const rawPath = event.rawPath || event.path || '';
 
+  // Suporte a CORS Preflight OPTIONS
+  if (method === 'OPTIONS') {
+    return apiResponse(200, { ok: true });
+  }
+
   // /pastoral/pending-cell-reports
   if (rawPath.includes('/pending-cell-reports') && method === 'GET') {
     return getPendingCellReports(event);
