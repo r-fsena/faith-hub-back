@@ -6,6 +6,7 @@ provider:
   name: aws
   runtime: nodejs18.x
   region: us-east-2
+  versionFunctions: false
   httpApi:
     cors:
       allowedOrigins:
@@ -325,6 +326,23 @@ functions:
       - httpApi:
           method: GET
           path: /pastoral/care-logs/{memberId}
+
+  ministriesHandler:
+    handler: src/functions/ministries.ministriesHandler
+    events:
+      - httpApi:
+          method: ANY
+          path: /ministries/{proxy+}
+      - httpApi:
+          method: ANY
+          path: /ministries
+      - httpApi:
+          method: ANY
+          path: /volunteers/{proxy+}
+      - httpApi:
+          method: ANY
+          path: /volunteers
+
 
 
 

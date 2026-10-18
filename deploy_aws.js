@@ -19,8 +19,9 @@ const env = {
 };
 
 const slsBin = path.resolve(__dirname, 'node_modules/.bin/serverless');
+const slsArgs = process.argv.slice(2).length > 0 ? process.argv.slice(2) : ['deploy', '--verbose'];
 
-const child = spawn(slsBin, ['deploy', '--verbose'], {
+const child = spawn(slsBin, slsArgs, {
   env,
   stdio: 'inherit',
   cwd: __dirname
