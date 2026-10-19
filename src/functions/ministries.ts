@@ -82,6 +82,7 @@ export const createOrUpdateMinistry = async (event: APIGatewayProxyEvent): Promi
       name, 
       slug, 
       description, 
+      image_url,
       icon = 'Users', 
       color = '#0f766e', 
       leader_id, 
@@ -125,12 +126,13 @@ export const createOrUpdateMinistry = async (event: APIGatewayProxyEvent): Promi
     const finalSlug = slug || name.toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-');
 
     const q = `
-      INSERT INTO ministries (id, organization_id, campus_id, name, slug, description, icon, color, leader_id, leader_name, status)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO ministries (id, organization_id, campus_id, name, slug, description, image_url, icon, color, leader_id, leader_name, status)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON DUPLICATE KEY UPDATE
         name = VALUES(name),
         slug = VALUES(slug),
         description = VALUES(description),
+        image_url = VALUES(image_url),
         icon = VALUES(icon),
         color = VALUES(color),
         leader_id = VALUES(leader_id),
@@ -147,6 +149,7 @@ export const createOrUpdateMinistry = async (event: APIGatewayProxyEvent): Promi
       name,
       finalSlug,
       description || null,
+      image_url || null,
       icon,
       color,
       leader_id || null,
