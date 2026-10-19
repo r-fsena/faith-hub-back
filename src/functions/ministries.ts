@@ -5,6 +5,25 @@ import { requireAuth, enforceRole, enforceTenant, getAuthenticatedUser } from '.
 import { logSecurityEvent } from '../services/auditLogService';
 
 const MINISTRY_ADMIN_ROLES = ['SUPERADMIN', 'PASTOR', 'ADMIN', 'LEADER'];
+const GLOBAL_MINISTRY_ROLES = ['SUPERADMIN', 'PASTOR', 'ADMIN', 'TREASURER'];
+
+/**
+ * Checks if user has permission to manage a specific ministry:
+ * - SuperAdmin, Pastor, Admin, Treasurer have global permission across all ministries
+ * - Leader (LEADER) only has permission if they are the designated leader_id for this ministry
+ */
+export function canUserManageMinistry(user: any, ministry: { leader_id?: string | null }): boolean {
+  if (user.isSuperAdmin || GLOBAL_MINISTRY_ROLES.includes(user.role)) {
+    return true;
+  }
+  if (user.role === 'LEADER') {
+    return Boolean(
+      ministry.leader_id &&
+      (ministry.leader_id === user.userId || (user.email && ministry.leader_id.toLowerCase() === user.email.toLowerCase()))
+    );
+  }
+  return false;
+}
 
 // GET /ministries -> Listar Ministérios com contadores de voluntários e funções
 export const listMinistries = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
@@ -12,6 +31,7 @@ export const listMinistries = async (event: APIGatewayProxyEvent): Promise<APIGa
     const user = await getAuthenticatedUser(event);
     const requestedOrgId = event.queryStringParameters?.organization_id;
     const campusId = event.queryStringParameters?.campus_id;
+    const statusParam = event.queryStringParameters?.status; // 'ACTIVE', 'INACTIVE' or 'all'
 
     const orgId = user ? enforceTenant(user, requestedOrgId).effectiveOrgId : (requestedOrgId || 'org_default');
 
@@ -26,6 +46,11 @@ export const listMinistries = async (event: APIGatewayProxyEvent): Promise<APIGa
     `;
 
     const params: any[] = [orgId];
+
+    if (statusParam && statusParam !== 'all') {
+      sql += ` AND m.status = ?`;
+      params.push(statusParam);
+    }
 
     if (campusId && campusId !== 'all') {
       sql += ` AND (m.campus_id = ? OR m.campus_id IS NULL)`;
@@ -71,6 +96,31 @@ export const createOrUpdateMinistry = async (event: APIGatewayProxyEvent): Promi
 
     if (!name) return apiResponse(400, { error: 'Nome do ministério é obrigatório' });
 
+    const isGlobal = auth.user.isSuperAdmin || GLOBAL_MINISTRY_ROLES.includes(auth.user.role);
+
+    // Apenas Pastores e Administradores Globais podem criar novos ministérios
+    if (!id && !isGlobal) {
+      return apiResponse(403, { error: 'Apenas Administradores e Pastores podem criar novos ministérios.' });
+    }
+
+    // Se estiver editando, validar permissão de escopo
+    if (id && !isGlobal) {
+      const { rows: existingRows } = await query(`SELECT leader_id FROM ministries WHERE id = ? LIMIT 1`, [id]);
+      if (existingRows.length === 0) return apiResponse(404, { error: 'Ministério não encontrado' });
+      if (!canUserManageMinistry(auth.user, existingRows[0])) {
+        return apiResponse(403, { error: 'Acesso negado: Você só pode editar o ministério pelo qual é responsável.' });
+      }
+    }
+
+    // Resolver nome do líder caso tenha sido passado apenas o leader_id
+    let finalLeaderName = leader_name;
+    if (leader_id && (!finalLeaderName || finalLeaderName === '')) {
+      const { rows: memRows } = await query(`SELECT name FROM members WHERE id = ? LIMIT 1`, [leader_id]);
+      if (memRows.length > 0) {
+        finalLeaderName = memRows[0].name;
+      }
+    }
+
     const finalId = id || uuidv4();
     const finalSlug = slug || name.toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-');
 
@@ -100,7 +150,7 @@ export const createOrUpdateMinistry = async (event: APIGatewayProxyEvent): Promi
       icon,
       color,
       leader_id || null,
-      leader_name || null,
+      finalLeaderName || null,
       status
     ]);
 
@@ -110,7 +160,7 @@ export const createOrUpdateMinistry = async (event: APIGatewayProxyEvent): Promi
       action: id ? 'UPDATE_MINISTRY' : 'CREATE_MINISTRY',
       resource: 'ministries',
       resourceId: finalId,
-      details: { name, slug: finalSlug },
+      details: { name, slug: finalSlug, status, leader_id },
       event
     });
 
@@ -182,11 +232,15 @@ export const createMinistryRole = async (event: APIGatewayProxyEvent): Promise<A
     const ministryId = event.pathParameters?.id;
     if (!ministryId) return apiResponse(400, { error: 'ID do ministério ausente' });
 
-    const { rows: minRows } = await query(`SELECT organization_id FROM ministries WHERE id = ? LIMIT 1`, [ministryId]);
+    const { rows: minRows } = await query(`SELECT organization_id, leader_id FROM ministries WHERE id = ? LIMIT 1`, [ministryId]);
     if (minRows.length === 0) return apiResponse(404, { error: 'Ministério não encontrado' });
 
     const tenantCheck = enforceTenant(auth.user, minRows[0].organization_id);
     if (!tenantCheck.allowed) return tenantCheck.errorResponse!;
+
+    if (!canUserManageMinistry(auth.user, minRows[0])) {
+      return apiResponse(403, { error: 'Acesso negado: Você só pode gerenciar funções do ministério que lidera.' });
+    }
 
     const body = JSON.parse(event.body || '{}');
     const { name, description, min_volunteers = 1 } = body;
@@ -215,6 +269,21 @@ export const deleteMinistryRole = async (event: APIGatewayProxyEvent): Promise<A
 
     const roleId = event.pathParameters?.roleId;
     if (!roleId) return apiResponse(400, { error: 'ID da função ausente' });
+
+    const { rows: roleRows } = await query(`
+      SELECT mr.id, mr.organization_id, mr.ministry_id, m.leader_id
+      FROM ministry_roles mr
+      INNER JOIN ministries m ON mr.ministry_id = m.id
+      WHERE mr.id = ? LIMIT 1
+    `, [roleId]);
+    if (roleRows.length === 0) return apiResponse(404, { error: 'Função não encontrada' });
+
+    const tenantCheck = enforceTenant(auth.user, roleRows[0].organization_id);
+    if (!tenantCheck.allowed) return tenantCheck.errorResponse!;
+
+    if (!canUserManageMinistry(auth.user, roleRows[0])) {
+      return apiResponse(403, { error: 'Acesso negado: Você só pode remover funções do ministério que lidera.' });
+    }
 
     await query(`DELETE FROM ministry_roles WHERE id = ?`, [roleId]);
     return apiResponse(200, { message: 'Função removida com sucesso' });
@@ -273,11 +342,15 @@ export const addVolunteer = async (event: APIGatewayProxyEvent): Promise<APIGate
     const ministryId = event.pathParameters?.id;
     if (!ministryId) return apiResponse(400, { error: 'ID do ministério ausente' });
 
-    const { rows: minRows } = await query(`SELECT organization_id, name FROM ministries WHERE id = ? LIMIT 1`, [ministryId]);
+    const { rows: minRows } = await query(`SELECT organization_id, name, leader_id FROM ministries WHERE id = ? LIMIT 1`, [ministryId]);
     if (minRows.length === 0) return apiResponse(404, { error: 'Ministério não encontrado' });
 
     const tenantCheck = enforceTenant(auth.user, minRows[0].organization_id);
     if (!tenantCheck.allowed) return tenantCheck.errorResponse!;
+
+    if (!canUserManageMinistry(auth.user, minRows[0])) {
+      return apiResponse(403, { error: 'Acesso negado: Você só pode vincular voluntários ao ministério que lidera.' });
+    }
 
     const body = JSON.parse(event.body || '{}');
     const { 
@@ -335,6 +408,21 @@ export const removeVolunteer = async (event: APIGatewayProxyEvent): Promise<APIG
     const volunteerId = event.pathParameters?.volunteerId;
     if (!volunteerId) return apiResponse(400, { error: 'volunteerId ausente' });
 
+    const { rows: volRows } = await query(`
+      SELECT mv.id, mv.organization_id, mv.ministry_id, m.leader_id
+      FROM ministry_volunteers mv
+      INNER JOIN ministries m ON mv.ministry_id = m.id
+      WHERE mv.id = ? LIMIT 1
+    `, [volunteerId]);
+    if (volRows.length === 0) return apiResponse(404, { error: 'Voluntário não encontrado' });
+
+    const tenantCheck = enforceTenant(auth.user, volRows[0].organization_id);
+    if (!tenantCheck.allowed) return tenantCheck.errorResponse!;
+
+    if (!canUserManageMinistry(auth.user, volRows[0])) {
+      return apiResponse(403, { error: 'Acesso negado: Você só pode remover voluntários do ministério que lidera.' });
+    }
+
     await query(`DELETE FROM ministry_volunteers WHERE id = ?`, [volunteerId]);
     return apiResponse(200, { message: 'Voluntário removido do ministério' });
   } catch (err: any) {
@@ -348,6 +436,23 @@ export const listSchedules = async (event: APIGatewayProxyEvent): Promise<APIGat
     const ministryId = event.pathParameters?.id;
     if (!ministryId) return apiResponse(400, { error: 'ID do ministério ausente' });
 
+    const timeframe = event.queryStringParameters?.timeframe; // 'upcoming', 'past', 'all'
+    const statusParam = event.queryStringParameters?.status; // 'DRAFT', 'PUBLISHED', 'COMPLETED', 'all'
+
+    let whereSql = `WHERE ss.ministry_id = ?`;
+    const params: any[] = [ministryId];
+
+    if (timeframe === 'upcoming') {
+      whereSql += ` AND (ss.service_date >= CURDATE() AND ss.status != 'COMPLETED')`;
+    } else if (timeframe === 'past') {
+      whereSql += ` AND (ss.service_date < CURDATE() OR ss.status = 'COMPLETED')`;
+    }
+
+    if (statusParam && statusParam !== 'all') {
+      whereSql += ` AND ss.status = ?`;
+      params.push(statusParam);
+    }
+
     // 1. Buscar escalas
     const { rows: schedules } = await query(`
       SELECT ss.*,
@@ -357,11 +462,11 @@ export const listSchedules = async (event: APIGatewayProxyEvent): Promise<APIGat
         COUNT(CASE WHEN sri.status = 'PENDING' THEN 1 END) as pending_count
       FROM service_schedules ss
       LEFT JOIN service_roster_items sri ON ss.id = sri.schedule_id
-      WHERE ss.ministry_id = ?
+      ${whereSql}
       GROUP BY ss.id
       ORDER BY ss.service_date DESC, ss.service_time ASC
-      LIMIT 40
-    `, [ministryId]);
+      LIMIT 100
+    `, params);
 
     // 2. Buscar itens de escala detalhados
     if (schedules.length > 0) {
@@ -407,12 +512,16 @@ export const createOrUpdateSchedule = async (event: APIGatewayProxyEvent): Promi
     const ministryId = event.pathParameters?.id;
     if (!ministryId) return apiResponse(400, { error: 'ID do ministério ausente' });
 
-    const { rows: minRows } = await query(`SELECT organization_id, campus_id, name FROM ministries WHERE id = ? LIMIT 1`, [ministryId]);
+    const { rows: minRows } = await query(`SELECT organization_id, campus_id, name, leader_id FROM ministries WHERE id = ? LIMIT 1`, [ministryId]);
     if (minRows.length === 0) return apiResponse(404, { error: 'Ministério não encontrado' });
     const min = minRows[0];
 
     const tenantCheck = enforceTenant(auth.user, min.organization_id);
     if (!tenantCheck.allowed) return tenantCheck.errorResponse!;
+
+    if (!canUserManageMinistry(auth.user, min)) {
+      return apiResponse(403, { error: 'Acesso negado: Você só pode criar ou alterar escalas do ministério que lidera.' });
+    }
 
     const body = JSON.parse(event.body || '{}');
     const {
@@ -503,6 +612,22 @@ export const deleteSchedule = async (event: APIGatewayProxyEvent): Promise<APIGa
 
     const scheduleId = event.pathParameters?.scheduleId;
     if (!scheduleId) return apiResponse(400, { error: 'scheduleId ausente' });
+
+    const { rows: schRows } = await query(`
+      SELECT ss.id, ss.organization_id, ss.ministry_id, m.leader_id 
+      FROM service_schedules ss
+      INNER JOIN ministries m ON ss.ministry_id = m.id
+      WHERE ss.id = ? LIMIT 1
+    `, [scheduleId]);
+    if (schRows.length === 0) return apiResponse(404, { error: 'Escala não encontrada' });
+    const sch = schRows[0];
+
+    const tenantCheck = enforceTenant(auth.user, sch.organization_id);
+    if (!tenantCheck.allowed) return tenantCheck.errorResponse!;
+
+    if (!canUserManageMinistry(auth.user, sch)) {
+      return apiResponse(403, { error: 'Acesso negado: Você só pode excluir escalas do ministério que lidera.' });
+    }
 
     await query(`DELETE FROM service_roster_items WHERE schedule_id = ?`, [scheduleId]);
     await query(`DELETE FROM service_schedules WHERE id = ?`, [scheduleId]);
