@@ -577,10 +577,11 @@ export const createOrUpdateSchedule = async (event: APIGatewayProxyEvent): Promi
       for (const item of roster_items) {
         if (!item.role_id || !item.member_id) continue;
         const itemId = uuidv4();
+        const itemStatus = item.status || 'PENDING';
         await query(`
           INSERT INTO service_roster_items (id, organization_id, schedule_id, role_id, member_id, status)
-          VALUES (?, ?, ?, ?, ?, 'PENDING')
-        `, [itemId, tenantCheck.effectiveOrgId, scheduleId, item.role_id, item.member_id]);
+          VALUES (?, ?, ?, ?, ?, ?)
+        `, [itemId, tenantCheck.effectiveOrgId, scheduleId, item.role_id, item.member_id, itemStatus]);
       }
     }
 
