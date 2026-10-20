@@ -390,18 +390,33 @@ export const addVolunteer = async (event: APIGatewayProxyEvent): Promise<APIGate
 
     if (!effectiveMemberId) return apiResponse(400, { error: 'member_id é obrigatório' });
 
+    // 1. Verificar se membro já está cadastrado neste ministério (Evitar Duplicatas)
+    const { rows: existingRows } = await query(
+      `SELECT id, status FROM ministry_volunteers WHERE ministry_id = ? AND member_id = ? LIMIT 1`,
+      [ministryId, effectiveMemberId]
+    );
+
+    if (existingRows.length > 0) {
+      const existingId = existingRows[0].id;
+      await query(`
+        UPDATE ministry_volunteers
+        SET status = ?, 
+            preferred_service_time = COALESCE(?, preferred_service_time), 
+            roles_csv = COALESCE(?, roles_csv), 
+            notes = COALESCE(?, notes), 
+            updated_at = NOW()
+        WHERE id = ?
+      `, [effectiveStatus, preferred_service_time || null, roles_csv || null, notes || null, existingId]);
+
+      return apiResponse(200, { message: 'Cadastro do voluntário atualizado com sucesso', id: existingId, status: effectiveStatus });
+    }
+
     const volId = uuidv4();
     const joinedAt = new Date().toISOString().split('T')[0];
 
     const q = `
       INSERT INTO ministry_volunteers (id, organization_id, ministry_id, member_id, status, preferred_service_time, roles_csv, notes, joined_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-      ON DUPLICATE KEY UPDATE
-        status = VALUES(status),
-        preferred_service_time = VALUES(preferred_service_time),
-        roles_csv = VALUES(roles_csv),
-        notes = VALUES(notes),
-        updated_at = NOW()
     `;
 
     await query(q, [
@@ -420,6 +435,70 @@ export const addVolunteer = async (event: APIGatewayProxyEvent): Promise<APIGate
   } catch (err: any) {
     console.error('Erro ao adicionar voluntário:', err);
     return apiResponse(500, { error: 'Erro ao adicionar voluntário' });
+  }
+};
+
+// PUT / PATCH /ministries/{id}/volunteers/{volunteerId} -> Atualizar Voluntário (Aprovar, Funções, Status)
+export const updateVolunteer = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  try {
+    const auth = await requireAuth(event);
+    if ('errorResponse' in auth) return auth.errorResponse;
+
+    const roleCheck = enforceRole(auth.user, MINISTRY_ADMIN_ROLES);
+    if (!roleCheck.allowed) return roleCheck.errorResponse!;
+
+    const ministryId = event.pathParameters?.id;
+    const volunteerId = event.pathParameters?.volunteerId;
+    if (!ministryId || !volunteerId) return apiResponse(400, { error: 'IDs ausentes' });
+
+    const { rows: minRows } = await query(`SELECT organization_id, name, leader_id FROM ministries WHERE id = ? LIMIT 1`, [ministryId]);
+    if (minRows.length === 0) return apiResponse(404, { error: 'Ministério não encontrado' });
+
+    const tenantCheck = enforceTenant(auth.user, minRows[0].organization_id);
+    if (!tenantCheck.allowed) return tenantCheck.errorResponse!;
+
+    if (!canUserManageMinistry(auth.user, minRows[0])) {
+      return apiResponse(403, { error: 'Acesso negado: Você só pode gerenciar voluntários no ministério que lidera.' });
+    }
+
+    const body = JSON.parse(event.body || '{}');
+    const { status, roles_csv, notes, preferred_service_time } = body;
+
+    const updates: string[] = [];
+    const params: any[] = [];
+
+    if (status !== undefined) {
+      updates.push('status = ?');
+      params.push(status);
+    }
+    if (roles_csv !== undefined) {
+      updates.push('roles_csv = ?');
+      params.push(roles_csv);
+    }
+    if (notes !== undefined) {
+      updates.push('notes = ?');
+      params.push(notes);
+    }
+    if (preferred_service_time !== undefined) {
+      updates.push('preferred_service_time = ?');
+      params.push(preferred_service_time);
+    }
+
+    if (updates.length === 0) {
+      return apiResponse(400, { error: 'Nenhum campo para atualizar' });
+    }
+
+    params.push(volunteerId, ministryId);
+    await query(`
+      UPDATE ministry_volunteers
+      SET ${updates.join(', ')}, updated_at = NOW()
+      WHERE id = ? AND ministry_id = ?
+    `, params);
+
+    return apiResponse(200, { message: 'Voluntário atualizado com sucesso' });
+  } catch (err: any) {
+    console.error('Erro ao atualizar voluntário:', err);
+    return apiResponse(500, { error: 'Erro ao atualizar voluntário' });
   }
 };
 
@@ -1445,6 +1524,7 @@ export const ministriesHandler = async (event: any): Promise<APIGatewayProxyResu
     if (parts.length > minIdx + 3) {
       event.pathParameters.volunteerId = parts[minIdx + 3];
       if (method === 'DELETE') return removeVolunteer(event);
+      if (method === 'PUT' || method === 'PATCH') return updateVolunteer(event);
     }
     if (method === 'GET') return listMinistryVolunteers(event);
     if (method === 'POST') return addVolunteer(event);
