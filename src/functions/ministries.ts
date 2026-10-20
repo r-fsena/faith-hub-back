@@ -1313,6 +1313,7 @@ export const getMyPendingSwaps = async (event: any): Promise<APIGatewayProxyResu
         sw.reason,
         sw.created_at,
         sw.status,
+        sw.schedule_id,
         sw.roster_item_id,
         tgt_m.name as target_member_name,
         ss.title as service_title,
@@ -1445,7 +1446,24 @@ export const cancelRosterSwap = async (event: any): Promise<APIGatewayProxyResul
         WHERE roster_item_id = ? AND status = 'PENDING' 
         ORDER BY created_at DESC LIMIT 1
       `, [rosterItemId]);
-      if (rows.length > 0) swap = rows[0];
+      if (rows.length > 0) {
+        swap = rows[0];
+      } else {
+        // Tenta buscar pelo schedule_id e requesting_member_id correspondentes ao item da escala
+        const { rows: itemRows } = await query(`
+          SELECT schedule_id, member_id FROM service_roster_items WHERE id = ? LIMIT 1
+        `, [rosterItemId]);
+        if (itemRows.length > 0) {
+          const { rows: swapRowsBySchedule } = await query(`
+            SELECT * FROM service_roster_swaps 
+            WHERE schedule_id = ? AND requesting_member_id = ? AND status = 'PENDING'
+            ORDER BY created_at DESC LIMIT 1
+          `, [itemRows[0].schedule_id, itemRows[0].member_id]);
+          if (swapRowsBySchedule.length > 0) {
+            swap = swapRowsBySchedule[0];
+          }
+        }
+      }
     }
 
     if (!swap) {
@@ -1465,17 +1483,19 @@ export const cancelRosterSwap = async (event: any): Promise<APIGatewayProxyResul
       return apiResponse(403, { error: 'Você não tem permissão para cancelar esta solicitação de troca' });
     }
 
+    // Cancela o swap específico e quaisquer swaps pendentes deste membro para esta escala
     await query(`
       UPDATE service_roster_swaps 
       SET status = 'CANCELLED', responded_at = NOW() 
-      WHERE id = ?
-    `, [swap.id]);
+      WHERE id = ? OR (schedule_id = ? AND requesting_member_id = ? AND status = 'PENDING')
+    `, [swap.id, swap.schedule_id, swap.requesting_member_id]);
 
+    // Atualiza o item de escala para ACCEPTED
     await query(`
       UPDATE service_roster_items 
       SET status = 'ACCEPTED' 
-      WHERE id = ?
-    `, [swap.roster_item_id]);
+      WHERE id = ? OR (schedule_id = ? AND member_id = ?)
+    `, [swap.roster_item_id, swap.schedule_id, swap.requesting_member_id]);
 
     await logSecurityEvent({
       organizationId: swap.organization_id,
