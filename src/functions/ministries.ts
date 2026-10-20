@@ -536,6 +536,69 @@ export const removeVolunteer = async (event: APIGatewayProxyEvent): Promise<APIG
   }
 };
 
+// POST / PATCH /ministries/{id}/volunteers/batch -> Ações em massa (Aprovar, Pausar, Funções, Excluir)
+export const batchVolunteers = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  try {
+    const auth = await requireAuth(event);
+    if ('errorResponse' in auth) return auth.errorResponse;
+
+    const roleCheck = enforceRole(auth.user, MINISTRY_ADMIN_ROLES);
+    if (!roleCheck.allowed) return roleCheck.errorResponse!;
+
+    const ministryId = event.pathParameters?.id;
+    if (!ministryId) return apiResponse(400, { error: 'ID do ministério ausente' });
+
+    const { rows: minRows } = await query(`SELECT organization_id, name, leader_id FROM ministries WHERE id = ? LIMIT 1`, [ministryId]);
+    if (minRows.length === 0) return apiResponse(404, { error: 'Ministério não encontrado' });
+
+    const tenantCheck = enforceTenant(auth.user, minRows[0].organization_id);
+    if (!tenantCheck.allowed) return tenantCheck.errorResponse!;
+
+    if (!canUserManageMinistry(auth.user, minRows[0])) {
+      return apiResponse(403, { error: 'Acesso negado: Você só pode gerenciar voluntários no ministério que lidera.' });
+    }
+
+    const body = JSON.parse(event.body || '{}');
+    const { volunteer_ids, action, status, roles_csv } = body;
+
+    if (!Array.isArray(volunteer_ids) || volunteer_ids.length === 0) {
+      return apiResponse(400, { error: 'Nenhum voluntário selecionado' });
+    }
+
+    const placeholders = volunteer_ids.map(() => '?').join(',');
+
+    if (action === 'DELETE') {
+      await query(
+        `DELETE FROM ministry_volunteers WHERE ministry_id = ? AND id IN (${placeholders})`,
+        [ministryId, ...volunteer_ids]
+      );
+      return apiResponse(200, { success: true, count: volunteer_ids.length });
+    }
+
+    if (action === 'UPDATE_STATUS' && status) {
+      await query(
+        `UPDATE ministry_volunteers SET status = ? WHERE ministry_id = ? AND id IN (${placeholders})`,
+        [status, ministryId, ...volunteer_ids]
+      );
+      return apiResponse(200, { success: true, count: volunteer_ids.length });
+    }
+
+    if (action === 'UPDATE_ROLES' && roles_csv !== undefined) {
+      await query(
+        `UPDATE ministry_volunteers SET roles_csv = ? WHERE ministry_id = ? AND id IN (${placeholders})`,
+        [roles_csv, ministryId, ...volunteer_ids]
+      );
+      return apiResponse(200, { success: true, count: volunteer_ids.length });
+    }
+
+    return apiResponse(400, { error: 'Ação inválida ou parâmetros ausentes' });
+  } catch (err: any) {
+    console.error('Erro em batchVolunteers:', err);
+    return apiResponse(500, { error: 'Erro ao executar operação em massa', details: err.message });
+  }
+};
+
+
 // GET /ministries/{id}/schedules -> Listar escalas com voluntários alocados
 export const listSchedules = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   try {
@@ -1522,7 +1585,11 @@ export const ministriesHandler = async (event: any): Promise<APIGatewayProxyResu
     event.pathParameters.id = minId;
 
     if (parts.length > minIdx + 3) {
-      event.pathParameters.volunteerId = parts[minIdx + 3];
+      const sub = parts[minIdx + 3];
+      if (sub === 'batch') {
+        return batchVolunteers(event);
+      }
+      event.pathParameters.volunteerId = sub;
       if (method === 'DELETE') return removeVolunteer(event);
       if (method === 'PUT' || method === 'PATCH') return updateVolunteer(event);
     }
