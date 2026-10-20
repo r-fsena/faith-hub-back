@@ -628,7 +628,8 @@ export const listSchedules = async (event: APIGatewayProxyEvent): Promise<APIGat
         COUNT(sri.id) as total_slots,
         COUNT(CASE WHEN sri.status = 'ACCEPTED' THEN 1 END) as accepted_count,
         COUNT(CASE WHEN sri.status = 'DECLINED' THEN 1 END) as declined_count,
-        COUNT(CASE WHEN sri.status = 'PENDING' THEN 1 END) as pending_count
+        COUNT(CASE WHEN sri.status = 'PENDING' THEN 1 END) as pending_count,
+        COUNT(CASE WHEN sri.status = 'SWAP_REQUESTED' THEN 1 END) as swap_requested_count
       FROM service_schedules ss
       LEFT JOIN service_roster_items sri ON ss.id = sri.schedule_id
       ${whereSql}
@@ -637,7 +638,7 @@ export const listSchedules = async (event: APIGatewayProxyEvent): Promise<APIGat
       LIMIT 100
     `, params);
 
-    // 2. Buscar itens de escala detalhados
+    // 2. Buscar itens de escala detalhados (incluindo dados de solicitação de troca se houver)
     if (schedules.length > 0) {
       const scheduleIds = schedules.map(s => `'${s.id}'`).join(',');
       const { rows: items } = await query(`
@@ -646,10 +647,18 @@ export const listSchedules = async (event: APIGatewayProxyEvent): Promise<APIGat
           mr.name as role_name,
           m.name as member_name,
           m.phone as member_phone,
-          m.email as member_email
+          m.email as member_email,
+          sw.id as swap_id,
+          sw.reason as swap_reason,
+          sw.target_member_id as swap_target_member_id,
+          sw.status as swap_status,
+          sw.created_at as swap_created_at,
+          sw_target_m.name as swap_target_member_name
         FROM service_roster_items sri
         INNER JOIN ministry_roles mr ON sri.role_id = mr.id
         INNER JOIN members m ON sri.member_id = m.id
+        LEFT JOIN service_roster_swaps sw ON sw.roster_item_id = sri.id AND sw.status = 'PENDING'
+        LEFT JOIN members sw_target_m ON sw.target_member_id = sw_target_m.id
         WHERE sri.schedule_id IN (${scheduleIds})
         ORDER BY mr.name ASC, m.name ASC
       `);
@@ -1287,6 +1296,7 @@ export const getMyPendingSwaps = async (event: any): Promise<APIGatewayProxyResu
       INNER JOIN ministry_roles mr ON sw.role_id = mr.id
       INNER JOIN members req_m ON sw.requesting_member_id = req_m.id
       WHERE sw.status = 'PENDING'
+        AND sw.requesting_member_id != ?
         AND (
           sw.target_member_id = ? 
           OR (sw.target_member_id IS NULL AND EXISTS (
@@ -1295,7 +1305,7 @@ export const getMyPendingSwaps = async (event: any): Promise<APIGatewayProxyResu
           ))
         )
       ORDER BY sw.created_at DESC
-    `, [currentUserId, currentUserId]);
+    `, [currentUserId, currentUserId, currentUserId]);
 
     const { rows: myOutgoingSwaps } = await query(`
       SELECT 
@@ -1303,6 +1313,7 @@ export const getMyPendingSwaps = async (event: any): Promise<APIGatewayProxyResu
         sw.reason,
         sw.created_at,
         sw.status,
+        sw.roster_item_id,
         tgt_m.name as target_member_name,
         ss.title as service_title,
         ss.service_date,
@@ -1389,25 +1400,180 @@ export const respondToSwap = async (event: any): Promise<APIGatewayProxyResult> 
         message: '✓ Substituição confirmada! Você foi incluído na escala do culto.'
       });
     } else {
-      await query(`
-        UPDATE service_roster_swaps 
-        SET status = 'REJECTED', responded_at = NOW()
-        WHERE id = ?
-      `, [swapId]);
+      // Se era direcionado especificamente para o usuário, encerra e devolve para ACCEPTED
+      if (swap.target_member_id === currentUserId) {
+        await query(`
+          UPDATE service_roster_swaps 
+          SET status = 'REJECTED', responded_at = NOW()
+          WHERE id = ?
+        `, [swapId]);
 
-      await query(`
-        UPDATE service_roster_items 
-        SET status = 'ACCEPTED'
-        WHERE id = ?
-      `, [swap.roster_item_id]);
-
+        await query(`
+          UPDATE service_roster_items 
+          SET status = 'ACCEPTED' 
+          WHERE id = ?
+        `, [swap.roster_item_id]);
+      }
+      // Se for aberto para o grupo todo, apenas não assume sem cancelar para os demais colegas
       return apiResponse(200, {
-        message: 'Solicitação de troca recusada.'
+        message: 'Você optou por não assumir esta vaga.'
       });
     }
   } catch (err: any) {
     console.error('Erro ao responder troca de escala:', err);
     return apiResponse(500, { error: 'Erro ao responder solicitação de troca' });
+  }
+};
+
+// POST /volunteers/swaps/{swapId}/cancel ou POST /volunteers/swaps/cancel
+export const cancelRosterSwap = async (event: any): Promise<APIGatewayProxyResult> => {
+  try {
+    const auth = await requireAuth(event);
+    if ('errorResponse' in auth) return auth.errorResponse;
+
+    const swapId = event.pathParameters?.swapId;
+    const body = event.body ? JSON.parse(event.body) : {};
+    const rosterItemId = body.rosterItemId || event.pathParameters?.rosterItemId;
+
+    let swap: any = null;
+    if (swapId && swapId !== 'cancel') {
+      const { rows } = await query(`SELECT * FROM service_roster_swaps WHERE id = ? LIMIT 1`, [swapId]);
+      if (rows.length > 0) swap = rows[0];
+    } else if (rosterItemId) {
+      const { rows } = await query(`
+        SELECT * FROM service_roster_swaps 
+        WHERE roster_item_id = ? AND status = 'PENDING' 
+        ORDER BY created_at DESC LIMIT 1
+      `, [rosterItemId]);
+      if (rows.length > 0) swap = rows[0];
+    }
+
+    if (!swap) {
+      // Se não encontrou registro na tabela mas o item estiver marcado como SWAP_REQUESTED, reverta
+      if (rosterItemId) {
+        await query(`UPDATE service_roster_items SET status = 'ACCEPTED' WHERE id = ?`, [rosterItemId]);
+        return apiResponse(200, { message: 'Escala redefinida para confirmada.' });
+      }
+      return apiResponse(404, { error: 'Solicitação de troca não encontrada ou já encerrada' });
+    }
+
+    // Permissão: quem solicitou OU líder/pastor/admin
+    const isOwner = auth.user.userId === swap.requesting_member_id;
+    const isLeader = ['SUPERADMIN', 'ADMIN', 'PASTOR', 'LEADER'].includes(auth.user.role || '');
+
+    if (!isOwner && !isLeader) {
+      return apiResponse(403, { error: 'Você não tem permissão para cancelar esta solicitação de troca' });
+    }
+
+    await query(`
+      UPDATE service_roster_swaps 
+      SET status = 'CANCELLED', responded_at = NOW() 
+      WHERE id = ?
+    `, [swap.id]);
+
+    await query(`
+      UPDATE service_roster_items 
+      SET status = 'ACCEPTED' 
+      WHERE id = ?
+    `, [swap.roster_item_id]);
+
+    await logSecurityEvent({
+      organizationId: swap.organization_id,
+      user: auth.user,
+      action: 'SERVICE_ROSTER_SWAP_CANCELLED',
+      resource: 'service_roster_swaps',
+      resourceId: swap.id,
+      details: {
+        cancelled_by: auth.user.userId,
+        is_owner: isOwner,
+        roster_item_id: swap.roster_item_id
+      },
+      event
+    });
+
+    return apiResponse(200, {
+      message: 'Solicitação de troca cancelada com sucesso! Voluntário original mantido.'
+    });
+  } catch (err: any) {
+    console.error('Erro ao cancelar solicitação de troca:', err);
+    return apiResponse(500, { error: 'Erro ao cancelar solicitação de troca' });
+  }
+};
+
+// POST /ministries/{id}/schedules/{scheduleId}/roster/{rosterItemId}/resolve-swap
+export const resolveRosterSwapByLeader = async (event: any): Promise<APIGatewayProxyResult> => {
+  try {
+    const auth = await requireAuth(event);
+    if ('errorResponse' in auth) return auth.errorResponse;
+
+    const roleCheck = enforceRole(auth.user, MINISTRY_ADMIN_ROLES);
+    if (!roleCheck.allowed) return roleCheck.errorResponse!;
+
+    const ministryId = event.pathParameters?.id;
+    const scheduleId = event.pathParameters?.scheduleId;
+    const rosterItemId = event.pathParameters?.rosterItemId;
+
+    if (!ministryId || !scheduleId || !rosterItemId) {
+      return apiResponse(400, { error: 'Parâmetros ministryId, scheduleId e rosterItemId são obrigatórios' });
+    }
+
+    const body = JSON.parse(event.body || '{}');
+    const { new_member_id, notes } = body;
+    if (!new_member_id) {
+      return apiResponse(400, { error: 'O novo voluntário substituto (new_member_id) é obrigatório' });
+    }
+
+    // Buscar item e schedule
+    const { rows: itemRows } = await query(`
+      SELECT sri.*, ss.organization_id, ss.title as service_title, m.name as current_member_name
+      FROM service_roster_items sri
+      INNER JOIN service_schedules ss ON sri.schedule_id = ss.id
+      INNER JOIN members m ON sri.member_id = m.id
+      WHERE sri.id = ? AND ss.id = ? AND ss.ministry_id = ?
+      LIMIT 1
+    `, [rosterItemId, scheduleId, ministryId]);
+
+    if (itemRows.length === 0) {
+      return apiResponse(404, { error: 'Item de escala não encontrado para este ministério' });
+    }
+
+    const item = itemRows[0];
+    const tenantCheck = enforceTenant(auth.user, item.organization_id);
+    if (!tenantCheck.allowed) return tenantCheck.errorResponse!;
+
+    // Atualizar o item da escala com o novo membro
+    await query(`
+      UPDATE service_roster_items 
+      SET member_id = ?, status = 'ACCEPTED', confirmed_at = NOW(), decline_reason = NULL, notes = COALESCE(?, notes)
+      WHERE id = ?
+    `, [new_member_id, notes || null, rosterItemId]);
+
+    // Atualizar o swap para ACCEPTED se houver pendente
+    await query(`
+      UPDATE service_roster_swaps 
+      SET status = 'ACCEPTED', target_member_id = ?, responded_at = NOW()
+      WHERE roster_item_id = ? AND status = 'PENDING'
+    `, [new_member_id, rosterItemId]);
+
+    await logSecurityEvent({
+      organizationId: tenantCheck.effectiveOrgId,
+      user: auth.user,
+      action: 'SERVICE_ROSTER_SWAP_RESOLVED_BY_LEADER',
+      resource: 'service_roster_items',
+      resourceId: rosterItemId,
+      details: {
+        schedule_id: scheduleId,
+        previous_member_id: item.member_id,
+        new_member_id,
+        leader_id: auth.user.userId
+      },
+      event
+    });
+
+    return apiResponse(200, { message: '✓ Substituição realizada com sucesso na escala pelo líder!' });
+  } catch (err: any) {
+    console.error('Erro ao resolver troca pelo líder:', err);
+    return apiResponse(500, { error: 'Erro ao resolver troca de escala' });
   }
 };
 
@@ -1517,6 +1683,15 @@ export const ministriesHandler = async (event: any): Promise<APIGatewayProxyResu
     event.pathParameters.swapId = parts[swapIdx + 1];
     return respondToSwap(event);
   }
+  if ((rawPath.includes('/volunteers/swaps/') && rawPath.endsWith('/cancel') && method === 'POST') || (rawPath.endsWith('/volunteers/swaps/cancel') && method === 'POST')) {
+    const parts = rawPath.split('/').filter(Boolean);
+    const swapIdx = parts.indexOf('swaps');
+    if (!event.pathParameters) event.pathParameters = {};
+    if (parts[swapIdx + 1] !== 'cancel') {
+      event.pathParameters.swapId = parts[swapIdx + 1];
+    }
+    return cancelRosterSwap(event);
+  }
 
   // 3. /volunteers/schedules/eligible-peers
   if (rawPath.includes('/eligible-peers') && method === 'GET') {
@@ -1607,6 +1782,20 @@ export const ministriesHandler = async (event: any): Promise<APIGatewayProxyResu
 
     if (rawPath.endsWith('/batch') && method === 'POST') {
       return createBatchSchedules(event);
+    }
+
+    if (rawPath.includes('/roster/')) {
+      const schedIdx = parts.indexOf('schedules');
+      const rosIdx = parts.indexOf('roster');
+      event.pathParameters.scheduleId = parts[schedIdx + 1];
+      event.pathParameters.rosterItemId = parts[rosIdx + 1];
+
+      if (rawPath.endsWith('/resolve-swap') && method === 'POST') {
+        return resolveRosterSwapByLeader(event);
+      }
+      if (rawPath.endsWith('/cancel-swap') && method === 'POST') {
+        return cancelRosterSwap(event);
+      }
     }
 
     if (parts.length > minIdx + 3) {
