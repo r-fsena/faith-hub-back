@@ -605,6 +605,102 @@ export const createOrUpdateSchedule = async (event: APIGatewayProxyEvent): Promi
   }
 };
 
+// POST /ministries/{id}/schedules/batch -> Criar múltiplas escalas em lote (Gerador do Mês)
+export const createBatchSchedules = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  try {
+    const auth = await requireAuth(event);
+    if ('errorResponse' in auth) return auth.errorResponse;
+
+    const roleCheck = enforceRole(auth.user, MINISTRY_ADMIN_ROLES);
+    if (!roleCheck.allowed) return roleCheck.errorResponse!;
+
+    const ministryId = event.pathParameters?.id;
+    if (!ministryId) return apiResponse(400, { error: 'ID do ministério é obrigatório' });
+
+    const { rows: minRows } = await query(`SELECT organization_id, campus_id, name, leader_id FROM ministries WHERE id = ? LIMIT 1`, [ministryId]);
+    if (minRows.length === 0) return apiResponse(404, { error: 'Ministério não encontrado' });
+    const min = minRows[0];
+
+    const tenantCheck = enforceTenant(auth.user, min.organization_id);
+    if (!tenantCheck.allowed) return tenantCheck.errorResponse!;
+
+    if (!canUserManageMinistry(auth.user, min)) {
+      return apiResponse(403, { error: 'Acesso negado: Você só pode criar escalas no ministério pelo qual é responsável.' });
+    }
+
+    const body = JSON.parse(event.body || '{}');
+    const { schedules } = body;
+
+    if (!Array.isArray(schedules) || schedules.length === 0) {
+      return apiResponse(400, { error: 'Lista de escalas é obrigatória' });
+    }
+
+    const effectiveCampusId = min.campus_id || 'campus_sede';
+    const createdBy = auth.user.userId || 'usr_pastor';
+    const createdIds: string[] = [];
+
+    for (const sch of schedules) {
+      if (!sch.title || !sch.service_date || !sch.service_time) continue;
+
+      const scheduleId = sch.id || uuidv4();
+      createdIds.push(scheduleId);
+
+      await query(`
+        INSERT INTO service_schedules (id, organization_id, campus_id, ministry_id, title, service_date, service_time, notes, status, created_by)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON DUPLICATE KEY UPDATE
+          title = VALUES(title),
+          service_date = VALUES(service_date),
+          service_time = VALUES(service_time),
+          notes = VALUES(notes),
+          status = VALUES(status),
+          updated_at = NOW()
+      `, [
+        scheduleId,
+        tenantCheck.effectiveOrgId,
+        effectiveCampusId,
+        ministryId,
+        sch.title,
+        sch.service_date,
+        sch.service_time || '18:00',
+        sch.notes || null,
+        sch.status || 'PUBLISHED',
+        createdBy
+      ]);
+
+      if (Array.isArray(sch.roster_items) && sch.roster_items.length > 0) {
+        await query(`DELETE FROM service_roster_items WHERE schedule_id = ?`, [scheduleId]);
+        for (const item of sch.roster_items) {
+          if (!item.role_id || !item.member_id) continue;
+          const itemId = uuidv4();
+          await query(`
+            INSERT INTO service_roster_items (id, organization_id, schedule_id, role_id, member_id, status)
+            VALUES (?, ?, ?, ?, ?, 'PENDING')
+          `, [itemId, tenantCheck.effectiveOrgId, scheduleId, item.role_id, item.member_id]);
+        }
+      }
+    }
+
+    await logSecurityEvent({
+      organizationId: tenantCheck.effectiveOrgId,
+      user: auth.user,
+      action: 'BATCH_CREATE_SCHEDULES',
+      resource: 'service_schedules',
+      details: { ministry_name: min.name, count: createdIds.length },
+      event
+    });
+
+    return apiResponse(201, {
+      message: `${createdIds.length} escala(s) criada(s) com sucesso!`,
+      count: createdIds.length,
+      created_ids: createdIds
+    });
+  } catch (err: any) {
+    console.error('Erro ao criar escalas em lote:', err);
+    return apiResponse(500, { error: 'Erro ao criar escalas em lote' });
+  }
+};
+
 // DELETE /ministries/{id}/schedules/{scheduleId}
 export const deleteSchedule = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   try {
@@ -811,37 +907,39 @@ export const deleteBlockout = async (event: any): Promise<APIGatewayProxyResult>
   }
 };
 
-// GET /ministries/conflicts?date=YYYY-MM-DD&time=HH:MM&schedule_id=...
+// GET /ministries/conflicts?date=YYYY-MM-DD (ou start_date=...&end_date=...)&schedule_id=...
 export const getScheduleConflicts = async (event: any): Promise<APIGatewayProxyResult> => {
   try {
     const auth = await requireAuth(event);
     if ('errorResponse' in auth) return auth.errorResponse;
 
     const qp = event.queryStringParameters || {};
-    const serviceDate = qp.date;
+    const startDate = qp.start_date || qp.date;
+    const endDate = qp.end_date || qp.date;
     const scheduleId = qp.schedule_id || null;
     const orgId = auth.user.organizationId || qp.organization_id || 'org_default';
 
-    if (!serviceDate) {
-      return apiResponse(400, { error: 'Parâmetro date é obrigatório (YYYY-MM-DD)' });
+    if (!startDate) {
+      return apiResponse(400, { error: 'Parâmetro date ou start_date é obrigatório (YYYY-MM-DD)' });
     }
 
-    // 1. Voluntários com blockout ativo na data
+    // 1. Voluntários com blockout ativo na data ou no período solicitado
     const { rows: blockouts } = await query(`
       SELECT vb.id, vb.member_id, m.name as member_name, vb.start_date, vb.end_date, vb.reason
       FROM volunteer_blockouts vb
       INNER JOIN members m ON vb.member_id = m.id
       WHERE vb.organization_id = ? 
-        AND ? BETWEEN vb.start_date AND vb.end_date
-    `, [orgId, serviceDate]);
+        AND vb.start_date <= ? AND vb.end_date >= ?
+    `, [orgId, endDate, startDate]);
 
-    // 2. Voluntários já escalados em outros ministérios ou escalas no mesmo dia
+    // 2. Voluntários já escalados em outros ministérios ou escalas na data ou período
     const { rows: doubleBookings } = await query(`
       SELECT 
         sri.member_id,
         m.name as member_name,
         ss.id as schedule_id,
         ss.title as service_title,
+        ss.service_date,
         ss.service_time,
         min.name as ministry_name,
         mr.name as role_name,
@@ -852,12 +950,14 @@ export const getScheduleConflicts = async (event: any): Promise<APIGatewayProxyR
       INNER JOIN ministry_roles mr ON sri.role_id = mr.id
       INNER JOIN members m ON sri.member_id = m.id
       WHERE ss.organization_id = ?
-        AND ss.service_date = ?
+        AND ss.service_date >= ? AND ss.service_date <= ?
         AND (? IS NULL OR ss.id != ?)
-    `, [orgId, serviceDate, scheduleId, scheduleId]);
+    `, [orgId, startDate, endDate, scheduleId, scheduleId]);
 
     return apiResponse(200, {
-      date: serviceDate,
+      date: startDate,
+      start_date: startDate,
+      end_date: endDate,
       blockouts,
       doubleBookings
     });
@@ -1333,6 +1433,10 @@ export const ministriesHandler = async (event: any): Promise<APIGatewayProxyResu
     const minId = parts[minIdx + 1];
     if (!event.pathParameters) event.pathParameters = {};
     event.pathParameters.id = minId;
+
+    if (rawPath.endsWith('/batch') && method === 'POST') {
+      return createBatchSchedules(event);
+    }
 
     if (parts.length > minIdx + 3) {
       event.pathParameters.scheduleId = parts[minIdx + 3];
