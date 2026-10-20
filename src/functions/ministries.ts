@@ -35,9 +35,26 @@ export const listMinistries = async (event: APIGatewayProxyEvent): Promise<APIGa
 
     const orgId = user ? enforceTenant(user, requestedOrgId).effectiveOrgId : (requestedOrgId || 'org_default');
 
+    let volunteerSelect = `
+        NULL as my_volunteer_status,
+        NULL as my_volunteer_roles,
+        NULL as my_volunteer_joined_at,
+    `;
+    const params: any[] = [];
+
+    if (user?.userId) {
+      volunteerSelect = `
+        (SELECT mv.status FROM ministry_volunteers mv WHERE mv.ministry_id = m.id AND (mv.member_id = ? OR mv.member_id = (SELECT id FROM members WHERE email = ? LIMIT 1)) LIMIT 1) as my_volunteer_status,
+        (SELECT mv.roles_csv FROM ministry_volunteers mv WHERE mv.ministry_id = m.id AND (mv.member_id = ? OR mv.member_id = (SELECT id FROM members WHERE email = ? LIMIT 1)) LIMIT 1) as my_volunteer_roles,
+        (SELECT mv.joined_at FROM ministry_volunteers mv WHERE mv.ministry_id = m.id AND (mv.member_id = ? OR mv.member_id = (SELECT id FROM members WHERE email = ? LIMIT 1)) LIMIT 1) as my_volunteer_joined_at,
+      `;
+      params.push(user.userId, user.email || '', user.userId, user.email || '', user.userId, user.email || '');
+    }
+
     let sql = `
       SELECT 
         m.*,
+        ${volunteerSelect}
         (SELECT COUNT(*) FROM ministry_roles WHERE ministry_id = m.id) as roles_count,
         (SELECT COUNT(*) FROM ministry_volunteers WHERE ministry_id = m.id AND status = 'ACTIVE') as volunteers_count,
         (SELECT COUNT(*) FROM service_schedules WHERE ministry_id = m.id AND service_date >= CURDATE()) as upcoming_schedules_count
@@ -45,7 +62,7 @@ export const listMinistries = async (event: APIGatewayProxyEvent): Promise<APIGa
       WHERE m.organization_id = ?
     `;
 
-    const params: any[] = [orgId];
+    params.push(orgId);
 
     if (statusParam && statusParam !== 'all') {
       sql += ` AND m.status = ?`;
@@ -339,9 +356,6 @@ export const addVolunteer = async (event: APIGatewayProxyEvent): Promise<APIGate
     const auth = await requireAuth(event);
     if ('errorResponse' in auth) return auth.errorResponse;
 
-    const roleCheck = enforceRole(auth.user, MINISTRY_ADMIN_ROLES);
-    if (!roleCheck.allowed) return roleCheck.errorResponse!;
-
     const ministryId = event.pathParameters?.id;
     if (!ministryId) return apiResponse(400, { error: 'ID do ministério ausente' });
 
@@ -350,10 +364,6 @@ export const addVolunteer = async (event: APIGatewayProxyEvent): Promise<APIGate
 
     const tenantCheck = enforceTenant(auth.user, minRows[0].organization_id);
     if (!tenantCheck.allowed) return tenantCheck.errorResponse!;
-
-    if (!canUserManageMinistry(auth.user, minRows[0])) {
-      return apiResponse(403, { error: 'Acesso negado: Você só pode vincular voluntários ao ministério que lidera.' });
-    }
 
     const body = JSON.parse(event.body || '{}');
     const { 
@@ -364,7 +374,21 @@ export const addVolunteer = async (event: APIGatewayProxyEvent): Promise<APIGate
       notes 
     } = body;
 
-    if (!member_id) return apiResponse(400, { error: 'member_id é obrigatório' });
+    const isSelfEnrollment = !member_id || member_id === 'me' || member_id === auth.user.userId || (auth.user.email && member_id.toLowerCase() === auth.user.email.toLowerCase());
+
+    if (!isSelfEnrollment) {
+      const roleCheck = enforceRole(auth.user, MINISTRY_ADMIN_ROLES);
+      if (!roleCheck.allowed) return roleCheck.errorResponse!;
+
+      if (!canUserManageMinistry(auth.user, minRows[0])) {
+        return apiResponse(403, { error: 'Acesso negado: Você só pode vincular voluntários ao ministério que lidera.' });
+      }
+    }
+
+    const effectiveMemberId = isSelfEnrollment ? auth.user.userId : member_id;
+    const effectiveStatus = (isSelfEnrollment && !canUserManageMinistry(auth.user, minRows[0])) ? 'CANDIDATE' : status;
+
+    if (!effectiveMemberId) return apiResponse(400, { error: 'member_id é obrigatório' });
 
     const volId = uuidv4();
     const joinedAt = new Date().toISOString().split('T')[0];
@@ -384,15 +408,15 @@ export const addVolunteer = async (event: APIGatewayProxyEvent): Promise<APIGate
       volId,
       tenantCheck.effectiveOrgId,
       ministryId,
-      member_id,
-      status,
+      effectiveMemberId,
+      effectiveStatus,
       preferred_service_time || null,
       roles_csv || null,
       notes || null,
       joinedAt
     ]);
 
-    return apiResponse(201, { message: 'Voluntário vinculado ao ministério com sucesso', id: volId });
+    return apiResponse(201, { message: 'Voluntário vinculado ao ministério com sucesso', id: volId, status: effectiveStatus });
   } catch (err: any) {
     console.error('Erro ao adicionar voluntário:', err);
     return apiResponse(500, { error: 'Erro ao adicionar voluntário' });
