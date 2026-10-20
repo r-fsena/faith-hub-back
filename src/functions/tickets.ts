@@ -149,8 +149,10 @@ export const myTickets = async (event: APIGatewayProxyEvent): Promise<APIGateway
     const userId = user?.userId || event.queryStringParameters?.user_id;
     const phone = event.queryStringParameters?.phone;
     const email = user?.email || event.queryStringParameters?.email;
+    const ticketIdsParam = event.queryStringParameters?.ticket_ids;
+    const ticketIds = ticketIdsParam ? ticketIdsParam.split(',').map(s => s.trim()).filter(Boolean) : [];
 
-    if (!userId && !phone && !email) {
+    if (!userId && !phone && !email && ticketIds.length === 0) {
       return apiResponse(400, { message: 'Identificação do participante obrigatória' });
     }
 
@@ -166,19 +168,28 @@ export const myTickets = async (event: APIGatewayProxyEvent): Promise<APIGateway
       WHERE 1=1
     `;
     const params: any[] = [];
+    const orConditions: string[] = [];
 
-    if (userId && phone && email) {
-      sql += ` AND (t.user_id = ? OR t.attendee_whatsapp = ? OR t.attendee_email = ?)`;
-      params.push(userId, phone, email);
-    } else if (userId) {
-      sql += ` AND (t.user_id = ? OR t.attendee_email = ?)`;
+    if (userId) {
+      orConditions.push('(t.user_id = ? OR t.attendee_email = ?)');
       params.push(userId, email || userId);
-    } else if (phone) {
-      sql += ` AND t.attendee_whatsapp = ?`;
+    }
+    if (phone) {
+      orConditions.push('t.attendee_whatsapp = ?');
       params.push(phone);
-    } else if (email) {
-      sql += ` AND t.attendee_email = ?`;
+    }
+    if (email && !userId) {
+      orConditions.push('t.attendee_email = ?');
       params.push(email);
+    }
+    if (ticketIds.length > 0) {
+      const placeholders = ticketIds.map(() => '?').join(',');
+      orConditions.push(`t.id IN (${placeholders})`);
+      params.push(...ticketIds);
+    }
+
+    if (orConditions.length > 0) {
+      sql += ` AND (${orConditions.join(' OR ')})`;
     }
 
     sql += ` ORDER BY t.created_at DESC;`;
