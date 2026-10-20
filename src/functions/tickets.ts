@@ -5,7 +5,7 @@ import { requireAuth, enforceRole, getAuthenticatedUser } from '../services/auth
 import { logSecurityEvent } from '../services/auditLogService';
 import { checkRateLimit } from '../services/rateLimiter';
 
-const SCANNER_ROLES = ['SUPERADMIN', 'PASTOR', 'ADMIN', 'LEADER', 'VOLUNTEER'];
+const SCANNER_ROLES = ['SUPERADMIN', 'PASTOR', 'ADMIN', 'TREASURER', 'LEADER', 'VOLUNTEER', 'MEMBER'];
 
 // Gerador de Código Curto de Validação Manual (ex: FH-784291)
 const generateShortCode = (): string => {
