@@ -91,7 +91,7 @@ export async function evaluateTenantFlags(
     [organizationId, environment, campusId || '']
   );
 
-  const flagsMap: Record<string, boolean> = {};
+  const flagsMap: Record<string, boolean> = { 'members.digital_card': false, 'financial.advanced_reports': false };
   const configsMap: Record<string, any> = {};
   const catalogMap: Map<string, { category: string; description: string; hasOverride: boolean }> = new Map();
 

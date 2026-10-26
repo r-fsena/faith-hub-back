@@ -1,3 +1,4 @@
+import { authorizeResource } from '../services/tenantResource';
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { v4 as uuidv4 } from 'uuid';
 import { query, apiResponse } from '../db';
@@ -8,24 +9,28 @@ import { logSecurityEvent } from '../services/auditLogService';
 // GET /posts
 export const getPosts = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   try {
-    const user = await getAuthenticatedUser(event);
+    const auth = await requireAuth(event);
+    if ('errorResponse' in auth) return auth.errorResponse;
+    const user = auth.user;
     const groupId = event.queryStringParameters?.group_id;
     const mediaOnly = event.queryStringParameters?.media_only === 'true';
     const requestedOrgId = event.queryStringParameters?.organization_id;
 
-    const orgId = user ? enforceTenant(user, requestedOrgId).effectiveOrgId : (requestedOrgId || 'org_default');
+    const tenantScope = user ? enforceTenant(user, requestedOrgId) : null;
+    if (tenantScope && !tenantScope.allowed) return tenantScope.errorResponse!;
+    const orgId = tenantScope?.effectiveOrgId || (requestedOrgId || 'org_default');
     
     let sql = `
       SELECT p.id, p.cell_group_id, p.author_id, p.author_name, p.content_text, p.media_url, p.media_type, 
              p.reply_to_id, p.reply_to_author, p.reply_to_text, p.reactions, p.author_role, p.author_avatar, p.created_at 
       FROM board_posts p
       LEFT JOIN cell_groups cg ON cg.id = p.cell_group_id
-      WHERE (cg.organization_id = ? OR p.cell_group_id IS NULL)
+      WHERE cg.organization_id = ?
     `;
     const params: any[] = [orgId];
 
     if (groupId) {
-      sql += ` AND (p.cell_group_id = ? OR p.cell_group_id IS NULL)`;
+      sql += ` AND p.cell_group_id = ?`;
       params.push(groupId);
     }
 
@@ -60,7 +65,9 @@ export const createPost = async (event: APIGatewayProxyEvent): Promise<APIGatewa
     });
     if (!rateCheck.allowed) return rateCheck.errorResponse!;
 
-    const user = await getAuthenticatedUser(event);
+    const auth = await requireAuth(event);
+    if ('errorResponse' in auth) return auth.errorResponse;
+    const user = auth.user;
     const body = JSON.parse(event.body || '{}');
     const { 
       cell_group_id, 
@@ -78,10 +85,13 @@ export const createPost = async (event: APIGatewayProxyEvent): Promise<APIGatewa
       author_avatar
     } = body;
 
-    const finalAuthor = user?.name || author_name || 'Membro';
-    const finalAuthorId = user?.userId || author_id || `usr_${Date.now()}`;
+    const finalAuthor = user.name;
+    const finalAuthorId = user.userId;
     const rawContent = content_text || content;
-    const finalGroupId = cell_group_id || group_id || null;
+    const finalGroupId = cell_group_id || group_id;
+    if (!finalGroupId) return apiResponse(400, { message: 'Célula obrigatória' });
+    const scope = await authorizeResource(event, 'cell_groups', finalGroupId);
+    if ('errorResponse' in scope) return scope.errorResponse;
 
     if (!rawContent || String(rawContent).trim() === '') {
       return apiResponse(400, { message: 'O conteúdo da publicação é obrigatório' });
@@ -157,12 +167,16 @@ export const reactPost = async (event: APIGatewayProxyEvent): Promise<APIGateway
     const id = event.pathParameters?.id;
     if (!id) return apiResponse(400, { message: 'ID é obrigatório' });
 
-    const user = await getAuthenticatedUser(event);
+    const auth = await requireAuth(event);
+    if ('errorResponse' in auth) return auth.errorResponse;
+    const user = auth.user;
     const body = JSON.parse(event.body || '{}');
     const { emoji, userId } = body;
     if (!emoji) return apiResponse(400, { message: 'Emoji é obrigatório' });
 
-    const { rows } = await query('SELECT reactions FROM board_posts WHERE id = ? LIMIT 1', [id]);
+    const scope = await authorizeResource(event, 'board_posts', id);
+    if ('errorResponse' in scope) return scope.errorResponse;
+    const rows = [scope.record];
     if (rows.length === 0) return apiResponse(404, { message: 'Post não encontrado' });
 
     let reactionsMap: Record<string, string[]> = {};
@@ -174,7 +188,7 @@ export const reactPost = async (event: APIGatewayProxyEvent): Promise<APIGateway
     }
 
     const currentUsers = Array.isArray(reactionsMap[emoji]) ? reactionsMap[emoji] : [];
-    const effectiveUser = user?.userId || userId || 'anonymous';
+    const effectiveUser = user.userId;
 
     // Toggle reaction
     if (currentUsers.includes(effectiveUser)) {
@@ -185,7 +199,7 @@ export const reactPost = async (event: APIGatewayProxyEvent): Promise<APIGateway
     }
 
     const reactionsJson = JSON.stringify(reactionsMap);
-    await query('UPDATE board_posts SET reactions = ? WHERE id = ?', [reactionsJson, id]);
+    await query('UPDATE board_posts p JOIN cell_groups cg ON cg.id = p.cell_group_id SET p.reactions = ? WHERE p.id = ? AND cg.organization_id = ?', [reactionsJson, id, scope.organizationId]);
 
     return apiResponse(200, {
       message: 'Reação atualizada',

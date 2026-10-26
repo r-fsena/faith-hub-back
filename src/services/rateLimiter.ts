@@ -17,7 +17,7 @@ setInterval(() => {
       rateLimitCache.delete(key);
     }
   }
-}, 300000);
+}, 300000).unref();
 
 export interface RateLimitOptions {
   maxRequests: number;     // e.g. 20 requests

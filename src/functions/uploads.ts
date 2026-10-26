@@ -44,7 +44,9 @@ export const getUploadUrl = async (event: APIGatewayProxyEvent): Promise<APIGate
     });
     if (!rateCheck.allowed) return rateCheck.errorResponse!;
 
-    const user = await getAuthenticatedUser(event);
+    const auth = await requireAuth(event);
+    if ('errorResponse' in auth) return auth.errorResponse;
+    const user = auth.user;
     const orgId = user?.organizationId || 'org_default';
 
     const { filename, contentType, target_route, prefix } = event.queryStringParameters || {};

@@ -1,3 +1,4 @@
+import { authorizeResource } from '../services/tenantResource';
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { v4 as uuidv4 } from 'uuid';
 import { query, apiResponse } from '../db';
@@ -45,7 +46,7 @@ export const getDevotionals = async (event: APIGatewayProxyEvent): Promise<APIGa
 export const getTodayDevotional = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   try {
     const user = await getAuthenticatedUser(event);
-    const userId = event.queryStringParameters?.user_id || user?.userId;
+    const userId = user?.userId;
     const requestedOrgId = event.queryStringParameters?.organization_id;
     const campusId = event.queryStringParameters?.campus_id;
     const dateParam = event.queryStringParameters?.date;
@@ -132,6 +133,10 @@ export const createOrUpdateDevotional = async (event: APIGatewayProxyEvent): Pro
     const tenantCheck = enforceTenant(auth.user, body.organization_id);
     if (!tenantCheck.allowed) return tenantCheck.errorResponse!;
     const orgValue = tenantCheck.effectiveOrgId;
+    if (body.id) {
+      const resource = await authorizeResource({ ...event, headers: { ...event.headers, 'x-organization-id': orgValue } }, 'devotionals', body.id);
+      if ('errorResponse' in resource) return resource.errorResponse;
+    }
     const campusValue = body.campus_id && body.campus_id !== 'all' ? body.campus_id : null;
 
     const qValues = [
@@ -229,11 +234,15 @@ export const deleteDevotional = async (event: APIGatewayProxyEvent): Promise<API
 // POST /devotionals/notes
 export const saveUserNote = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   try {
-    const user = await getAuthenticatedUser(event);
+    const auth = await requireAuth(event);
+    if ('errorResponse' in auth) return auth.errorResponse;
+    const user = auth.user;
     const body = JSON.parse(event.body || '{}');
     const { devotional_id, user_id, note_text } = body;
 
-    const effectiveUserId = user?.userId || user_id;
+    const effectiveUserId = user.userId;
+    const scope = await authorizeResource(event, 'devotionals', devotional_id);
+    if ('errorResponse' in scope) return scope.errorResponse;
 
     if (!devotional_id || !effectiveUserId) {
       return apiResponse(400, { message: 'devotional_id e identificação do usuário são obrigatórios' });

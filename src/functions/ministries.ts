@@ -1,3 +1,4 @@
+import { authorizeResource } from '../services/tenantResource';
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { v4 as uuidv4 } from 'uuid';
 import { query, apiResponse } from '../db';
@@ -33,7 +34,9 @@ export const listMinistries = async (event: APIGatewayProxyEvent): Promise<APIGa
     const campusId = event.queryStringParameters?.campus_id;
     const statusParam = event.queryStringParameters?.status; // 'ACTIVE', 'INACTIVE' or 'all'
 
-    const orgId = user ? enforceTenant(user, requestedOrgId).effectiveOrgId : (requestedOrgId || 'org_default');
+    const tenantScope = user ? enforceTenant(user, requestedOrgId) : null;
+    if (tenantScope && !tenantScope.allowed) return tenantScope.errorResponse!;
+    const orgId = tenantScope?.effectiveOrgId || (requestedOrgId || 'org_default');
 
     let volunteerSelect = `
         NULL as my_volunteer_status,
@@ -114,6 +117,10 @@ export const createOrUpdateMinistry = async (event: APIGatewayProxyEvent): Promi
 
     if (!name) return apiResponse(400, { error: 'Nome do ministério é obrigatório' });
 
+    if (id) {
+      const resource = await authorizeResource({ ...event, headers: { ...event.headers, 'x-organization-id': tenantCheck.effectiveOrgId } }, 'ministries', id, MINISTRY_ADMIN_ROLES);
+      if ('errorResponse' in resource) return resource.errorResponse;
+    }
     const isGlobal = auth.user.isSuperAdmin || GLOBAL_MINISTRY_ROLES.includes(auth.user.role);
 
     // Apenas Pastores e Administradores Globais podem criar novos ministérios
@@ -716,6 +723,11 @@ export const createOrUpdateSchedule = async (event: APIGatewayProxyEvent): Promi
       return apiResponse(400, { error: 'Título, data e horário do culto são obrigatórios' });
     }
 
+    if (id) {
+      const existing = await authorizeResource({ ...event, headers: { ...event.headers, 'x-organization-id': tenantCheck.effectiveOrgId } }, 'service_schedules', id, MINISTRY_ADMIN_ROLES);
+      if ('errorResponse' in existing) return existing.errorResponse;
+      if (existing.record.ministry_id !== ministryId) return apiResponse(403, { error: 'Escala pertence a outro ministério' });
+    }
     const scheduleId = id || uuidv4();
     const effectiveCampusId = min.campus_id || 'campus_sede';
     const createdBy = auth.user.userId || 'usr_pastor';
@@ -817,6 +829,11 @@ export const createBatchSchedules = async (event: APIGatewayProxyEvent): Promise
     for (const sch of schedules) {
       if (!sch.title || !sch.service_date || !sch.service_time) continue;
 
+      if (sch.id) {
+        const existing = await authorizeResource({ ...event, headers: { ...event.headers, 'x-organization-id': tenantCheck.effectiveOrgId } }, 'service_schedules', sch.id, MINISTRY_ADMIN_ROLES);
+        if ('errorResponse' in existing) return existing.errorResponse;
+        if (existing.record.ministry_id !== ministryId) return apiResponse(403, { error: 'Escala pertence a outro ministério' });
+      }
       const scheduleId = sch.id || uuidv4();
       createdIds.push(scheduleId);
 
@@ -973,8 +990,8 @@ export const respondRosterItem = async (event: APIGatewayProxyEvent): Promise<AP
     await query(`
       UPDATE service_roster_items
       SET status = ?, decline_reason = ?, confirmed_at = NOW()
-      WHERE id = ?
-    `, [status, decline_reason || null, rosterItemId]);
+      WHERE id = ? AND organization_id = ? AND member_id = ?
+    `, [status, decline_reason || null, rosterItemId, auth.user.organizationId, auth.user.userId]);
 
     return apiResponse(200, {
       message: status === 'ACCEPTED' ? '✓ Presença na escala confirmada com sucesso!' : 'Escala recusada. A liderança foi notificada.',
@@ -1031,7 +1048,7 @@ export const createBlockout = async (event: any): Promise<APIGatewayProxyResult>
     const orgId = auth.user.organizationId || body.organization_id || 'org_default';
 
     // Resolver member_id correto
-    let memberId = body.member_id || auth.user.userId;
+    let memberId = auth.user.userId;
     const { rows: memRows } = await query(
       `SELECT id FROM members WHERE (id = ? OR email = ?) AND organization_id = ? LIMIT 1`,
       [memberId, auth.user.email, orgId]
@@ -1072,8 +1089,8 @@ export const deleteBlockout = async (event: any): Promise<APIGatewayProxyResult>
 
     await query(`
       DELETE FROM volunteer_blockouts 
-      WHERE id = ? AND organization_id = ?
-    `, [blockoutId, orgId]);
+      WHERE id = ? AND organization_id = ? AND member_id = ?
+    `, [blockoutId, orgId, auth.user.userId]);
 
     return apiResponse(200, { message: 'Bloqueio de data cancelado com sucesso' });
   } catch (err: any) {
@@ -1220,6 +1237,11 @@ export const requestRosterSwap = async (event: any): Promise<APIGatewayProxyResu
     const tenantCheck = enforceTenant(auth.user, item.organization_id);
     if (!tenantCheck.allowed) return tenantCheck.errorResponse!;
 
+    if (item.member_id !== auth.user.userId) return apiResponse(403, { error: 'Somente o voluntário escalado pode solicitar a própria troca' });
+    if (target_member_id) {
+      const { rows } = await query('SELECT id FROM members WHERE id = ? AND organization_id = ?', [target_member_id, tenantCheck.effectiveOrgId]);
+      if (!rows.length) return apiResponse(404, { error: 'Substituto não encontrado nesta organização' });
+    }
     const swapId = uuidv4();
 
     await query(`
@@ -1355,33 +1377,40 @@ export const respondToSwap = async (event: any): Promise<APIGatewayProxyResult> 
       return apiResponse(400, { error: 'Ação deve ser ACCEPT ou REJECT' });
     }
 
+    const scope = enforceTenant(auth.user, event.headers?.['x-organization-id']);
+    if (!scope.allowed) return scope.errorResponse!;
     const { rows: swapRows } = await query(`
       SELECT sw.*, ss.title as service_title, ss.service_date, min.name as ministry_name
       FROM service_roster_swaps sw
       INNER JOIN service_schedules ss ON sw.schedule_id = ss.id
       INNER JOIN ministries min ON ss.ministry_id = min.id
-      WHERE sw.id = ? AND sw.status = 'PENDING'
+      WHERE sw.id = ? AND sw.organization_id = ? AND sw.status = 'PENDING'
       LIMIT 1
-    `, [swapId]);
+    `, [swapId, scope.effectiveOrgId]);
 
     if (swapRows.length === 0) {
       return apiResponse(404, { error: 'Solicitação de troca não encontrada ou já respondida' });
     }
     const swap = swapRows[0];
+    const tenantCheck = enforceTenant(auth.user, swap.organization_id);
+    if (!tenantCheck.allowed) return tenantCheck.errorResponse!;
+    if (swap.requesting_member_id === auth.user.userId || (swap.target_member_id && swap.target_member_id !== auth.user.userId)) return apiResponse(403, { error: 'Você não é o destinatário desta troca' });
+    const { rows: eligible } = await query(`SELECT mv.member_id FROM ministry_volunteers mv JOIN service_schedules ss ON ss.ministry_id = mv.ministry_id WHERE ss.id = ? AND ss.organization_id = ? AND mv.member_id = ? AND mv.status = 'ACTIVE'`, [swap.schedule_id, tenantCheck.effectiveOrgId, auth.user.userId]);
+    if (!eligible.length) return apiResponse(403, { error: 'Voluntário não habilitado neste ministério' });
     const currentUserId = auth.user.userId;
 
     if (action === 'ACCEPT') {
       await query(`
         UPDATE service_roster_items 
         SET member_id = ?, status = 'ACCEPTED', confirmed_at = NOW()
-        WHERE id = ?
-      `, [currentUserId, swap.roster_item_id]);
+        WHERE id = ? AND organization_id = ?
+      `, [currentUserId, swap.roster_item_id, tenantCheck.effectiveOrgId]);
 
       await query(`
         UPDATE service_roster_swaps 
         SET status = 'ACCEPTED', target_member_id = ?, responded_at = NOW()
-        WHERE id = ?
-      `, [currentUserId, swapId]);
+        WHERE id = ? AND organization_id = ?
+      `, [currentUserId, swapId, tenantCheck.effectiveOrgId]);
 
       await logSecurityEvent({
         organizationId: swap.organization_id,
@@ -1406,14 +1435,14 @@ export const respondToSwap = async (event: any): Promise<APIGatewayProxyResult> 
         await query(`
           UPDATE service_roster_swaps 
           SET status = 'REJECTED', responded_at = NOW()
-          WHERE id = ?
-        `, [swapId]);
+          WHERE id = ? AND organization_id = ?
+        `, [swapId, tenantCheck.effectiveOrgId]);
 
         await query(`
           UPDATE service_roster_items 
           SET status = 'ACCEPTED' 
-          WHERE id = ?
-        `, [swap.roster_item_id]);
+          WHERE id = ? AND organization_id = ?
+        `, [swap.roster_item_id, tenantCheck.effectiveOrgId]);
       }
       // Se for aberto para o grupo todo, apenas não assume sem cancelar para os demais colegas
       return apiResponse(200, {
@@ -1466,15 +1495,9 @@ export const cancelRosterSwap = async (event: any): Promise<APIGatewayProxyResul
       }
     }
 
-    if (!swap) {
-      // Se não encontrou registro na tabela mas o item estiver marcado como SWAP_REQUESTED, reverta
-      if (rosterItemId) {
-        await query(`UPDATE service_roster_items SET status = 'ACCEPTED' WHERE id = ?`, [rosterItemId]);
-        return apiResponse(200, { message: 'Escala redefinida para confirmada.' });
-      }
-      return apiResponse(404, { error: 'Solicitação de troca não encontrada ou já encerrada' });
-    }
-
+    if (!swap) return apiResponse(404, { error: 'Solicitação de troca não encontrada' });
+    const tenantCheck = enforceTenant(auth.user, swap.organization_id);
+    if (!tenantCheck.allowed) return tenantCheck.errorResponse!;
     // Permissão: quem solicitou OU líder/pastor/admin
     const isOwner = auth.user.userId === swap.requesting_member_id;
     const isLeader = ['SUPERADMIN', 'ADMIN', 'PASTOR', 'LEADER'].includes(auth.user.role || '');
@@ -1487,8 +1510,8 @@ export const cancelRosterSwap = async (event: any): Promise<APIGatewayProxyResul
     await query(`
       UPDATE service_roster_swaps 
       SET status = 'CANCELLED', responded_at = NOW() 
-      WHERE id = ? OR (schedule_id = ? AND requesting_member_id = ? AND status = 'PENDING')
-    `, [swap.id, swap.schedule_id, swap.requesting_member_id]);
+      WHERE organization_id = ? AND (id = ? OR (schedule_id = ? AND requesting_member_id = ? AND status = 'PENDING'))
+    `, [tenantCheck.effectiveOrgId, swap.id, swap.schedule_id, swap.requesting_member_id]);
 
     // Atualiza o item de escala para ACCEPTED
     await query(`
@@ -1679,6 +1702,11 @@ export const ministriesHandler = async (event: any): Promise<APIGatewayProxyResu
   if (method === 'OPTIONS') {
     return apiResponse(200, { ok: true });
   }
+  const auth = await requireAuth(event);
+  if ('errorResponse' in auth) return auth.errorResponse;
+  const tenantCheck = enforceTenant(auth.user, event.headers?.['x-organization-id'] || event.queryStringParameters?.organization_id);
+  if (!tenantCheck.allowed) return tenantCheck.errorResponse!;
+
 
   // 1. /volunteers/blockouts
   if (rawPath.startsWith('/volunteers/blockouts') || rawPath.startsWith('/volunteers/my-blockouts')) {

@@ -1,5 +1,6 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { query, apiResponse } from '../db';
+import { getVerifiedClaims } from './tokenVerifier';
 
 export interface AuthUser {
   userId: string;
@@ -11,129 +12,38 @@ export interface AuthUser {
   isSuperAdmin: boolean;
 }
 
-// SuperAdmin emails with master access
-const SUPER_ADMIN_EMAILS = [
-  'admin@faithhub.com',
-  'rafael@faithhub.com',
-  'superadmin@faithhub.com',
-  'rfsena@icloud.com'
-];
-
-/**
- * Decodes JWT payload safely and inspects standard claims
- */
-function decodeJwtPayload(token: string): any {
-  try {
-    const parts = token.split('.');
-    if (parts.length !== 3) return null;
-    const base64Url = parts[1];
-    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
-    const jsonPayload = Buffer.from(base64, 'base64').toString('utf8');
-    const parsed = JSON.parse(jsonPayload);
-
-    // Validate expiration timestamp (exp)
-    if (parsed.exp && parsed.exp * 1000 < Date.now()) {
-      console.warn('[SECURITY] Token JWT expirado fornecido.');
-      return null;
-    }
-
-    return parsed;
-  } catch {
-    return null;
-  }
+export function normalizeRole(role: string): string {
+  const normalized = String(role).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().trim();
+  const aliases: Record<string, string> = { 'LIDER DE CELULA': 'LEADER', MEMBRO: 'MEMBER', VISITANTE: 'MEMBER', LIDER: 'LEADER', PASTOR: 'PASTOR', ADMINISTRADOR: 'ADMIN', TESOUREIRO: 'TREASURER', VOLUNTARIO: 'VOLUNTEER', SUPER_ADMIN: 'SUPERADMIN', MASTER_ADMIN: 'SUPERADMIN', MASTER: 'SUPERADMIN', ADMIN_MASTER: 'SUPERADMIN' };
+  return aliases[normalized] || normalized;
 }
 
-/**
- * Extracts and verifies authenticated user information from Lambda event
- * Authoritative claims originate from AWS API Gateway Cognito JWT Authorizer
- */
 export async function getAuthenticatedUser(event: APIGatewayProxyEvent): Promise<AuthUser | null> {
   try {
-    // 1. Extract authoritative claims verified cryptographically by API Gateway Authorizer
-    let claims =
-      (event.requestContext as any)?.authorizer?.jwt?.claims ||
-      (event.requestContext as any)?.authorizer?.claims ||
-      null;
-
-    let isVerifiedByGateway = Boolean(claims);
-
-    // 2. Fallback: Parse Authorization Bearer header (for local development or public lambdas)
-    if (!claims) {
-      const authHeader =
-        event.headers?.['authorization'] ||
-        event.headers?.['Authorization'] ||
-        '';
-
-      if (authHeader.startsWith('Bearer ')) {
-        const token = authHeader.substring(7).trim();
-        claims = decodeJwtPayload(token);
-      }
-    }
-
-    if (!claims) {
-      return null;
-    }
-
-    const cognitoSub = claims.sub || claims.username || claims['cognito:username'];
-    let email = (claims.email || (claims.username && claims.username.includes('@') ? claims.username : '') || '').toLowerCase().trim();
-    const name = claims.name || claims['cognito:name'] || (email ? email.split('@')[0] : 'Usuário');
-
-    if (!cognitoSub && !email) {
-      return null;
-    }
-
-    // 3. Query member record in MySQL DB to retrieve authoritative role and tenant
-    let memberRecord: any = null;
-    if (cognitoSub || email) {
-      const { rows } = await query(
-        `SELECT id, name, email, role, organization_id, campus_id, campus_ids 
-         FROM members 
-         WHERE (id = ? OR email = ? OR LOWER(email) = LOWER(?)) AND status != 'INACTIVE' 
-         LIMIT 1`,
-        [cognitoSub || '', email || '', email || '']
-      );
-      if (rows.length > 0) {
-        memberRecord = rows[0];
-        if (!email && memberRecord.email) {
-          email = memberRecord.email.toLowerCase().trim();
-        }
-      }
-    }
-
-    // Anti-Forging Guard: SuperAdmin status is ONLY granted if verified by API Gateway OR present in DB with SUPERADMIN/MASTER role
-    const MASTER_ROLES = ['SUPERADMIN', 'SUPER_ADMIN', 'MASTER_ADMIN', 'MASTER', 'ADMIN_MASTER'];
-    const isSuperAdminEmail = SUPER_ADMIN_EMAILS.includes(email);
-    const dbRole = (memberRecord?.role || 'MEMBER').toUpperCase();
-    const isMasterRole = MASTER_ROLES.includes(dbRole) || memberRecord?.organization_id === 'org_master';
-    const isSuperAdmin = (isSuperAdminEmail || isMasterRole) && (isVerifiedByGateway || Boolean(memberRecord));
-
-    const orgId = memberRecord?.organization_id || (isSuperAdmin ? 'org_master' : 'org_default');
-    const role = isSuperAdmin ? (dbRole === 'MASTER_ADMIN' ? 'MASTER_ADMIN' : 'SUPERADMIN') : dbRole;
-
-    let campusList: string[] = [];
-    if (memberRecord?.campus_ids) {
-      try {
-        campusList = typeof memberRecord.campus_ids === 'string' ? JSON.parse(memberRecord.campus_ids) : memberRecord.campus_ids;
-      } catch {
-        campusList = [memberRecord.campus_id || 'campus_sede'];
-      }
-    } else if (memberRecord?.campus_id) {
-      campusList = [memberRecord.campus_id];
-    } else {
-      campusList = ['campus_sede'];
-    }
-
+    const claims = await getVerifiedClaims(event);
+    if (!claims?.sub) return null;
+    const email = (claims.email_verified === true || claims.email_verified === 'true') && typeof claims.email === 'string'
+      ? claims.email.toLowerCase().trim() : '';
+    // Identity bootstrap is the sole cross-tenant member lookup: only verified Cognito identity is used.
+    // Do not filter inactive rows here, otherwise an inactive duplicate could resolve to another account.
+    const { rows } = await query(
+      `SELECT id, name, email, role, status, organization_id, campus_id, campus_ids FROM members
+       WHERE id = ? OR (? != '' AND LOWER(email) = ?) LIMIT 2`,
+      [claims.sub, email, email]
+    );
+    if (rows.length !== 1) return null;
+    const member = rows[0];
+    if (!member.organization_id || ['INACTIVE', 'INATIVO', 'DISABLED', 'BLOCKED'].includes(String(member.status).toUpperCase())) return null;
+    const role = normalizeRole(member.role || 'MEMBER');
+    let campusIds: string[] = [];
+    try { campusIds = typeof member.campus_ids === 'string' ? JSON.parse(member.campus_ids) : member.campus_ids; } catch {}
+    if (!Array.isArray(campusIds) || !campusIds.length) campusIds = [member.campus_id || 'campus_sede'];
     return {
-      userId: memberRecord?.id || cognitoSub || email,
-      email,
-      name: memberRecord?.name || name,
-      role,
-      organizationId: orgId,
-      campusIds: campusList,
-      isSuperAdmin
+      userId: member.id, email: member.email || email, name: member.name || 'Usuário', role,
+      organizationId: member.organization_id, campusIds, isSuperAdmin: role === 'SUPERADMIN'
     };
   } catch (error) {
-    console.error('Error resolving authenticated user in authMiddleware:', error);
+    console.error('Error resolving authenticated user:', error);
     return null;
   }
 }
@@ -152,6 +62,12 @@ export async function requireAuth(
         message: 'Acesso negado: Autenticação obrigatória para acessar este recurso.'
       })
     };
+  }
+  let body: any = {};
+  try { body = JSON.parse(event.body || '{}'); } catch {}
+  const requestedCampus = event.headers?.['x-campus-id'] || event.queryStringParameters?.campus_id || body.campus_id;
+  if (!user.isSuperAdmin && requestedCampus && requestedCampus !== 'all' && !user.campusIds.includes(requestedCampus)) {
+    return { errorResponse: apiResponse(403, { error: 'CROSS_CAMPUS_FORBIDDEN', message: 'Acesso negado a esta unidade' }) };
   }
   return { user };
 }
@@ -200,8 +116,8 @@ export function enforceRole(
 ): { allowed: boolean; errorResponse?: APIGatewayProxyResult } {
   if (user.isSuperAdmin) return { allowed: true };
 
-  const normalizedAllowed = allowedRoles.map(r => r.toUpperCase());
-  if (!normalizedAllowed.includes(user.role.toUpperCase())) {
+  const normalizedAllowed = allowedRoles.map(normalizeRole);
+  if (!normalizedAllowed.includes(normalizeRole(user.role))) {
     console.warn(`[SECURITY ALERT] Acesso por papel negado! Usuário ${user.email} com papel '${user.role}' tentou acessar recurso restrito a [${allowedRoles.join(', ')}]`);
     return {
       allowed: false,

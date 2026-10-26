@@ -1,3 +1,4 @@
+import { authorizeResource } from '../services/tenantResource';
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { v4 as uuidv4 } from 'uuid';
 import { query, apiResponse } from '../db';
@@ -21,6 +22,10 @@ export const createOrUpdateBroadcast = async (event: APIGatewayProxyEvent): Prom
     const tenantCheck = enforceTenant(auth.user, organization_id);
     if (!tenantCheck.allowed) return tenantCheck.errorResponse!;
     const orgValue = tenantCheck.effectiveOrgId;
+    if (id) {
+      const resource = await authorizeResource({ ...event, headers: { ...event.headers, 'x-organization-id': orgValue } }, 'broadcasts', id);
+      if ('errorResponse' in resource) return resource.errorResponse;
+    }
 
     const finalId = id || uuidv4();
     const campusValue = campus_id || 'campus_sede';
@@ -80,7 +85,9 @@ export const getBroadcasts = async (event: APIGatewayProxyEvent): Promise<APIGat
     const requestedOrgId = event.queryStringParameters?.organization_id;
     const campusId = event.queryStringParameters?.campus_id;
 
-    const orgId = user ? enforceTenant(user, requestedOrgId).effectiveOrgId : (requestedOrgId || 'org_default');
+    const tenantScope = user ? enforceTenant(user, requestedOrgId) : null;
+    if (tenantScope && !tenantScope.allowed) return tenantScope.errorResponse!;
+    const orgId = tenantScope?.effectiveOrgId || (requestedOrgId || 'org_default');
 
     let sql = `SELECT * FROM broadcasts WHERE organization_id = ?`;
     const params: any[] = [orgId];
@@ -107,7 +114,9 @@ export const getActiveBroadcast = async (event: APIGatewayProxyEvent): Promise<A
     const requestedOrgId = event.queryStringParameters?.organization_id;
     const campusId = event.queryStringParameters?.campus_id;
 
-    const orgId = user ? enforceTenant(user, requestedOrgId).effectiveOrgId : (requestedOrgId || 'org_default');
+    const tenantScope = user ? enforceTenant(user, requestedOrgId) : null;
+    if (tenantScope && !tenantScope.allowed) return tenantScope.errorResponse!;
+    const orgId = tenantScope?.effectiveOrgId || (requestedOrgId || 'org_default');
 
     // 1. Tenta buscar broadcast agendado/ao vivo ativo para a organização
     let sql = `SELECT * FROM broadcasts WHERE organization_id = ? AND is_available = 1 AND id != 'default'`;

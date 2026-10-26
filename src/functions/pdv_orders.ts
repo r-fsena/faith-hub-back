@@ -19,33 +19,37 @@ export const createOrder = async (event: APIGatewayProxyEvent): Promise<APIGatew
 
     const user = await getAuthenticatedUser(event);
     const body = JSON.parse(event.body || '{}');
-    const {
-      user_name,
-      customer_phone,
-      delivery_method,
-      delivery_details,
-      items_json,
-      total_price,
-      payment_method,
-      payment_status,
-      organization_id,
-      campus_id
-    } = body;
-
-    if (!user_name || !items_json) {
-      return apiResponse(400, { message: 'Dados incompletos: nome do cliente e itens são obrigatórios.' });
+    const { user_name, customer_phone, delivery_method, delivery_details, organization_id, campus_id } = body;
+    if (!user_name || !organization_id) return apiResponse(400, { message: 'Nome e organização são obrigatórios.' });
+    const tenantCheck = user ? enforceTenant(user, organization_id) : null;
+    if (tenantCheck && !tenantCheck.allowed) return tenantCheck.errorResponse!;
+    const orgValue = tenantCheck?.effectiveOrgId || organization_id;
+    const campusValue = campus_id || null;
+    if (campusValue) {
+      const { rows } = await query('SELECT id FROM campuses WHERE id = ? AND organization_id = ?', [campusValue, orgValue]);
+      if (!rows.length) return apiResponse(400, { message: 'Unidade inválida.' });
     }
-
-    const orgValue = user ? enforceTenant(user, organization_id).effectiveOrgId : (organization_id || 'org_default');
-    const campusValue = campus_id || 'campus_sede';
-    const userId = user?.userId || 'GUEST';
-
+    const finalMethod = body.payment_method || 'PIX';
+    if (finalMethod !== 'PIX') return apiResponse(409, { message: 'Pagamento por cartão indisponível. Utilize Pix.' });
+    const requestedItems = typeof body.items_json === 'string' ? JSON.parse(body.items_json) : body.items_json;
+    if (!Array.isArray(requestedItems) || !requestedItems.length || requestedItems.length > 100) return apiResponse(400, { message: 'Itens inválidos.' });
+    const items: Array<{ id: string; name: string; qty: number; price: number; obs: string }> = [];
+    let totalCents = 0;
+    for (const item of requestedItems) {
+      if (!item.id || !Number.isInteger(item.qty) || item.qty < 1 || item.qty > 100) return apiResponse(400, { message: 'Produto ou quantidade inválidos.' });
+      const { rows } = await query(`SELECT id, name, price FROM pdv_products WHERE id = ? AND organization_id = ? AND status = 'ACTIVE'`, [item.id, orgValue]);
+      if (!rows.length) return apiResponse(400, { message: 'Produto indisponível nesta igreja.' });
+      const product = rows[0];
+      const priceCents = Math.round(Number(product.price) * 100);
+      if (!Number.isSafeInteger(priceCents) || priceCents < 0) return apiResponse(400, { message: 'Preço inválido.' });
+      totalCents += priceCents * item.qty;
+      items.push({ id: product.id, name: product.name, qty: item.qty, price: priceCents / 100, obs: String(item.obs || '').slice(0, 500) });
+    }
     const orderId = uuidv4();
-    const itemsString = typeof items_json === 'string' ? items_json : JSON.stringify(items_json);
+    const userId = user?.userId || 'GUEST';
+    const itemsString = JSON.stringify(items);
     const finalPhone = customer_phone || '';
-    const finalMethod = payment_method || (delivery_details?.includes('CREDIT_CARD') ? 'CREDIT_CARD' : 'PIX');
-    const finalPayStatus = payment_status || (finalMethod === 'CREDIT_CARD' ? 'PAID' : 'PENDING');
-
+    const finalPayStatus = 'PENDING';
     const sql = `
       INSERT INTO pdv_orders 
         (id, user_id, user_name, customer_phone, status, payment_method, payment_status, delivery_method, delivery_details, items_json, total_price, organization_id, campus_id) 
@@ -62,16 +66,18 @@ export const createOrder = async (event: APIGatewayProxyEvent): Promise<APIGatew
       delivery_method || 'church',
       delivery_details || '',
       itemsString,
-      total_price || 0.00,
+      totalCents / 100,
       orgValue,
       campusValue
     ]);
 
+    await logSecurityEvent({ organizationId: orgValue, user, action: 'CREATE_PDV_ORDER', resource: 'pdv_orders', resourceId: orderId, details: { total_price: totalCents / 100, payment_status: finalPayStatus }, event });
     return apiResponse(201, {
       message: 'Pedido criado com sucesso',
       id: orderId,
       status: 'RECEBIDO',
-      payment_status: finalPayStatus
+      payment_status: finalPayStatus,
+      total_price: totalCents / 100
     });
   } catch (error: any) {
     console.error('Erro criando pedido:', error);
@@ -82,14 +88,19 @@ export const createOrder = async (event: APIGatewayProxyEvent): Promise<APIGatew
 // GET /pdv/orders
 export const getOrders = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   try {
-    const user = await getAuthenticatedUser(event);
+    const auth = await requireAuth(event);
+    if ('errorResponse' in auth) return auth.errorResponse;
+    const user = auth.user;
     const status = event.queryStringParameters?.status;
     const paymentStatus = event.queryStringParameters?.payment_status;
-    const userId = event.queryStringParameters?.user_id;
+    const isStaff = user.isSuperAdmin || STORE_ADMIN_ROLES.includes(user.role);
+    const userId = isStaff ? event.queryStringParameters?.user_id : user.userId;
     const requestedOrgId = event.queryStringParameters?.organization_id;
     const campusId = event.queryStringParameters?.campus_id;
 
-    const orgId = user ? enforceTenant(user, requestedOrgId).effectiveOrgId : (requestedOrgId || 'org_default');
+    const tenantCheck = enforceTenant(user, requestedOrgId);
+    if (!tenantCheck.allowed) return tenantCheck.errorResponse!;
+    const orgId = tenantCheck.effectiveOrgId;
 
     let sql = 'SELECT * FROM pdv_orders WHERE organization_id = ?';
     const params: any[] = [orgId];
@@ -143,7 +154,9 @@ export const updateOrderStatus = async (event: APIGatewayProxyEvent): Promise<AP
     const id = event.pathParameters?.id;
     if (!id) return apiResponse(400, { message: 'ID ausente' });
 
-    const { rows: existing } = await query(`SELECT organization_id, total_price FROM pdv_orders WHERE id = ? LIMIT 1`, [id]);
+    const scope = enforceTenant(auth.user, event.queryStringParameters?.organization_id || event.headers?.['x-organization-id']);
+    if (!scope.allowed) return scope.errorResponse!;
+    const { rows: existing } = await query(`SELECT organization_id, total_price FROM pdv_orders WHERE id = ? AND organization_id = ? LIMIT 1`, [id, scope.effectiveOrgId]);
     if (existing.length === 0) return apiResponse(404, { message: 'Pedido não encontrado' });
 
     const tenantCheck = enforceTenant(auth.user, existing[0].organization_id);
@@ -161,6 +174,9 @@ export const updateOrderStatus = async (event: APIGatewayProxyEvent): Promise<AP
     }
 
     if (payment_status) {
+      const paymentRole = enforceRole(auth.user, ['SUPERADMIN', 'PASTOR', 'ADMIN', 'TREASURER']);
+      if (!paymentRole.allowed) return paymentRole.errorResponse!;
+      if (!['PENDING', 'PAID', 'CANCELED'].includes(payment_status)) return apiResponse(400, { message: 'Status de pagamento inválido.' });
       updateFields.push('payment_status = ?');
       params.push(payment_status);
     }
@@ -169,8 +185,8 @@ export const updateOrderStatus = async (event: APIGatewayProxyEvent): Promise<AP
       return apiResponse(400, { message: 'Nenhum campo para atualizar (status ou payment_status)' });
     }
 
-    params.push(id);
-    const sql = `UPDATE pdv_orders SET ${updateFields.join(', ')}, updated_at = NOW() WHERE id = ?`;
+    params.push(id, tenantCheck.effectiveOrgId);
+    const sql = `UPDATE pdv_orders SET ${updateFields.join(', ')}, updated_at = NOW() WHERE id = ? AND organization_id = ?`;
 
     await query(sql, params);
 

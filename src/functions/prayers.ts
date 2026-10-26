@@ -1,7 +1,7 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { v4 as uuidv4 } from 'uuid';
 import { query, getConnection, apiResponse } from '../db';
-import { getAuthenticatedUser, enforceTenant, enforceRole } from '../services/authMiddleware';
+import { getAuthenticatedUser, requireAuth, enforceTenant, enforceRole } from '../services/authMiddleware';
 import { checkRateLimit } from '../services/rateLimiter';
 import { logSecurityEvent } from '../services/auditLogService';
 
@@ -10,19 +10,21 @@ export const getPrayers = async (event: APIGatewayProxyEvent): Promise<APIGatewa
   try {
     const user = await getAuthenticatedUser(event);
     const category = event.queryStringParameters?.category;
-    const userId = event.queryStringParameters?.user_id || user?.userId;
+    const userId = user?.userId;
     const requestedOrgId = event.queryStringParameters?.organization_id;
     const campusId = event.queryStringParameters?.campus_id;
     const statusFilter = event.queryStringParameters?.status; // 'ALL', 'APPROVED', 'PENDING'
 
-    const orgId = user ? enforceTenant(user, requestedOrgId).effectiveOrgId : (requestedOrgId || 'org_default');
+    const tenantCheck = user ? enforceTenant(user, requestedOrgId) : null;
+    if (tenantCheck && !tenantCheck.allowed) return tenantCheck.errorResponse!;
+    const orgId = tenantCheck?.effectiveOrgId || requestedOrgId || 'org_default';
     const isPastoral = user?.role === 'PASTOR' || user?.role === 'SUPERADMIN' || user?.role === 'ADMIN';
 
     let sql = `
       SELECT p.*,
         ${userId ? `(SELECT COUNT(*) FROM prayer_intercessions pi WHERE pi.prayer_id = p.id AND pi.user_id = ?) as is_praying` : `0 as is_praying`}
       FROM prayers p
-      WHERE (p.organization_id = ? OR p.organization_id IS NULL)
+      WHERE p.organization_id = ?
     `;
     const params: any[] = [];
 
@@ -64,9 +66,9 @@ export const getPrayers = async (event: APIGatewayProxyEvent): Promise<APIGatewa
 
     const formatted = rows.map((r: any) => ({
       id: r.id,
-      user_id: r.user_id,
+      user_id: isPastoral || r.user_id === userId ? r.user_id : null,
       author: r.is_anonymous ? 'Membro Anônimo' : r.author_name,
-      author_name: r.author_name,
+      author_name: r.is_anonymous && !isPastoral && r.user_id !== userId ? 'Membro Anônimo' : r.author_name,
       author_phone: isPastoral ? r.author_phone : null,
       is_anonymous: Boolean(r.is_anonymous),
       category: r.category,
@@ -112,13 +114,15 @@ export const createPrayer = async (event: APIGatewayProxyEvent): Promise<APIGate
       return apiResponse(400, { message: 'O conteúdo do pedido de oração é obrigatório.' });
     }
 
-    const orgId = user ? enforceTenant(user, organization_id).effectiveOrgId : (organization_id || 'org_default');
+    const tenantCheck = user ? enforceTenant(user, organization_id) : null;
+    if (tenantCheck && !tenantCheck.allowed) return tenantCheck.errorResponse!;
+    const orgId = tenantCheck?.effectiveOrgId || organization_id || 'org_default';
 
     const prayerId = uuidv4();
     const finalAuthor = is_anonymous ? 'Membro Anônimo' : (author_name || user?.name || 'Membro da Igreja');
     const finalCategory = category || 'Outros';
     const finalPrivacy = privacy === 'CONFIDENTIAL' ? 'CONFIDENTIAL' : 'PUBLIC';
-    const finalUserId = user_id || user?.userId || null;
+    const finalUserId = user?.userId || null;
     const finalPhone = author_phone ? author_phone.trim() : null;
 
     const sql = `
@@ -184,64 +188,34 @@ export const createPrayer = async (event: APIGatewayProxyEvent): Promise<APIGate
 
 // POST /prayers/{id}/pray
 export const prayForRequest = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  const auth = await requireAuth(event);
+  if ('errorResponse' in auth) return auth.errorResponse;
+  const tenantCheck = enforceTenant(auth.user, event.queryStringParameters?.organization_id || event.headers?.['x-organization-id']);
+  if (!tenantCheck.allowed) return tenantCheck.errorResponse!;
+  const id = event.pathParameters?.id;
+  const orgId = tenantCheck.effectiveOrgId;
+  const { rows } = await query(`SELECT id FROM prayers WHERE id = ? AND organization_id = ? AND status = 'APPROVED' AND (privacy = 'PUBLIC' OR user_id = ?)`, [id, orgId, auth.user.userId]);
+  if (!rows.length) return apiResponse(404, { message: 'Oração não encontrada' });
   const connection = await getConnection();
   try {
-    const id = event.pathParameters?.id;
-    if (!id) {
-      connection.release();
-      return apiResponse(400, { message: 'ID da oração é obrigatório' });
-    }
-
-    const body = JSON.parse(event.body || '{}');
-    const user = await getAuthenticatedUser(event);
-    const userId = body.user_id || user?.userId || `anon_${Date.now()}`;
-
     await connection.beginTransaction();
-
-    let isNewIntercession = true;
-    if (userId) {
-      const [existing]: any = await connection.query(
-        `SELECT id FROM prayer_intercessions WHERE prayer_id = ? AND user_id = ? LIMIT 1`,
-        [id, userId]
-      );
-      if (existing.length > 0) {
-        isNewIntercession = false;
-      } else {
-        await connection.query(
-          `INSERT INTO prayer_intercessions (id, prayer_id, user_id) VALUES (?, ?, ?)`,
-          [uuidv4(), id, userId]
-        );
-      }
-    }
-
-    if (isNewIntercession) {
-      await connection.query(`UPDATE prayers SET praying_count = praying_count + 1 WHERE id = ?`, [id]);
-    }
-
-    const [updatedRow]: any = await connection.query(`SELECT praying_count FROM prayers WHERE id = ? LIMIT 1`, [id]);
-
+    const [result]: any = await connection.query(`INSERT IGNORE INTO prayer_intercessions (id, prayer_id, user_id) SELECT ?, id, ? FROM prayers WHERE id = ? AND organization_id = ?`, [uuidv4(), auth.user.userId, id, orgId]);
+    if (result.affectedRows) await connection.query('UPDATE prayers SET praying_count = praying_count + 1 WHERE id = ? AND organization_id = ?', [id, orgId]);
+    const [updated]: any = await connection.query('SELECT praying_count FROM prayers WHERE id = ? AND organization_id = ?', [id, orgId]);
     await connection.commit();
-    connection.release();
-
-    const newCount = updatedRow.length > 0 ? Number(updatedRow[0].praying_count) : 1;
-
-    return apiResponse(200, {
-      message: 'Amém! Sua oração foi registrada.',
-      praying_count: newCount,
-      is_praying: true
-    });
-  } catch (error: any) {
-    await connection.rollback();
-    connection.release();
-    console.error('Erro ao registrar intercessão:', error);
-    return apiResponse(500, { message: 'Erro ao registrar oração' });
-  }
+    return apiResponse(200, { praying_count: Number(updated[0].praying_count), is_praying: true });
+  } catch (error) { await connection.rollback(); return apiResponse(500, { message: 'Erro ao registrar oração' }); }
+  finally { connection.release(); }
 };
 
 // POST /prayers/{id}/respond (Resposta Pastoral)
 export const respondPrayerPastoral = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   try {
-    const user = await getAuthenticatedUser(event);
+    const auth = await requireAuth(event);
+    if ('errorResponse' in auth) return auth.errorResponse;
+    const user = auth.user;
+    const scope = enforceTenant(user, event.queryStringParameters?.organization_id || event.headers?.['x-organization-id']);
+    if (!scope.allowed) return scope.errorResponse!;
     if (!user) return apiResponse(401, { message: 'Não autenticado' });
 
     const roleCheck = enforceRole(user, ['SUPERADMIN', 'PASTOR', 'ADMIN', 'LEADER']);
@@ -257,7 +231,7 @@ export const respondPrayerPastoral = async (event: APIGatewayProxyEvent): Promis
       return apiResponse(400, { message: 'A mensagem de resposta pastoral é obrigatória' });
     }
 
-    const { rows } = await query(`SELECT id, organization_id, author_name FROM prayers WHERE id = ? LIMIT 1`, [id]);
+    const { rows } = await query(`SELECT id, organization_id, author_name FROM prayers WHERE id = ? AND organization_id = ? LIMIT 1`, [id, scope.effectiveOrgId]);
     if (rows.length === 0) return apiResponse(404, { message: 'Oração não encontrada' });
 
     const tenantCheck = enforceTenant(user, rows[0].organization_id);
@@ -269,8 +243,8 @@ export const respondPrayerPastoral = async (event: APIGatewayProxyEvent): Promis
     await query(
       `UPDATE prayers 
        SET pastoral_response = ?, pastoral_responded_by = ?, pastoral_responded_at = ? 
-       WHERE id = ?`,
-      [pastoral_response.trim(), responderName, now, id]
+       WHERE id = ? AND organization_id = ?`,
+      [pastoral_response.trim(), responderName, now, id, scope.effectiveOrgId]
     );
 
     await logSecurityEvent({
@@ -300,7 +274,11 @@ export const respondPrayerPastoral = async (event: APIGatewayProxyEvent): Promis
 // POST /prayers/{id}/testimony (Registrar Testemunho / Oração Respondida)
 export const submitTestimony = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   try {
-    const user = await getAuthenticatedUser(event);
+    const auth = await requireAuth(event);
+    if ('errorResponse' in auth) return auth.errorResponse;
+    const user = auth.user;
+    const scope = enforceTenant(user, event.queryStringParameters?.organization_id || event.headers?.['x-organization-id']);
+    if (!scope.allowed) return scope.errorResponse!;
     const id = event.pathParameters?.id;
     if (!id) return apiResponse(400, { message: 'ID da oração é obrigatório' });
 
@@ -311,7 +289,7 @@ export const submitTestimony = async (event: APIGatewayProxyEvent): Promise<APIG
       return apiResponse(400, { message: 'O relato do testemunho é obrigatório' });
     }
 
-    const { rows } = await query(`SELECT id, user_id, organization_id FROM prayers WHERE id = ? LIMIT 1`, [id]);
+    const { rows } = await query(`SELECT id, user_id, organization_id FROM prayers WHERE id = ? AND organization_id = ? LIMIT 1`, [id, scope.effectiveOrgId]);
     if (rows.length === 0) return apiResponse(404, { message: 'Oração não encontrada' });
 
     if (user && rows[0].organization_id) {
@@ -330,8 +308,8 @@ export const submitTestimony = async (event: APIGatewayProxyEvent): Promise<APIG
     await query(
       `UPDATE prayers 
        SET testimony_text = ?, testimony_at = ?, category = 'Gratidão' 
-       WHERE id = ?`,
-      [testimony_text.trim(), now, id]
+       WHERE id = ? AND organization_id = ?`,
+      [testimony_text.trim(), now, id, scope.effectiveOrgId]
     );
 
     return apiResponse(200, {
@@ -348,7 +326,11 @@ export const submitTestimony = async (event: APIGatewayProxyEvent): Promise<APIG
 // PATCH /prayers/{id}/status (Moderação: APPROVED, PENDING, ARCHIVED)
 export const updatePrayerStatus = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   try {
-    const user = await getAuthenticatedUser(event);
+    const auth = await requireAuth(event);
+    if ('errorResponse' in auth) return auth.errorResponse;
+    const user = auth.user;
+    const scope = enforceTenant(user, event.queryStringParameters?.organization_id || event.headers?.['x-organization-id']);
+    if (!scope.allowed) return scope.errorResponse!;
     if (!user) return apiResponse(401, { message: 'Não autenticado' });
 
     const roleCheck = enforceRole(user, ['SUPERADMIN', 'PASTOR', 'ADMIN', 'LEADER']);
@@ -362,13 +344,13 @@ export const updatePrayerStatus = async (event: APIGatewayProxyEvent): Promise<A
       return apiResponse(400, { message: 'Status inválido' });
     }
 
-    const { rows } = await query(`SELECT id, organization_id FROM prayers WHERE id = ? LIMIT 1`, [id]);
+    const { rows } = await query(`SELECT id, organization_id FROM prayers WHERE id = ? AND organization_id = ? LIMIT 1`, [id, scope.effectiveOrgId]);
     if (rows.length === 0) return apiResponse(404, { message: 'Oração não encontrada' });
 
     const tenantCheck = enforceTenant(user, rows[0].organization_id);
     if (!tenantCheck.allowed) return tenantCheck.errorResponse!;
 
-    await query(`UPDATE prayers SET status = ? WHERE id = ?`, [status, id]);
+    await query(`UPDATE prayers SET status = ? WHERE id = ? AND organization_id = ?`, [status, id, scope.effectiveOrgId]);
 
     return apiResponse(200, { message: `Status da oração atualizado para ${status}` });
   } catch (error: any) {
@@ -379,11 +361,15 @@ export const updatePrayerStatus = async (event: APIGatewayProxyEvent): Promise<A
 // DELETE /prayers/{id}
 export const deletePrayer = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   try {
-    const user = await getAuthenticatedUser(event);
+    const auth = await requireAuth(event);
+    if ('errorResponse' in auth) return auth.errorResponse;
+    const user = auth.user;
+    const scope = enforceTenant(user, event.queryStringParameters?.organization_id || event.headers?.['x-organization-id']);
+    if (!scope.allowed) return scope.errorResponse!;
     const id = event.pathParameters?.id;
     if (!id) return apiResponse(400, { message: 'ID ausente' });
 
-    const { rows } = await query(`SELECT user_id, organization_id FROM prayers WHERE id = ? LIMIT 1`, [id]);
+    const { rows } = await query(`SELECT user_id, organization_id FROM prayers WHERE id = ? AND organization_id = ? LIMIT 1`, [id, scope.effectiveOrgId]);
     if (rows.length === 0) return apiResponse(404, { message: 'Oração não encontrada' });
 
     if (user && rows[0].organization_id) {
@@ -398,7 +384,8 @@ export const deletePrayer = async (event: APIGatewayProxyEvent): Promise<APIGate
       return apiResponse(403, { message: 'Você não tem permissão para excluir este pedido de oração.' });
     }
 
-    await query(`DELETE FROM prayers WHERE id = ?`, [id]);
+    await query(`DELETE FROM prayers WHERE id = ? AND organization_id = ?`, [id, scope.effectiveOrgId]);
+    await logSecurityEvent({ organizationId: scope.effectiveOrgId, user, action: 'DELETE_PRAYER', resource: 'prayers', resourceId: id, event });
     return apiResponse(200, { message: 'Pedido de oração removido com sucesso' });
   } catch (error: any) {
     return apiResponse(500, { message: 'Erro ao remover oração' });

@@ -1,3 +1,4 @@
+import { authorizeResource } from '../services/tenantResource';
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { v4 as uuidv4 } from 'uuid';
 import { query, apiResponse } from '../db';
@@ -10,11 +11,13 @@ const STORE_ADMIN_ROLES = ['SUPERADMIN', 'PASTOR', 'ADMIN', 'LEADER', 'VOLUNTEER
 export const getProducts = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   try {
     const user = await getAuthenticatedUser(event);
-    const admin = event.queryStringParameters?.admin === 'true';
+    const admin = event.queryStringParameters?.admin === 'true' && Boolean(user && (user.isSuperAdmin || STORE_ADMIN_ROLES.includes(user.role)));
     const requestedOrgId = event.queryStringParameters?.organization_id;
     const campusId = event.queryStringParameters?.campus_id;
 
-    const orgId = user ? enforceTenant(user, requestedOrgId).effectiveOrgId : (requestedOrgId || 'org_default');
+    const tenantScope = user ? enforceTenant(user, requestedOrgId) : null;
+    if (tenantScope && !tenantScope.allowed) return tenantScope.errorResponse!;
+    const orgId = tenantScope?.effectiveOrgId || (requestedOrgId || 'org_default');
 
     let sql = `SELECT * FROM pdv_products WHERE organization_id = ?`;
     const params: any[] = [orgId];
@@ -73,6 +76,10 @@ export const createOrUpdateProduct = async (event: APIGatewayProxyEvent): Promis
     const tenantCheck = enforceTenant(auth.user, body.organization_id);
     if (!tenantCheck.allowed) return tenantCheck.errorResponse!;
     const orgValue = tenantCheck.effectiveOrgId;
+    if (body.id) {
+      const resource = await authorizeResource({ ...event, headers: { ...event.headers, 'x-organization-id': orgValue } }, 'pdv_products', body.id);
+      if ('errorResponse' in resource) return resource.errorResponse;
+    }
 
     const campusValue = body.campus_id || 'campus_sede';
 

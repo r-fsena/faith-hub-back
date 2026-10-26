@@ -1,11 +1,11 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { v4 as uuidv4 } from 'uuid';
 import { query, getConnection, apiResponse } from '../db';
-import { requireAuth, enforceRole, getAuthenticatedUser } from '../services/authMiddleware';
+import { requireAuth, enforceRole, enforceTenant, getAuthenticatedUser } from '../services/authMiddleware';
 import { logSecurityEvent } from '../services/auditLogService';
 import { checkRateLimit } from '../services/rateLimiter';
 
-const SCANNER_ROLES = ['SUPERADMIN', 'PASTOR', 'ADMIN', 'TREASURER', 'LEADER', 'VOLUNTEER', 'MEMBER'];
+const SCANNER_ROLES = ['SUPERADMIN', 'PASTOR', 'ADMIN', 'TREASURER', 'LEADER', 'VOLUNTEER'];
 
 // Gerador de Código Curto de Validação Manual (ex: FH-784291)
 const generateShortCode = (): string => {
@@ -13,193 +13,68 @@ const generateShortCode = (): string => {
   return `FH-${num}`;
 };
 
-// POST /tickets/checkout
+// POST /tickets/checkout — public registration, all prices and settlement are server-owned.
 export const checkout = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  const rateCheck = checkRateLimit(event, { maxRequests: 20, windowSeconds: 60, identifierPrefix: 'ticket_checkout' });
+  if (!rateCheck.allowed) return rateCheck.errorResponse!;
+  const user = await getAuthenticatedUser(event);
+  const body = JSON.parse(event.body || '{}');
+  const orgId = body.organization_id || user?.organizationId;
+  if (!body.event_id || !orgId) return apiResponse(400, { message: 'Evento e organização são obrigatórios.' });
+  if (body.payment_method && body.payment_method !== 'PIX') return apiResponse(409, { message: 'Pagamento por cartão indisponível. Utilize Pix.' });
+  if (user) {
+    const tenantCheck = enforceTenant(user, orgId);
+    if (!tenantCheck.allowed) return tenantCheck.errorResponse!;
+  }
   const connection = await getConnection();
   try {
-    const rateCheck = checkRateLimit(event, {
-      maxRequests: 20,
-      windowSeconds: 60,
-      identifierPrefix: 'ticket_checkout'
-    });
-    if (!rateCheck.allowed) {
-      connection.release();
-      return rateCheck.errorResponse!;
-    }
-
-    const user = await getAuthenticatedUser(event);
-    const body = JSON.parse(event.body || '{}');
-    const {
-      event_id,
-      lot_id,
-      user_id,
-      attendee_name,
-      attendee_whatsapp,
-      attendee_cpf,
-      attendee_email,
-      dietary_notes,
-      payment_method
-    } = body;
-
-    const effectiveUserId = user?.userId || user_id || 'GUEST';
-
-    if (!event_id) {
-      connection.release();
-      return apiResponse(400, { message: 'Requisição inválida (event_id obrigatório)' });
-    }
-
     await connection.beginTransaction();
-
-    let targetLotId = lot_id;
-    let lotPrice = 0;
-    let lotName = 'Lote Geral';
-
-    // 1. Busca Lote do Evento
-    if (targetLotId) {
-      const [lotRow]: any = await connection.query(`SELECT * FROM event_lots WHERE id = ? FOR UPDATE;`, [targetLotId]);
-      if (lotRow.length > 0) {
-        const lot = lotRow[0];
-        lotPrice = Number(lot.price) || 0;
-        lotName = lot.name || 'Lote Geral';
-        if (lot.available_capacity > 0) {
-          await connection.query(`UPDATE event_lots SET available_capacity = available_capacity - 1 WHERE id = ?`, [targetLotId]);
-        }
-      }
-    } else {
-      const [lots]: any = await connection.query(`SELECT * FROM event_lots WHERE event_id = ? ORDER BY price ASC LIMIT 1 FOR UPDATE;`, [event_id]);
-      if (lots.length > 0) {
-        targetLotId = lots[0].id;
-        lotPrice = Number(lots[0].price) || 0;
-        lotName = lots[0].name || 'Lote Geral';
-        if (lots[0].available_capacity > 0) {
-          await connection.query(`UPDATE event_lots SET available_capacity = available_capacity - 1 WHERE id = ?`, [targetLotId]);
-        }
-      }
-    }
-
-    const [eventRow]: any = await connection.query(`SELECT * FROM events WHERE id = ?;`, [event_id]);
-    const eventData = eventRow.length > 0 ? eventRow[0] : {};
-
-    const shortCode = generateShortCode();
-    const qrCodeToken = `TICKET-${uuidv4().substring(0, 8).toUpperCase()}-${Date.now()}`;
+    const [events]: any = await connection.query(`SELECT * FROM events WHERE id = ? AND organization_id = ? AND status = 'PUBLISHED'`, [body.event_id, orgId]);
+    if (!events.length) { await connection.rollback(); return apiResponse(404, { message: 'Evento indisponível.' }); }
+    const eventData = events[0];
+    const [lots]: any = await connection.query(
+      `SELECT l.* FROM event_lots l INNER JOIN events e ON e.id = l.event_id
+       WHERE l.event_id = ? AND e.organization_id = ? AND (? IS NULL OR l.id = ?)
+         AND (l.sales_start_date IS NULL OR l.sales_start_date <= NOW())
+         AND (l.sales_end_date IS NULL OR l.sales_end_date >= NOW())
+       ORDER BY l.price ASC LIMIT 1 FOR UPDATE`, [body.event_id, orgId, body.lot_id || null, body.lot_id || null]);
+    if (!lots.length || lots[0].available_capacity <= 0) { await connection.rollback(); return apiResponse(409, { message: 'Lote indisponível ou esgotado.' }); }
+    const lot = lots[0];
+    const price = Number(lot.price);
+    if (!Number.isFinite(price) || price < 0) { await connection.rollback(); return apiResponse(409, { message: 'Preço do lote inválido.' }); }
+    await connection.query(`UPDATE event_lots l INNER JOIN events e ON e.id = l.event_id SET l.available_capacity = l.available_capacity - 1 WHERE l.id = ? AND e.organization_id = ? AND l.available_capacity > 0`, [lot.id, orgId]);
     const ticketId = uuidv4();
-    const isFree = lotPrice === 0;
-    const initialStatus = isFree ? 'PAID' : (payment_method === 'CREDIT_CARD' ? 'PAID' : 'PENDING');
-
-    const qInsert = `
-      INSERT INTO event_tickets (
-        id, event_id, lot_id, user_id, organization_id, status, qrcode_token, short_code, price_paid,
-        attendee_name, attendee_whatsapp, attendee_cpf, attendee_email, dietary_notes
-      )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `;
-
-    await connection.query(qInsert, [
-      ticketId,
-      event_id,
-      targetLotId || 'lot_default',
-      effectiveUserId,
-      eventData.organization_id || user?.organizationId || 'org_default',
-      initialStatus,
-      qrCodeToken,
-      shortCode,
-      lotPrice,
-      attendee_name || user?.name || null,
-      attendee_whatsapp || null,
-      attendee_cpf || null,
-      attendee_email || user?.email || null,
-      dietary_notes || null
-    ]);
-
+    const qrCodeToken = `TICKET-${uuidv4()}`;
+    const shortCode = generateShortCode();
+    const status = price === 0 ? 'PAID' : 'PENDING';
+    await connection.query(`INSERT INTO event_tickets
+      (id, event_id, lot_id, user_id, organization_id, status, qrcode_token, short_code, price_paid, attendee_name, attendee_whatsapp, attendee_cpf, attendee_email, dietary_notes)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [ticketId, eventData.id, lot.id, user?.userId || 'GUEST', orgId, status, qrCodeToken, shortCode, price,
+       body.attendee_name || user?.name || null, body.attendee_whatsapp || null, body.attendee_cpf || null,
+       user?.email || body.attendee_email || null, body.dietary_notes || null]);
     await connection.commit();
-    connection.release();
-
-    return apiResponse(201, {
-      message: 'Ingresso emitido com sucesso',
-      ticket_id: ticketId,
-      short_code: shortCode,
-      status: initialStatus,
-      qrcode_token: qrCodeToken,
-      qr_code_data: qrCodeToken,
-      price_paid: lotPrice,
-      event_title: eventData.title || 'Evento Especial',
-      event_date: eventData.start_date || null,
-      event_location: eventData.location || 'Templo Principal',
-      lot_name: lotName,
-      attendee: {
-        name: attendee_name || user?.name,
-        whatsapp: attendee_whatsapp,
-        cpf: attendee_cpf,
-        email: attendee_email || user?.email,
-        dietary_notes
-      }
-    });
-  } catch (error: any) {
+    await logSecurityEvent({ organizationId: orgId, user, action: 'CREATE_EVENT_TICKET', resource: 'event_tickets', resourceId: ticketId, details: { status, amount: price, event_id: eventData.id }, event });
+    return apiResponse(201, { ticket_id: ticketId, short_code: shortCode, qrcode_token: qrCodeToken, qr_code_data: qrCodeToken,
+      status, price_paid: price, event_title: eventData.title, event_date: eventData.start_date, event_location: eventData.location, lot_name: lot.name });
+  } catch (error) {
     await connection.rollback();
-    connection.release();
-    console.error('Erro no checkout de ingresso:', error);
+    console.error('Erro no checkout:', error);
     return apiResponse(500, { message: 'Erro na emissão do ingresso' });
-  }
+  } finally { connection.release(); }
 };
 
-// GET /tickets/me?user_id=123
 export const myTickets = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
-  try {
-    const user = await getAuthenticatedUser(event);
-    const userId = user?.userId || event.queryStringParameters?.user_id;
-    const phone = event.queryStringParameters?.phone;
-    const email = user?.email || event.queryStringParameters?.email;
-    const ticketIdsParam = event.queryStringParameters?.ticket_ids;
-    const ticketIds = ticketIdsParam ? ticketIdsParam.split(',').map(s => s.trim()).filter(Boolean) : [];
-
-    if (!userId && !phone && !email && ticketIds.length === 0) {
-      return apiResponse(400, { message: 'Identificação do participante obrigatória' });
-    }
-
-    let sql = `
-      SELECT t.id, t.qrcode_token, t.short_code, t.status, t.price_paid, t.created_at, t.scanned_at, t.scanned_by,
-             t.attendee_name, t.attendee_whatsapp, t.attendee_cpf, t.dietary_notes,
-             e.id as event_id, e.title as event_title, e.start_date as event_date, e.location as event_location, 
-             COALESCE(e.cover_url, e.image_url) as event_image,
-             COALESCE(l.name, 'Geral') as lot_name
-      FROM event_tickets t 
-      JOIN events e ON t.event_id = e.id
-      LEFT JOIN event_lots l ON t.lot_id = l.id
-      WHERE 1=1
-    `;
-    const params: any[] = [];
-    const orConditions: string[] = [];
-
-    if (userId) {
-      orConditions.push('(t.user_id = ? OR t.attendee_email = ?)');
-      params.push(userId, email || userId);
-    }
-    if (phone) {
-      orConditions.push('t.attendee_whatsapp = ?');
-      params.push(phone);
-    }
-    if (email && !userId) {
-      orConditions.push('t.attendee_email = ?');
-      params.push(email);
-    }
-    if (ticketIds.length > 0) {
-      const placeholders = ticketIds.map(() => '?').join(',');
-      orConditions.push(`t.id IN (${placeholders})`);
-      params.push(...ticketIds);
-    }
-
-    if (orConditions.length > 0) {
-      sql += ` AND (${orConditions.join(' OR ')})`;
-    }
-
-    sql += ` ORDER BY t.created_at DESC;`;
-
-    const { rows } = await query(sql, params);
-    return apiResponse(200, { data: rows });
-  } catch (err: any) {
-    console.error('Erro ao buscar ingressos do membro:', err);
-    return apiResponse(500, { error: 'Erro ao listar ingressos' });
-  }
+  const auth = await requireAuth(event);
+  if ('errorResponse' in auth) return auth.errorResponse;
+  const tenantCheck = enforceTenant(auth.user, event.queryStringParameters?.organization_id);
+  if (!tenantCheck.allowed) return tenantCheck.errorResponse!;
+  const { rows } = await query(`SELECT t.*, e.title as event_title, e.start_date as event_date, e.location as event_location,
+    COALESCE(e.cover_url, e.image_url) as event_image, l.name as lot_name
+    FROM event_tickets t JOIN events e ON e.id = t.event_id LEFT JOIN event_lots l ON l.id = t.lot_id
+    WHERE t.organization_id = ? AND e.organization_id = ? AND t.user_id = ? ORDER BY t.created_at DESC`,
+    [tenantCheck.effectiveOrgId, tenantCheck.effectiveOrgId, auth.user.userId]);
+  return apiResponse(200, { data: rows });
 };
 
 // POST /tickets/scan (PROTEGIDO: Apenas Portaria / Voluntários / Líderes Autorizados)
@@ -227,16 +102,17 @@ export const scanTicket = async (event: APIGatewayProxyEvent): Promise<APIGatewa
       return apiResponse(400, { isValid: false, message: 'Token ou Código de Ingresso Ausente' });
     }
 
+    const tenantCheck = enforceTenant(auth.user, body.organization_id || event.headers?.['x-organization-id']);
+    if (!tenantCheck.allowed) { connection.release(); return tenantCheck.errorResponse!; }
     await connection.beginTransaction();
-    
     const [ticketRow]: any = await connection.query(
       `SELECT t.*, e.title as event_title, e.start_date as event_date, e.location as event_location, e.organization_id,
               COALESCE(l.name, 'Geral') as lot_name 
        FROM event_tickets t 
        JOIN events e ON t.event_id = e.id 
        LEFT JOIN event_lots l ON t.lot_id = l.id 
-       WHERE t.qrcode_token = ? OR UPPER(t.short_code) = UPPER(?) OR t.id = ? FOR UPDATE;`,
-      [trimmedToken, trimmedToken, trimmedToken]
+       WHERE t.organization_id = ? AND e.organization_id = ? AND (t.qrcode_token = ? OR UPPER(t.short_code) = UPPER(?) OR t.id = ?) FOR UPDATE;`,
+      [tenantCheck.effectiveOrgId, tenantCheck.effectiveOrgId, trimmedToken, trimmedToken, trimmedToken]
     );
 
     if (ticketRow.length === 0) {
@@ -279,18 +155,22 @@ export const scanTicket = async (event: APIGatewayProxyEvent): Promise<APIGatewa
       });
     }
 
-    const validatorName = scanned_by || auth.user.name || auth.user.email || 'Portaria';
+    if (ticket.status !== 'PAID') {
+      await connection.rollback(); connection.release();
+      return apiResponse(409, { isValid: false, message: 'Ingresso não está liberado para entrada.' });
+    }
+    const validatorName = auth.user.name || auth.user.email || 'Portaria';
     await connection.query(
-      `UPDATE event_tickets SET status = 'USED', scanned_at = NOW(), scanned_by = ? WHERE id = ?`,
-      [validatorName, ticket.id]
+      `UPDATE event_tickets SET status = 'USED', scanned_at = NOW(), scanned_by = ? WHERE id = ? AND organization_id = ? AND status = 'PAID'`,
+      [validatorName, ticket.id, tenantCheck.effectiveOrgId]
     );
 
     const [countRows]: any = await connection.query(
       `SELECT 
         COUNT(*) as total_tickets,
         SUM(CASE WHEN status = 'USED' THEN 1 ELSE 0 END) as total_present
-       FROM event_tickets WHERE event_id = ?`,
-      [ticket.event_id]
+       FROM event_tickets WHERE event_id = ? AND organization_id = ?`,
+      [ticket.event_id, tenantCheck.effectiveOrgId]
     );
     const stats = countRows[0] || { total_tickets: 1, total_present: 1 };
 
@@ -334,6 +214,10 @@ export const scanTicket = async (event: APIGatewayProxyEvent): Promise<APIGatewa
 // GET /tickets/{id}/pass (Dados estruturados para Passaporte / Carteira Digital)
 export const getTicketPass = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   try {
+    const auth = await requireAuth(event);
+    if ('errorResponse' in auth) return auth.errorResponse;
+    const tenantCheck = enforceTenant(auth.user, event.queryStringParameters?.organization_id);
+    if (!tenantCheck.allowed) return tenantCheck.errorResponse!;
     const id = event.pathParameters?.id;
     if (!id) return apiResponse(400, { message: 'ID do ingresso obrigatório' });
 
@@ -347,8 +231,8 @@ export const getTicketPass = async (event: APIGatewayProxyEvent): Promise<APIGat
        JOIN events e ON t.event_id = e.id
        LEFT JOIN event_lots l ON t.lot_id = l.id
        LEFT JOIN organizations o ON t.organization_id = o.id
-       WHERE t.id = ? OR t.qrcode_token = ? OR t.short_code = ? LIMIT 1`,
-      [id, id, id]
+       WHERE t.organization_id = ? AND e.organization_id = ? AND t.user_id = ? AND (t.id = ? OR t.qrcode_token = ?) LIMIT 1`,
+      [tenantCheck.effectiveOrgId, tenantCheck.effectiveOrgId, auth.user.userId, id, id]
     );
 
     if (rows.length === 0) {
@@ -380,6 +264,10 @@ export const getTicketPass = async (event: APIGatewayProxyEvent): Promise<APIGat
 // GET /tickets/{id}/calendar.ics (Download de arquivo iCalendar para Apple / Android)
 export const getTicketCalendar = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   try {
+    const auth = await requireAuth(event);
+    if ('errorResponse' in auth) return auth.errorResponse;
+    const tenantCheck = enforceTenant(auth.user, event.queryStringParameters?.organization_id);
+    if (!tenantCheck.allowed) return tenantCheck.errorResponse!;
     const id = event.pathParameters?.id;
     if (!id) return apiResponse(400, { message: 'ID do ingresso obrigatório' });
 
@@ -388,8 +276,8 @@ export const getTicketCalendar = async (event: APIGatewayProxyEvent): Promise<AP
               e.start_date as event_date, e.location as event_location
        FROM event_tickets t
        JOIN events e ON t.event_id = e.id
-       WHERE t.id = ? OR t.qrcode_token = ? OR t.short_code = ? LIMIT 1`,
-      [id, id, id]
+       WHERE t.organization_id = ? AND e.organization_id = ? AND t.user_id = ? AND (t.id = ? OR t.qrcode_token = ?) LIMIT 1`,
+      [tenantCheck.effectiveOrgId, tenantCheck.effectiveOrgId, auth.user.userId, id, id]
     );
 
     if (rows.length === 0) {

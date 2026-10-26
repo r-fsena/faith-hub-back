@@ -1,3 +1,4 @@
+import { authorizeResource } from '../services/tenantResource';
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { query, apiResponse } from '../db';
 import { v4 as uuidv4 } from 'uuid';
@@ -92,7 +93,7 @@ export const createFinancialTransaction = async (event: APIGatewayProxyEvent): P
     const auth = await requireAuth(event);
     if ('errorResponse' in auth) return auth.errorResponse;
 
-    const roleCheck = enforceRole(auth.user, FINANCIAL_ROLES);
+    const roleCheck = enforceRole(auth.user, [...FINANCIAL_ROLES, 'LEADER', 'VOLUNTEER', 'MEMBER']);
     if (!roleCheck.allowed) return roleCheck.errorResponse!;
 
     const body = JSON.parse(event.body || '{}');
@@ -114,6 +115,10 @@ export const createFinancialTransaction = async (event: APIGatewayProxyEvent): P
       payment_date
     } = body;
 
+    const isFinancialStaff = auth.user.isSuperAdmin || FINANCIAL_ROLES.includes(auth.user.role);
+    if (!isFinancialStaff && (type !== 'INCOME' || status !== 'PENDING' || origin_module !== 'TITHES')) {
+      return apiResponse(403, { error: 'Contribuições de membros devem aguardar confirmação da tesouraria' });
+    }
     const tenantCheck = enforceTenant(auth.user, organization_id);
     if (!tenantCheck.allowed) return tenantCheck.errorResponse!;
     const orgId = tenantCheck.effectiveOrgId;
@@ -122,6 +127,11 @@ export const createFinancialTransaction = async (event: APIGatewayProxyEvent): P
       return apiResponse(400, { error: 'Campos obrigatórios: type, category, description, amount' });
     }
 
+    if (!Number.isFinite(Number(amount)) || Number(amount) <= 0) return apiResponse(400, { error: 'Valor inválido' });
+    if (project_id) {
+      const project = await authorizeResource({ ...event, headers: { ...event.headers, 'x-organization-id': orgId } }, 'church_special_projects', project_id);
+      if ('errorResponse' in project) return project.errorResponse;
+    }
     const id = uuidv4();
     const payDate = payment_date || new Date().toISOString().split('T')[0];
     const transStatus = status || 'PAID';
@@ -142,8 +152,8 @@ export const createFinancialTransaction = async (event: APIGatewayProxyEvent): P
       parseFloat(amount),
       payMethod,
       transStatus,
-      member_id || null,
-      member_name || null,
+      isFinancialStaff ? (member_id || null) : auth.user.userId,
+      isFinancialStaff ? (member_name || null) : auth.user.name,
       project_id || null,
       origin,
       receipt_url || null,
@@ -156,8 +166,8 @@ export const createFinancialTransaction = async (event: APIGatewayProxyEvent): P
       await query(`
         UPDATE church_special_projects
         SET collected_amount = collected_amount + ?
-        WHERE id = ?
-      `, [parseFloat(amount), project_id]);
+        WHERE id = ? AND organization_id = ?
+      `, [parseFloat(amount), project_id, orgId]);
     }
 
     await logSecurityEvent({
@@ -189,7 +199,9 @@ export const updateFinancialTransaction = async (event: APIGatewayProxyEvent): P
     if (!id) return apiResponse(400, { error: 'ID da transação obrigatório' });
 
     // Ensure transaction belongs to user's organization
-    const { rows: existingRows } = await query(`SELECT organization_id FROM church_financial_transactions WHERE id = ? LIMIT 1`, [id]);
+    const scope = enforceTenant(auth.user, event.headers?.['x-organization-id'] || event.queryStringParameters?.organization_id);
+    if (!scope.allowed) return scope.errorResponse!;
+    const { rows: existingRows } = await query(`SELECT organization_id FROM church_financial_transactions WHERE id = ? AND organization_id = ? LIMIT 1`, [id, scope.effectiveOrgId]);
     if (existingRows.length === 0) {
       return apiResponse(404, { error: 'Transação não encontrada' });
     }
@@ -223,7 +235,7 @@ export const updateFinancialTransaction = async (event: APIGatewayProxyEvent): P
           project_id = COALESCE(?, project_id),
           receipt_url = COALESCE(?, receipt_url),
           payment_date = COALESCE(?, payment_date)
-      WHERE id = ?
+      WHERE id = ? AND organization_id = ?
     `, [
       type,
       category,
@@ -235,7 +247,7 @@ export const updateFinancialTransaction = async (event: APIGatewayProxyEvent): P
       project_id,
       receipt_url,
       payment_date,
-      id
+      id, scope.effectiveOrgId
     ]);
 
     await logSecurityEvent({
@@ -266,7 +278,9 @@ export const deleteFinancialTransaction = async (event: APIGatewayProxyEvent): P
     const id = event.pathParameters?.id;
     if (!id) return apiResponse(400, { error: 'ID da transação obrigatório' });
 
-    const { rows: existingRows } = await query(`SELECT organization_id, amount, description FROM church_financial_transactions WHERE id = ? LIMIT 1`, [id]);
+    const scope = enforceTenant(auth.user, event.headers?.['x-organization-id'] || event.queryStringParameters?.organization_id);
+    if (!scope.allowed) return scope.errorResponse!;
+    const { rows: existingRows } = await query(`SELECT organization_id, amount, description FROM church_financial_transactions WHERE id = ? AND organization_id = ? LIMIT 1`, [id, scope.effectiveOrgId]);
     if (existingRows.length === 0) {
       return apiResponse(404, { error: 'Transação não encontrada' });
     }
@@ -274,7 +288,7 @@ export const deleteFinancialTransaction = async (event: APIGatewayProxyEvent): P
     const tenantCheck = enforceTenant(auth.user, existingRows[0].organization_id);
     if (!tenantCheck.allowed) return tenantCheck.errorResponse!;
 
-    await query(`DELETE FROM church_financial_transactions WHERE id = ?`, [id]);
+    await query(`DELETE FROM church_financial_transactions WHERE id = ? AND organization_id = ?`, [id, scope.effectiveOrgId]);
 
     await logSecurityEvent({
       organizationId: tenantCheck.effectiveOrgId,
@@ -365,6 +379,32 @@ export const getFinancialSummary = async (event: APIGatewayProxyEvent): Promise<
       GROUP BY origin_module
     `, params);
 
+    // Mix de Meios de Pagamento (Pix, Cartão de Crédito, Débito, Boleto, Dinheiro)
+    const { rows: paymentMixRows } = await query(`
+      SELECT
+        COALESCE(NULLIF(payment_method, ''), 'PIX') as payment_method,
+        SUM(amount) as total,
+        COUNT(id) as count
+      FROM church_financial_transactions
+      WHERE organization_id = ? AND type = 'INCOME' AND status = 'PAID' ${campusFilter} ${dateFilter}
+      GROUP BY COALESCE(NULLIF(payment_method, ''), 'PIX')
+      ORDER BY total DESC
+    `, params);
+
+    // Ranking de Arrecadação por Igreja / Campus
+    const { rows: campusRankingRows } = await query(`
+      SELECT
+        COALESCE(c.name, 'Sede Principal') as campus_name,
+        COALESCE(t.campus_id, 'main') as campus_id,
+        SUM(t.amount) as total,
+        COUNT(t.id) as count
+      FROM church_financial_transactions t
+      LEFT JOIN campuses c ON c.id = t.campus_id AND c.organization_id = t.organization_id
+      WHERE t.organization_id = ? AND t.type = 'INCOME' AND t.status = 'PAID' ${campusFilter.replace(/\bcampus_id\b/g, 't.campus_id')} ${dateFilter}
+      GROUP BY t.campus_id, c.name
+      ORDER BY total DESC
+    `, params);
+
     const summary = totals[0] || {
       total_income: 0,
       total_expense: 0,
@@ -374,6 +414,22 @@ export const getFinancialSummary = async (event: APIGatewayProxyEvent): Promise<
     };
 
     const netBalance = (Number(summary.total_income) || 0) - (Number(summary.total_expense) || 0);
+    const totalIncome = Number(summary.total_income) || 0;
+
+    const paymentMethodsMix = paymentMixRows.map((row: any) => ({
+      payment_method: row.payment_method,
+      total: Number(row.total) || 0,
+      count: Number(row.count) || 0,
+      percentage: totalIncome > 0 ? Number(((Number(row.total) / totalIncome) * 100).toFixed(1)) : 0
+    }));
+
+    const campusRanking = campusRankingRows.map((row: any) => ({
+      campus_name: row.campus_name,
+      campus_id: row.campus_id,
+      total: Number(row.total) || 0,
+      count: Number(row.count) || 0,
+      percentage: totalIncome > 0 ? Number(((Number(row.total) / totalIncome) * 100).toFixed(1)) : 0
+    }));
 
     return apiResponse(200, {
       summary: {
@@ -386,7 +442,9 @@ export const getFinancialSummary = async (event: APIGatewayProxyEvent): Promise<
       },
       income_by_category: incomeCategories,
       expense_by_category: expenseCategories,
-      by_origin: byOrigin
+      by_origin: byOrigin,
+      payment_methods_mix: paymentMethodsMix,
+      campus_ranking: campusRanking
     });
   } catch (error: any) {
     console.error('Erro ao obter resumo financeiro:', error);
@@ -466,6 +524,10 @@ export const createOrUpdateSpecialProject = async (event: APIGatewayProxyEvent):
       return apiResponse(400, { error: 'Campos obrigatórios: title, target_amount, start_date' });
     }
 
+    if (id) {
+      const resource = await authorizeResource({ ...event, headers: { ...event.headers, 'x-organization-id': orgId } }, 'church_special_projects', id, FINANCIAL_ROLES);
+      if ('errorResponse' in resource) return resource.errorResponse;
+    }
     const projectId = id || uuidv4();
 
     await query(`
@@ -516,13 +578,15 @@ export const deleteSpecialProject = async (event: APIGatewayProxyEvent): Promise
     const id = event.pathParameters?.id;
     if (!id) return apiResponse(400, { error: 'ID do projeto obrigatório' });
 
-    const { rows } = await query(`SELECT organization_id FROM church_special_projects WHERE id = ? LIMIT 1`, [id]);
+    const scope = enforceTenant(auth.user, event.headers?.['x-organization-id'] || event.queryStringParameters?.organization_id);
+    if (!scope.allowed) return scope.errorResponse!;
+    const { rows } = await query(`SELECT organization_id FROM church_special_projects WHERE id = ? AND organization_id = ? LIMIT 1`, [id, scope.effectiveOrgId]);
     if (rows.length === 0) return apiResponse(404, { error: 'Projeto não encontrado' });
 
     const tenantCheck = enforceTenant(auth.user, rows[0].organization_id);
     if (!tenantCheck.allowed) return tenantCheck.errorResponse!;
 
-    await query(`DELETE FROM church_special_projects WHERE id = ?`, [id]);
+    await query(`DELETE FROM church_special_projects WHERE id = ? AND organization_id = ?`, [id, scope.effectiveOrgId]);
     return apiResponse(200, { message: 'Projeto removido com sucesso!' });
   } catch (error: any) {
     console.error('Erro ao remover projeto especial:', error);
@@ -580,23 +644,13 @@ export const paySaasInvoice = async (event: APIGatewayProxyEvent): Promise<APIGa
     const id = event.pathParameters?.id || (event as any).rawPath?.split('/')[3];
     if (!id) return apiResponse(400, { error: 'ID da fatura obrigatório' });
 
-    await query(`
-      UPDATE saas_invoices
-      SET status = 'PAID',
-          paid_at = NOW()
-      WHERE id = ?
-    `, [id]);
+    const tenantCheck = enforceTenant(auth.user, event.queryStringParameters?.organization_id || event.headers?.['x-organization-id']);
+    if (!tenantCheck.allowed) return tenantCheck.errorResponse!;
+    const { rows } = await query('SELECT id FROM saas_invoices WHERE id = ? AND organization_id = ?', [id, tenantCheck.effectiveOrgId]);
+    if (!rows.length) return apiResponse(404, { error: 'Fatura não encontrada' });
+    // SaaS settlement must originate from the payment provider webhook, never a tenant button.
+    return apiResponse(409, { error: 'PAYMENT_CONFIRMATION_REQUIRED', message: 'A quitação depende da confirmação do provedor de pagamento.' });
 
-    await logSecurityEvent({
-      organizationId: auth.user.organizationId,
-      user: auth.user,
-      action: 'PAY_SAAS_INVOICE',
-      resource: 'saas_invoices',
-      resourceId: id,
-      event
-    });
-
-    return apiResponse(200, { message: 'Fatura quitada com sucesso!' });
   } catch (error: any) {
     console.error('Erro ao quitar fatura SaaS:', error);
     return apiResponse(500, { error: 'Erro ao quitar fatura' });
@@ -614,6 +668,11 @@ export const financialHandler = async (event: APIGatewayProxyEvent): Promise<API
   if (method === 'OPTIONS') {
     return apiResponse(200, { ok: true });
   }
+  const auth = await requireAuth(event);
+  if ('errorResponse' in auth) return auth.errorResponse;
+  const tenantCheck = enforceTenant(auth.user, event.headers?.['x-organization-id'] || event.queryStringParameters?.organization_id);
+  if (!tenantCheck.allowed) return tenantCheck.errorResponse!;
+
 
   // 1. Resumo & DRE
   if (rawPath.includes('/financial/summary')) {

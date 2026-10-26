@@ -27,7 +27,9 @@ export const getFeatureFlags = async (
       event.headers?.['x-organization-id'] ||
       'org_default';
 
-    const orgId = user ? enforceTenant(user, requestedOrgId).effectiveOrgId : requestedOrgId;
+    const tenantCheck = user ? enforceTenant(user, requestedOrgId) : null;
+    if (tenantCheck && !tenantCheck.allowed) return tenantCheck.errorResponse!;
+    const orgId = tenantCheck?.effectiveOrgId || requestedOrgId;
 
     const campusId =
       event.queryStringParameters?.campus_id ||

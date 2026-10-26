@@ -1,6 +1,7 @@
+import { v5 as uuidv5 } from 'uuid';
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { query, apiResponse } from '../db';
-import { requireAuth, enforceRole, maskSecret } from '../services/authMiddleware';
+import { requireAuth, enforceRole, enforceTenant, maskSecret } from '../services/authMiddleware';
 import { logSecurityEvent } from '../services/auditLogService';
 
 const DEFAULT_GATEWAY_CONFIG = {
@@ -35,7 +36,9 @@ export const getGatewayConfig = async (event: APIGatewayProxyEvent): Promise<API
       return roleCheck.errorResponse!;
     }
 
-    const { rows } = await query(`SELECT * FROM payment_gateway_settings ORDER BY updated_at DESC LIMIT 1`);
+    const tenantCheck = enforceTenant(auth.user, event.queryStringParameters?.organization_id || event.headers?.['x-organization-id']);
+    if (!tenantCheck.allowed) return tenantCheck.errorResponse!;
+    const { rows } = await query(`SELECT * FROM payment_gateway_settings WHERE organization_id = ? LIMIT 1`, [tenantCheck.effectiveOrgId]);
     if (rows.length === 0) {
       return apiResponse(200, DEFAULT_GATEWAY_CONFIG);
     }
@@ -72,9 +75,12 @@ export const updateGatewayConfig = async (event: APIGatewayProxyEvent): Promise<
     }
 
     const body = JSON.parse(event.body || '{}');
+    const tenantCheck = enforceTenant(auth.user, body.organization_id || event.queryStringParameters?.organization_id || event.headers?.['x-organization-id']);
+    if (!tenantCheck.allowed) return tenantCheck.errorResponse!;
+    const orgId = tenantCheck.effectiveOrgId;
 
     // Recupera chaves existentes para não sobrescrever se vierem mascaradas
-    const { rows: existingRows } = await query(`SELECT * FROM payment_gateway_settings ORDER BY updated_at DESC LIMIT 1`);
+    const { rows: existingRows } = await query(`SELECT * FROM payment_gateway_settings WHERE organization_id = ? LIMIT 1`, [orgId]);
     const existing = existingRows[0] || {};
 
     let apiKey = body.api_key;
@@ -90,18 +96,21 @@ export const updateGatewayConfig = async (event: APIGatewayProxyEvent): Promise<
     const config = {
       ...DEFAULT_GATEWAY_CONFIG,
       ...body,
+      id: uuidv5(orgId, uuidv5.URL),
+      organization_id: orgId,
       api_key: apiKey !== undefined ? apiKey : existing.api_key,
       encryption_key: encryptionKey !== undefined ? encryptionKey : existing.encryption_key
     };
 
     const sql = `
       INSERT INTO payment_gateway_settings (
-        id, environment, api_key, encryption_key, recipient_id,
+        id, organization_id, config_payload, environment, api_key, encryption_key, recipient_id,
         bank_code, bank_name, agency, account, account_digit,
         document_number, legal_name, pix_key_type, pix_key,
         auto_split_enabled, fee_percentage
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON DUPLICATE KEY UPDATE
+        config_payload = VALUES(config_payload),
         environment = VALUES(environment),
         api_key = VALUES(api_key),
         encryption_key = VALUES(encryption_key),
@@ -121,7 +130,9 @@ export const updateGatewayConfig = async (event: APIGatewayProxyEvent): Promise<
     `;
 
     const params = [
-      config.id || 'default_gateway',
+      config.id,
+      orgId,
+      JSON.stringify(Object.fromEntries(Object.entries(body.ui_settings || {}).filter(([key]) => !['secret_key', 'api_key', 'encryption_key', 'public_key', 'is_connected'].includes(key)))),
       config.environment || 'test',
       config.api_key || '',
       config.encryption_key || '',
@@ -143,7 +154,7 @@ export const updateGatewayConfig = async (event: APIGatewayProxyEvent): Promise<
 
     // Registro de Auditoria de Segurança
     await logSecurityEvent({
-      organizationId: auth.user.organizationId,
+      organizationId: orgId,
       user: auth.user,
       action: 'UPDATE_PAYMENT_GATEWAY_CONFIG',
       resource: 'payment_gateway_settings',

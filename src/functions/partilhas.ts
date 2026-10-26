@@ -1,3 +1,4 @@
+import { authorizeResource } from '../services/tenantResource';
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { v4 as uuidv4 } from 'uuid';
 import { query, apiResponse } from '../db';
@@ -8,11 +9,15 @@ import { logSecurityEvent } from '../services/auditLogService';
 // GET /partilhas?group_id=...
 export const getPartilhas = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   try {
-    const user = await getAuthenticatedUser(event);
+    const auth = await requireAuth(event);
+    if ('errorResponse' in auth) return auth.errorResponse;
+    const user = auth.user;
     const groupId = event.queryStringParameters?.group_id;
     const requestedOrgId = event.queryStringParameters?.organization_id;
 
-    const orgId = user ? enforceTenant(user, requestedOrgId).effectiveOrgId : (requestedOrgId || 'org_default');
+    const tenantScope = user ? enforceTenant(user, requestedOrgId) : null;
+    if (tenantScope && !tenantScope.allowed) return tenantScope.errorResponse!;
+    const orgId = tenantScope?.effectiveOrgId || (requestedOrgId || 'org_default');
 
     let sql = `
       SELECT p.* 
@@ -47,11 +52,15 @@ export const createPartilha = async (event: APIGatewayProxyEvent): Promise<APIGa
     });
     if (!rateCheck.allowed) return rateCheck.errorResponse!;
 
-    const user = await getAuthenticatedUser(event);
+    const auth = await requireAuth(event);
+    if ('errorResponse' in auth) return auth.errorResponse;
+    const user = auth.user;
     const body = JSON.parse(event.body || '{}');
     const { cell_group_id, group_id, user_id, user_name, item_name, quantity, event_date } = body;
 
     const finalGroupId = cell_group_id || group_id;
+    const scope = await authorizeResource(event, 'cell_groups', finalGroupId);
+    if ('errorResponse' in scope) return scope.errorResponse;
     const finalUserId = user?.userId || user_id || `usr_${Date.now()}`;
     const finalUserName = user?.name || user_name || 'Voluntário';
 
@@ -107,24 +116,29 @@ export const togglePartilha = async (event: APIGatewayProxyEvent): Promise<APIGa
 
     if (!id) return apiResponse(400, { message: 'ID é obrigatório' });
 
-    const user = await getAuthenticatedUser(event);
-    const effectiveUserId = user?.userId || user_id;
+    const auth = await requireAuth(event);
+    if ('errorResponse' in auth) return auth.errorResponse;
+    const user = auth.user;
+    const scope = await authorizeResource(event, 'cell_partilhas', id);
+    if ('errorResponse' in scope) return scope.errorResponse;
+    if (scope.record.user_id !== user.userId && !user.isSuperAdmin && !['PASTOR', 'ADMIN', 'LEADER'].includes(user.role)) return apiResponse(403, { message: 'Acesso restrito ao responsável' });
+    const effectiveUserId = user.userId;
     const effectiveUserName = user?.name || user_name;
 
-    let q = 'UPDATE cell_partilhas SET is_confirmed = ?';
+    let q = 'UPDATE cell_partilhas p JOIN cell_groups cg ON cg.id = p.cell_group_id SET p.is_confirmed = ?';
     const params: any[] = [is_confirmed === true];
 
     if (effectiveUserName !== undefined) {
-      q += ', user_name = ?';
+      q += ', p.user_name = ?';
       params.push(String(effectiveUserName).trim().substring(0, 100));
     }
     if (effectiveUserId !== undefined) {
-      q += ', user_id = ?';
+      q += ', p.user_id = ?';
       params.push(effectiveUserId);
     }
 
-    q += ' WHERE id = ?';
-    params.push(id);
+    q += ' WHERE p.id = ? AND cg.organization_id = ?';
+    params.push(id, scope.organizationId);
 
     await query(q, params);
 

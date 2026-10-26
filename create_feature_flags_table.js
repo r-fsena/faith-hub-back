@@ -8,7 +8,7 @@ async function runFeatureFlagsMigration() {
     host: process.env.DB_HOST || 'faith-hub.cc7220s4ekvj.us-east-1.rds.amazonaws.com',
     port: parseInt(process.env.DB_PORT || '3306'),
     user: process.env.DB_USER || 'admin_faith_hub',
-    password: process.env.DB_PASSWORD || '30ago2015Ra!',
+    password: process.env.DB_PASSWORD,
     database: process.env.DB_NAME || 'faith-hub',
     ssl: { rejectUnauthorized: false }
   });

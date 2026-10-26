@@ -1,3 +1,4 @@
+import { authorizeResource } from '../services/tenantResource';
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { v4 as uuidv4 } from 'uuid';
 import { query, apiResponse } from '../db';
@@ -21,6 +22,10 @@ export const createOrUpdateGroup = async (event: APIGatewayProxyEvent): Promise<
     const tenantCheck = enforceTenant(auth.user, organization_id);
     if (!tenantCheck.allowed) return tenantCheck.errorResponse!;
     const orgValue = tenantCheck.effectiveOrgId;
+    if (id) {
+      const resource = await authorizeResource({ ...event, headers: { ...event.headers, 'x-organization-id': orgValue } }, 'cell_groups', id);
+      if ('errorResponse' in resource) return resource.errorResponse;
+    }
 
     const finalId = id || uuidv4();
     const campusValue = campus_id || 'campus_sede';
@@ -87,7 +92,9 @@ export const getGroups = async (event: APIGatewayProxyEvent): Promise<APIGateway
     const campusId = event.queryStringParameters?.campus_id;
     const requestedOrgId = event.queryStringParameters?.organization_id;
 
-    const orgId = user ? enforceTenant(user, requestedOrgId).effectiveOrgId : (requestedOrgId || 'org_default');
+    const tenantScope = user ? enforceTenant(user, requestedOrgId) : null;
+    if (tenantScope && !tenantScope.allowed) return tenantScope.errorResponse!;
+    const orgId = tenantScope?.effectiveOrgId || (requestedOrgId || 'org_default');
 
     let q = `
       SELECT cg.*, m.name as leader_name, c.name as campus_name,
@@ -120,20 +127,22 @@ export const getGroup = async (event: APIGatewayProxyEvent): Promise<APIGatewayP
     const id = event.pathParameters?.id;
     if (!id) return apiResponse(400, { error: 'ID faltante' });
 
-    const { rows } = await query(`SELECT * FROM cell_groups WHERE id = ? LIMIT 1`, [id]);
+    const scope = await authorizeResource(event, 'cell_groups', id);
+    if ('errorResponse' in scope) return scope.errorResponse;
+    const { rows } = await query(`SELECT * FROM cell_groups WHERE id = ? AND organization_id = ? LIMIT 1`, [id, scope.organizationId]);
 
     if (rows.length === 0) {
       return apiResponse(404, { message: 'Célula não encontrada' });
     }
 
     const { rows: pendingRows } = await query(
-      `SELECT id, name, phone, email, created_at FROM members WHERE pending_cell_group_id = ?`,
-      [id]
+      `SELECT id, name, phone, email, created_at FROM members WHERE pending_cell_group_id = ? AND organization_id = ?`,
+      [id, scope.organizationId]
     );
 
     const { rows: currentMembers } = await query(
-      `SELECT id, name, phone, email, role FROM members WHERE cell_group_id = ?`,
-      [id]
+      `SELECT id, name, phone, email, role FROM members WHERE cell_group_id = ? AND organization_id = ?`,
+      [id, scope.organizationId]
     );
 
     const cellData = {
@@ -198,6 +207,8 @@ export const evaluateRequest = async (event: APIGatewayProxyEvent): Promise<APIG
     const groupId = event.pathParameters?.id;
     if (!groupId) return apiResponse(400, { error: 'Group ID faltante' });
 
+    const scope = await authorizeResource(event, 'cell_groups', groupId, LEADERSHIP_ROLES);
+    if ('errorResponse' in scope) return scope.errorResponse;
     const body = JSON.parse(event.body || '{}');
     const { memberId, approved, action, userId } = body;
     const targetUserId = memberId || userId;
@@ -207,13 +218,13 @@ export const evaluateRequest = async (event: APIGatewayProxyEvent): Promise<APIG
 
     if (isApproved) {
       await query(
-        `UPDATE members SET cell_group_id = ?, pending_cell_group_id = NULL WHERE id = ? OR LOWER(email) = LOWER(?)`,
-        [groupId, targetUserId, targetUserId]
+        `UPDATE members SET cell_group_id = ?, pending_cell_group_id = NULL WHERE organization_id = ? AND (id = ? OR LOWER(email) = LOWER(?))`,
+        [groupId, scope.organizationId, targetUserId, targetUserId]
       );
     } else {
       await query(
-        `UPDATE members SET pending_cell_group_id = NULL WHERE id = ? OR LOWER(email) = LOWER(?)`,
-        [targetUserId, targetUserId]
+        `UPDATE members SET pending_cell_group_id = NULL WHERE organization_id = ? AND (id = ? OR LOWER(email) = LOWER(?))`,
+        [scope.organizationId, targetUserId, targetUserId]
       );
     }
 
@@ -241,19 +252,21 @@ export const evaluateJoinRequest = async (event: APIGatewayProxyEvent): Promise<
     const userId = event.pathParameters?.userId;
     if (!groupId || !userId) return apiResponse(400, { error: 'Group ID ou User ID ausente' });
 
+    const scope = await authorizeResource(event, 'cell_groups', groupId, LEADERSHIP_ROLES);
+    if ('errorResponse' in scope) return scope.errorResponse;
     const body = JSON.parse(event.body || '{}');
     const action = body.action || (body.status === 'APPROVED' ? 'approve' : 'reject');
     const isApproved = action === 'approve';
 
     if (isApproved) {
       await query(
-        `UPDATE members SET cell_group_id = ?, pending_cell_group_id = NULL WHERE id = ? OR LOWER(email) = LOWER(?)`,
-        [groupId, userId, userId]
+        `UPDATE members SET cell_group_id = ?, pending_cell_group_id = NULL WHERE organization_id = ? AND (id = ? OR LOWER(email) = LOWER(?))`,
+        [groupId, scope.organizationId, userId, userId]
       );
     } else {
       await query(
-        `UPDATE members SET pending_cell_group_id = NULL WHERE id = ? OR LOWER(email) = LOWER(?)`,
-        [userId, userId]
+        `UPDATE members SET pending_cell_group_id = NULL WHERE organization_id = ? AND (id = ? OR LOWER(email) = LOWER(?))`,
+        [scope.organizationId, userId, userId]
       );
     }
 
@@ -280,13 +293,15 @@ export const addMember = async (event: APIGatewayProxyEvent): Promise<APIGateway
     const groupId = event.pathParameters?.id;
     if (!groupId) return apiResponse(400, { error: 'Group ID faltante' });
 
+    const scope = await authorizeResource(event, 'cell_groups', groupId, LEADERSHIP_ROLES);
+    if ('errorResponse' in scope) return scope.errorResponse;
     const body = JSON.parse(event.body || '{}');
     const { member_id } = body;
     if (!member_id) return apiResponse(400, { error: 'member_id faltante' });
 
     await query(
-      `UPDATE members SET cell_group_id = ?, pending_cell_group_id = NULL WHERE id = ?`,
-      [groupId, member_id]
+      `UPDATE members SET cell_group_id = ?, pending_cell_group_id = NULL WHERE id = ? AND organization_id = ?`,
+      [groupId, member_id, scope.organizationId]
     );
 
     return apiResponse(200, { message: 'Membro adicionado à célula com sucesso' });
@@ -308,9 +323,11 @@ export const removeMember = async (event: APIGatewayProxyEvent): Promise<APIGate
     const memberId = event.pathParameters?.memberId;
     if (!groupId || !memberId) return apiResponse(400, { error: 'IDs faltantes' });
 
+    const scope = await authorizeResource(event, 'cell_groups', groupId, LEADERSHIP_ROLES);
+    if ('errorResponse' in scope) return scope.errorResponse;
     await query(
-      `UPDATE members SET cell_group_id = NULL WHERE id = ? AND cell_group_id = ?`,
-      [memberId, groupId]
+      `UPDATE members SET cell_group_id = NULL WHERE id = ? AND organization_id = ? AND cell_group_id = ?`,
+      [memberId, scope.organizationId, groupId]
     );
 
     return apiResponse(200, { message: 'Membro desvinculado da célula com sucesso' });
@@ -435,6 +452,8 @@ export const getCellMeetings = async (event: APIGatewayProxyEvent): Promise<APIG
     const groupId = event.pathParameters?.id;
     if (!groupId) return apiResponse(400, { error: 'ID da célula faltante' });
 
+    const scope = await authorizeResource(event, 'cell_groups', groupId, LEADERSHIP_ROLES);
+    if ('errorResponse' in scope) return scope.errorResponse;
     const q = `
       SELECT 
         cm.*,
@@ -443,13 +462,13 @@ export const getCellMeetings = async (event: APIGatewayProxyEvent): Promise<APIG
         COUNT(CASE WHEN cma.visitor_name IS NOT NULL THEN 1 END) as visitor_count
       FROM cell_meetings cm
       LEFT JOIN cell_meeting_attendees cma ON cm.id = cma.meeting_id
-      WHERE cm.cell_group_id = ?
+      WHERE cm.cell_group_id = ? AND cm.organization_id = ?
       GROUP BY cm.id
       ORDER BY cm.meeting_date DESC, cm.created_at DESC
       LIMIT 30
     `;
 
-    const { rows } = await query(q, [groupId]);
+    const { rows } = await query(q, [groupId, scope.organizationId]);
     return apiResponse(200, rows);
   } catch (err: any) {
     console.error('Erro ao buscar histórico de reuniões:', err);
@@ -464,9 +483,11 @@ export const getCellMeetingDetails = async (event: APIGatewayProxyEvent): Promis
     const meetingId = event.pathParameters?.meetingId;
     if (!groupId || !meetingId) return apiResponse(400, { error: 'IDs faltantes' });
 
+    const scope = await authorizeResource(event, 'cell_groups', groupId, LEADERSHIP_ROLES);
+    if ('errorResponse' in scope) return scope.errorResponse;
     const { rows: meetingRows } = await query(
-      `SELECT * FROM cell_meetings WHERE id = ? AND cell_group_id = ? LIMIT 1`,
-      [meetingId, groupId]
+      `SELECT * FROM cell_meetings WHERE id = ? AND organization_id = ? AND cell_group_id = ? LIMIT 1`,
+      [meetingId, scope.organizationId, groupId]
     );
 
     if (meetingRows.length === 0) {
@@ -481,9 +502,9 @@ export const getCellMeetingDetails = async (event: APIGatewayProxyEvent): Promis
          m.email as member_email
        FROM cell_meeting_attendees cma
        LEFT JOIN members m ON cma.member_id = m.id
-       WHERE cma.meeting_id = ?
+       WHERE cma.meeting_id = ? AND EXISTS (SELECT 1 FROM cell_meetings cm WHERE cm.id = cma.meeting_id AND cm.organization_id = ?)
        ORDER BY cma.status ASC, m.name ASC`,
-      [meetingId]
+      [meetingId, scope.organizationId]
     );
 
     return apiResponse(200, {

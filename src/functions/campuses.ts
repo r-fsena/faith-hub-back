@@ -12,7 +12,9 @@ export const listCampuses = async (event: APIGatewayProxyEvent): Promise<APIGate
     const user = await getAuthenticatedUser(event);
     const requestedOrgId = event.queryStringParameters?.organization_id;
 
-    const orgId = user ? enforceTenant(user, requestedOrgId).effectiveOrgId : (requestedOrgId || 'org_default');
+    const tenantScope = user ? enforceTenant(user, requestedOrgId) : null;
+    if (tenantScope && !tenantScope.allowed) return tenantScope.errorResponse!;
+    const orgId = tenantScope?.effectiveOrgId || (requestedOrgId || 'org_default');
 
     const { rows } = await query(`
       SELECT c.*,

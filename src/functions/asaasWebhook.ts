@@ -12,6 +12,7 @@ export const handleAsaasWebhook = async (event: APIGatewayProxyEvent): Promise<A
       ([k]) => k.toLowerCase() === 'asaas-access-token'
     )?.[1];
 
+    if (!expectedToken) return apiResponse(503, { message: 'Webhook não configurado' });
     if (expectedToken) {
       if (!receivedToken || receivedToken !== expectedToken) {
         console.warn('⚠️ Token de autenticação do Webhook Asaas inválido ou ausente!', {
@@ -89,7 +90,7 @@ export const handleAsaasWebhook = async (event: APIGatewayProxyEvent): Promise<A
     }
 
     // 3. Pagamento Regularizado após atraso
-    else if (webhookEvent === 'PAYMENT_RESTORED' || webhookEvent === 'PAYMENT_UPDATED') {
+    else if (webhookEvent === 'PAYMENT_RESTORED' && ['CONFIRMED', 'RECEIVED'].includes(payment.status)) {
       if (subscriptionId || customerId) {
         await query(`
           UPDATE saas_subscriptions 

@@ -1,3 +1,4 @@
+import { checkRateLimit } from '../services/rateLimiter';
 // Lambdas para Gestão de Propostas Comerciais, Funil SaaS e Assinaturas
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { v4 as uuidv4 } from 'uuid';
@@ -251,18 +252,21 @@ export const getPublicProposal = async (event: APIGatewayProxyEvent): Promise<AP
 // 4. Aceitar Proposta e Gerar Checkout / Ativação (POST /proposals/public/{token}/accept)
 export const acceptProposal = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   try {
+    const limit = checkRateLimit(event, { maxRequests: 10, windowSeconds: 60, identifierPrefix: 'accept-proposal' });
+    if (!limit.allowed) return limit.errorResponse!;
     const token = event.pathParameters?.token || event.queryStringParameters?.token;
     const body = JSON.parse(event.body || '{}');
     const clientIp = event.requestContext?.identity?.sourceIp || 'web_client';
 
     if (!token) return apiResponse(400, { message: 'Token de proposta ausente' });
 
-    const { rows } = await query(`SELECT * FROM saas_proposals WHERE token = ? OR id = ? LIMIT 1`, [token, token]);
+    const { rows } = await query(`SELECT * FROM saas_proposals WHERE token = ? LIMIT 1`, [token]);
     if (rows.length === 0) {
       return apiResponse(404, { message: 'Proposta não encontrada' });
     }
 
     const proposal = rows[0];
+    if (proposal.expires_at && new Date(proposal.expires_at) < new Date()) return apiResponse(410, { message: 'Proposta expirada' });
 
     // Se já foi paga / provisionada
     if (proposal.status === 'PAID') {
@@ -308,7 +312,8 @@ export const acceptProposal = async (event: APIGatewayProxyEvent): Promise<APIGa
       asaasSubId = sub.id;
       paymentLink = sub.paymentLink || sub.invoiceUrl || `https://studio.faithhubs.com/?proposta=${token}&step=pay`;
     } catch (asaasErr) {
-      console.warn('Erro ao criar assinatura Asaas:', asaasErr);
+      console.warn('Falha no provedor de assinaturas');
+      return apiResponse(502, { message: 'Não foi possível iniciar a cobrança. Tente novamente.' });
     }
 
     // Se a primeira mensalidade é 100% gratuita, PROVISIONA O AMBIENTE IMEDIATAMENTE NA AWS!
@@ -365,6 +370,7 @@ export const acceptProposal = async (event: APIGatewayProxyEvent): Promise<APIGa
 // 5. Simular Pagamento e Testar Provisionamento Instantâneo (POST /proposals/{id}/simulate-payment) - Apenas SUPERADMIN
 export const simulatePayment = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   try {
+    if (process.env.ASAAS_ENVIRONMENT !== 'sandbox') return apiResponse(403, { message: 'Simulação disponível somente no sandbox' });
     const auth = await requireAuth(event);
     if ('errorResponse' in auth) return auth.errorResponse;
 

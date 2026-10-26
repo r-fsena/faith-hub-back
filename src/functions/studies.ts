@@ -1,3 +1,4 @@
+import { authorizeResource } from '../services/tenantResource';
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { v4 as uuidv4 } from 'uuid';
 import { query, apiResponse } from '../db';
@@ -16,7 +17,9 @@ export const getStudyBooks = async (event: APIGatewayProxyEvent): Promise<APIGat
     const campusId = event.queryStringParameters?.campus_id;
     const groupId = event.queryStringParameters?.group_id;
 
-    const orgId = user ? enforceTenant(user, requestedOrgId).effectiveOrgId : (requestedOrgId || 'org_default');
+    const tenantScope = user ? enforceTenant(user, requestedOrgId) : null;
+    if (tenantScope && !tenantScope.allowed) return tenantScope.errorResponse!;
+    const orgId = tenantScope?.effectiveOrgId || (requestedOrgId || 'org_default');
 
     let q = `
       SELECT sb.*, 
@@ -27,7 +30,7 @@ export const getStudyBooks = async (event: APIGatewayProxyEvent): Promise<APIGat
       FROM study_books sb
       LEFT JOIN cell_groups cg ON sb.target_group_id = cg.id
       LEFT JOIN study_chapters sc ON sb.id = sc.book_id
-      WHERE (sb.organization_id = ? OR sb.organization_id IS NULL)
+      WHERE sb.organization_id = ?
     `;
     const params: any[] = [orgId];
 
@@ -75,14 +78,17 @@ export const getStudyBookById = async (event: APIGatewayProxyEvent): Promise<API
     if (!id) return apiResponse(400, { error: 'ID do livro é obrigatório' });
 
     const user = await getAuthenticatedUser(event);
-    const userId = user?.userId || user?.email || event.queryStringParameters?.user_id;
+    const userId = user?.userId;
+    const tenantCheck = user ? enforceTenant(user, event.queryStringParameters?.organization_id) : null;
+    if (tenantCheck && !tenantCheck.allowed) return tenantCheck.errorResponse!;
+    const orgId = tenantCheck?.effectiveOrgId || event.queryStringParameters?.organization_id || 'org_default';
 
     const { rows: bookRows } = await query(
       `SELECT sb.*, cg.name AS target_group_name 
        FROM study_books sb
        LEFT JOIN cell_groups cg ON sb.target_group_id = cg.id
-       WHERE sb.id = ? LIMIT 1`,
-      [id]
+       WHERE sb.id = ? AND sb.organization_id = ? LIMIT 1`,
+      [id, orgId]
     );
 
     if (bookRows.length === 0) {
@@ -90,17 +96,19 @@ export const getStudyBookById = async (event: APIGatewayProxyEvent): Promise<API
     }
 
     const book = bookRows[0];
+    const canEdit = user && (user.isSuperAdmin || STUDY_ADMIN_ROLES.includes(user.role));
+    if (!canEdit && book.status !== 'ACTIVE') return apiResponse(404, { message: 'Livro indisponível' });
 
     const { rows: chapterRows } = await query(
-      `SELECT * FROM study_chapters WHERE book_id = ? ORDER BY chapter_number ASC, scheduled_date ASC`,
-      [id]
+      `SELECT c.* FROM study_chapters c JOIN study_books b ON b.id = c.book_id WHERE c.book_id = ? AND b.organization_id = ? AND (? = 1 OR c.status = 'ACTIVE') ORDER BY c.chapter_number ASC, c.scheduled_date ASC`,
+      [id, orgId, canEdit ? 1 : 0]
     );
 
     let completedChapterIds: string[] = [];
     if (userId) {
       const { rows: compRows } = await query(
-        `SELECT chapter_id FROM study_chapter_completions WHERE user_id = ? AND book_id = ?`,
-        [userId, id]
+        `SELECT chapter_id FROM study_chapter_completions WHERE user_id = ? AND book_id = ? AND organization_id = ?`,
+        [userId, id, orgId]
       );
       completedChapterIds = compRows.map(r => r.chapter_id);
     }
@@ -180,6 +188,10 @@ export const createOrUpdateStudyBook = async (event: APIGatewayProxyEvent): Prom
     const tenantCheck = enforceTenant(auth.user, organization_id);
     if (!tenantCheck.allowed) return tenantCheck.errorResponse!;
     const orgValue = tenantCheck.effectiveOrgId;
+    if (id) {
+      const resource = await authorizeResource({ ...event, headers: { ...event.headers, 'x-organization-id': orgValue } }, 'study_books', id);
+      if ('errorResponse' in resource) return resource.errorResponse;
+    }
 
     const finalId = id || uuidv4();
     const campusValue = campus_id || 'campus_sede';
@@ -228,7 +240,11 @@ export const createOrUpdateStudyBook = async (event: APIGatewayProxyEvent): Prom
     if (Array.isArray(chapters)) {
       for (let i = 0; i < chapters.length; i++) {
         const ch = chapters[i];
-        const chapterId = ch.id || uuidv4();
+        let chapterId = uuidv4();
+        if (ch.id) {
+          const { rows: owned } = await query('SELECT c.id FROM study_chapters c JOIN study_books b ON b.id = c.book_id WHERE c.id = ? AND c.book_id = ? AND b.organization_id = ?', [ch.id, finalId, orgValue]);
+          if (owned.length) chapterId = owned[0].id;
+        }
         const chapterNum = ch.chapter_number || (i + 1);
         const questionsJson = Array.isArray(ch.discussion_questions) 
           ? JSON.stringify(ch.discussion_questions) 
@@ -367,6 +383,13 @@ export const saveStudyChapter = async (event: APIGatewayProxyEvent): Promise<API
       status
     } = body;
 
+    const scope = await authorizeResource(event, 'study_books', bookId, STUDY_ADMIN_ROLES);
+    if ('errorResponse' in scope) return scope.errorResponse;
+    if (id) {
+      const chapter = await authorizeResource(event, 'study_chapters', id, STUDY_ADMIN_ROLES);
+      if ('errorResponse' in chapter) return chapter.errorResponse;
+      if (chapter.record.book_id !== bookId) return apiResponse(403, { error: 'Capítulo pertence a outro livro' });
+    }
     const finalId = id || uuidv4();
     const questionsJson = Array.isArray(discussion_questions) 
       ? JSON.stringify(discussion_questions) 
@@ -428,7 +451,11 @@ export const deleteStudyChapter = async (event: APIGatewayProxyEvent): Promise<A
     const chapterId = event.pathParameters?.chapterId;
     if (!chapterId) return apiResponse(400, { error: 'ID do capítulo faltante' });
 
-    await query(`DELETE FROM study_chapters WHERE id = ?`, [chapterId]);
+    const scope = await authorizeResource(event, 'study_chapters', chapterId, ['SUPERADMIN', 'PASTOR', 'ADMIN']);
+    if ('errorResponse' in scope) return scope.errorResponse;
+    if (scope.record.book_id !== event.pathParameters?.id) return apiResponse(404, { error: 'Capítulo não encontrado' });
+    await query(`DELETE c FROM study_chapters c JOIN study_books b ON b.id = c.book_id WHERE c.id = ? AND b.organization_id = ?`, [chapterId, scope.organizationId]);
+    await logSecurityEvent({ organizationId: scope.organizationId, user: auth.user, action: 'DELETE_STUDY_CHAPTER', resource: 'study_chapters', resourceId: chapterId, event });
     return apiResponse(200, { message: 'Capítulo removido com sucesso' });
   } catch (err: any) {
     console.error('Erro ao deletar capítulo:', err);
@@ -440,67 +467,18 @@ export const deleteStudyChapter = async (event: APIGatewayProxyEvent): Promise<A
 // 7. POST /study-chapters/{id}/toggle-completion -> Alternar Conclusão do Capítulo
 // ============================================================================
 export const toggleChapterCompletion = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
-  try {
-    const user = await getAuthenticatedUser(event);
-    const chapterId = event.pathParameters?.id;
-    if (!chapterId) return apiResponse(400, { error: 'ID do capítulo é obrigatório' });
-
-    let userId = user?.userId || user?.email;
-    let bookId = '';
-    let orgId = user?.organizationId || 'org_default';
-
-    if (event.body) {
-      try {
-        const body = JSON.parse(event.body);
-        if (body.user_id) userId = body.user_id;
-        if (body.book_id) bookId = body.book_id;
-        if (body.organization_id) orgId = body.organization_id;
-      } catch {}
-    }
-
-    if (!userId) {
-      return apiResponse(400, { error: 'Identificação do usuário necessária' });
-    }
-
-    if (!bookId) {
-      const { rows: chRows } = await query('SELECT book_id FROM study_chapters WHERE id = ?', [chapterId]);
-      if (chRows.length > 0) bookId = chRows[0].book_id;
-    }
-
-    // Verifica se já está concluído
-    const { rows: existing } = await query(
-      'SELECT id FROM study_chapter_completions WHERE user_id = ? AND chapter_id = ?',
-      [userId, chapterId]
-    );
-
-    let completed = false;
-    if (existing.length > 0) {
-      await query('DELETE FROM study_chapter_completions WHERE user_id = ? AND chapter_id = ?', [userId, chapterId]);
-      completed = false;
-    } else {
-      await query(
-        'INSERT INTO study_chapter_completions (id, user_id, chapter_id, book_id, organization_id) VALUES (?, ?, ?, ?, ?)',
-        [uuidv4(), userId, chapterId, bookId, orgId]
-      );
-      completed = true;
-    }
-
-    // Retorna lista atualizada de capítulos concluídos deste livro
-    const { rows: allCompleted } = await query(
-      'SELECT chapter_id FROM study_chapter_completions WHERE user_id = ? AND book_id = ?',
-      [userId, bookId]
-    );
-
-    return apiResponse(200, {
-      success: true,
-      chapter_id: chapterId,
-      completed,
-      completed_chapter_ids: allCompleted.map((r: any) => r.chapter_id)
-    });
-  } catch (err: any) {
-    console.error('Erro ao alternar status do capítulo:', err);
-    return apiResponse(500, { error: 'Erro ao alternar status do capítulo' });
-  }
+  const chapterId = event.pathParameters?.id;
+  if (!chapterId) return apiResponse(400, { error: 'Capítulo obrigatório' });
+  const scope = await authorizeResource(event, 'study_chapters', chapterId);
+  if ('errorResponse' in scope) return scope.errorResponse;
+  const userId = scope.user.userId;
+  const orgId = scope.organizationId;
+  const bookId = scope.record.book_id;
+  const { rows } = await query('SELECT id FROM study_chapter_completions WHERE user_id = ? AND chapter_id = ? AND organization_id = ?', [userId, chapterId, orgId]);
+  if (rows.length) await query('DELETE FROM study_chapter_completions WHERE user_id = ? AND chapter_id = ? AND organization_id = ?', [userId, chapterId, orgId]);
+  else await query('INSERT INTO study_chapter_completions (id, user_id, chapter_id, book_id, organization_id) VALUES (?, ?, ?, ?, ?)', [uuidv4(), userId, chapterId, bookId, orgId]);
+  const { rows: completed } = await query('SELECT chapter_id FROM study_chapter_completions WHERE user_id = ? AND book_id = ? AND organization_id = ?', [userId, bookId, orgId]);
+  return apiResponse(200, { success: true, chapter_id: chapterId, completed: !rows.length, completed_chapter_ids: completed.map(row => row.chapter_id) });
 };
 
 // ============================================================================

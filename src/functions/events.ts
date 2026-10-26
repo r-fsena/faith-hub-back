@@ -1,3 +1,4 @@
+import { authorizeResource } from '../services/tenantResource';
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { v4 as uuidv4 } from 'uuid';
 import { query, getConnection, apiResponse } from '../db';
@@ -10,12 +11,14 @@ const EVENT_ADMIN_ROLES = ['SUPERADMIN', 'PASTOR', 'ADMIN', 'LEADER'];
 export const getEvents = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   try {
     const user = await getAuthenticatedUser(event);
-    const admin = event.queryStringParameters?.admin === 'true';
+    const admin = event.queryStringParameters?.admin === 'true' && Boolean(user && (user.isSuperAdmin || EVENT_ADMIN_ROLES.includes(user.role)));
     const type = event.queryStringParameters?.type; // '0' = Evento, '1' = Curso
     const requestedOrgId = event.queryStringParameters?.organization_id;
     const campusId = event.queryStringParameters?.campus_id;
 
-    const orgId = user ? enforceTenant(user, requestedOrgId).effectiveOrgId : (requestedOrgId || 'org_default');
+    const tenantScope = user ? enforceTenant(user, requestedOrgId) : null;
+    if (tenantScope && !tenantScope.allowed) return tenantScope.errorResponse!;
+    const orgId = tenantScope?.effectiveOrgId || (requestedOrgId || 'org_default');
 
     let sqlEvents = `SELECT * FROM events WHERE organization_id = ?`;
     const params: any[] = [orgId];
@@ -77,13 +80,18 @@ export const getEventById = async (event: APIGatewayProxyEvent): Promise<APIGate
     const id = event.pathParameters?.id;
     if (!id) return apiResponse(400, { message: 'ID é obrigatório' });
 
-    const { rows: eventRow } = await query(`SELECT * FROM events WHERE id = ? LIMIT 1`, [id]);
+    const user = await getAuthenticatedUser(event);
+    const tenantCheck = user ? enforceTenant(user, event.queryStringParameters?.organization_id) : null;
+    if (tenantCheck && !tenantCheck.allowed) return tenantCheck.errorResponse!;
+    const orgId = tenantCheck?.effectiveOrgId || event.queryStringParameters?.organization_id || 'org_default';
+    const canEdit = user && (user.isSuperAdmin || EVENT_ADMIN_ROLES.includes(user.role));
+    const { rows: eventRow } = await query(`SELECT * FROM events WHERE id = ? AND organization_id = ? AND (? = 1 OR status = 'PUBLISHED') LIMIT 1`, [id, orgId, canEdit ? 1 : 0]);
 
     if (eventRow.length === 0) {
       return apiResponse(404, { message: 'Evento não encontrado' });
     }
 
-    const { rows: lotsRow } = await query(`SELECT * FROM event_lots WHERE event_id = ? ORDER BY price ASC`, [id]);
+    const { rows: lotsRow } = await query(`SELECT l.* FROM event_lots l JOIN events e ON e.id = l.event_id WHERE l.event_id = ? AND e.organization_id = ? ORDER BY l.price ASC`, [id, orgId]);
 
     const ev = eventRow[0];
     return apiResponse(200, {
@@ -122,6 +130,10 @@ export const createOrUpdateEvent = async (event: APIGatewayProxyEvent): Promise<
     const tenantCheck = enforceTenant(auth.user, data.organization_id);
     if (!tenantCheck.allowed) return tenantCheck.errorResponse!;
     const orgValue = tenantCheck.effectiveOrgId;
+    if (data.id) {
+      const resource = await authorizeResource({ ...event, headers: { ...event.headers, 'x-organization-id': orgValue } }, 'events', data.id);
+      if ('errorResponse' in resource) return resource.errorResponse;
+    }
 
     const isUpdate = !!data.id;
     const id = data.id || uuidv4();

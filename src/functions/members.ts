@@ -1,3 +1,4 @@
+import { getVerifiedClaims } from '../services/tokenVerifier';
 import {
   CognitoIdentityProviderClient,
   AdminCreateUserCommand,
@@ -9,7 +10,7 @@ import {
 import { APIGatewayProxyHandlerV2 } from "aws-lambda";
 import { query } from "../db";
 import { v4 as uuidv4 } from "uuid";
-import { requireAuth, enforceRole, enforceTenant, getAuthenticatedUser } from "../services/authMiddleware";
+import { requireAuth, enforceRole, enforceTenant, getAuthenticatedUser, normalizeRole } from "../services/authMiddleware";
 import { logSecurityEvent } from "../services/auditLogService";
 import { checkRateLimit } from "../services/rateLimiter";
 
@@ -65,6 +66,14 @@ export const invite: APIGatewayProxyHandlerV2 = async (event) => {
     }
     const orgValue = tenantCheck.effectiveOrgId;
 
+    const requestedRole = normalizeRole(role || 'MEMBER');
+    const rank = ['MEMBER', 'VOLUNTEER', 'LEADER', 'TREASURER', 'ADMIN', 'PASTOR', 'SUPERADMIN'];
+    if (!rank.includes(requestedRole) || (!auth.user.isSuperAdmin && (requestedRole === 'SUPERADMIN' || rank.indexOf(requestedRole) > rank.indexOf(auth.user.role)))) {
+      return { statusCode: 403, headers, body: JSON.stringify({ error: 'Sem permissão para conceder este papel' }) };
+    }
+    if (operational_permissions !== undefined && !auth.user.isSuperAdmin && !['PASTOR', 'ADMIN'].includes(auth.user.role)) {
+      return { statusCode: 403, headers, body: JSON.stringify({ error: 'Sem permissão para alterar permissões operacionais' }) };
+    }
     await ensureOperationalColumn();
 
     const userAttributes: { Name: string; Value: string }[] = [
@@ -94,7 +103,7 @@ export const invite: APIGatewayProxyHandlerV2 = async (event) => {
     const response = await cognitoClient.send(command);
     const cognitoUserId = response.User?.Username || uuidv4();
 
-    let roleValue = role || 'MEMBER';
+    let roleValue = requestedRole;
     // Anti-Privilege Escalation: Apenas SuperAdmins podem atribuir papéis de administração Master
     const isMasterRole = ['SUPERADMIN', 'SUPER_ADMIN', 'MASTER_ADMIN', 'MASTER', 'ADMIN_MASTER'].includes(String(roleValue).toUpperCase());
     if (isMasterRole && !auth.user.isSuperAdmin) {
@@ -206,9 +215,11 @@ export const updateStatus: APIGatewayProxyHandlerV2 = async (event) => {
       return { statusCode: 400, headers, body: JSON.stringify({ error: "E-mail é obrigatório" }) };
     }
 
+    const scope = enforceTenant(auth.user, event.headers?.['x-organization-id'] || event.queryStringParameters?.organization_id);
+    if (!scope.allowed) return scope.errorResponse!;
     const { rows: memberRows } = await query(
-      `SELECT id, organization_id, email, status FROM members WHERE LOWER(TRIM(email)) = ? LIMIT 1`, 
-      [cleanEmail]
+      `SELECT id, organization_id, email, status FROM members WHERE LOWER(TRIM(email)) = ? AND organization_id = ? LIMIT 1`,
+      [cleanEmail, scope.effectiveOrgId]
     );
 
     if (memberRows.length === 0) {
@@ -254,8 +265,8 @@ export const updateStatus: APIGatewayProxyHandlerV2 = async (event) => {
 
     // 2. Atualiza no MySQL DB
     const statusValue = action === 'disable' ? 'INACTIVE' : 'ACTIVE';
-    const updateQuery = `UPDATE members SET status = ?, updated_at = NOW() WHERE LOWER(TRIM(email)) = ?`;
-    await query(updateQuery, [statusValue, cleanEmail]);
+    const updateQuery = `UPDATE members SET status = ?, updated_at = NOW() WHERE LOWER(TRIM(email)) = ? AND organization_id = ?`;
+    await query(updateQuery, [statusValue, cleanEmail, scope.effectiveOrgId]);
 
     await logSecurityEvent({
       organizationId: tenantCheck.effectiveOrgId,
@@ -317,6 +328,11 @@ export const resetPassword: APIGatewayProxyHandlerV2 = async (event) => {
       return { statusCode: 400, headers, body: JSON.stringify({ error: "E-mail obrigatório" }) };
     }
 
+    const tenantCheck = enforceTenant(auth.user, event.headers?.['x-organization-id'] || event.queryStringParameters?.organization_id);
+    if (!tenantCheck.allowed) return tenantCheck.errorResponse!;
+    const { rows: targets } = await query('SELECT id, role FROM members WHERE LOWER(email) = ? AND organization_id = ?', [cleanEmail, tenantCheck.effectiveOrgId]);
+    if (!targets.length) return { statusCode: 404, headers, body: JSON.stringify({ error: 'Membro não encontrado' }) };
+    if (normalizeRole(targets[0].role) === 'SUPERADMIN' && !auth.user.isSuperAdmin) return { statusCode: 403, headers, body: JSON.stringify({ error: 'Acesso negado' }) };
     // Identifica o status atual do usuário no Cognito
     let cognitoUser: any = null;
     try {
@@ -393,6 +409,8 @@ export const list: APIGatewayProxyHandlerV2 = async (event) => {
       return { statusCode: auth.errorResponse.statusCode, headers, body: auth.errorResponse.body };
     }
 
+    const roleCheck = enforceRole(auth.user, LEADERSHIP_ROLES);
+    if (!roleCheck.allowed) return roleCheck.errorResponse!;
     const groupId = event.queryStringParameters?.group_id;
     const campusId = event.queryStringParameters?.campus_id;
     const requestedOrgId = event.queryStringParameters?.organization_id;
@@ -495,14 +513,20 @@ export const get: APIGatewayProxyHandlerV2 = async (event) => {
     const effectiveId = (rawId === 'me' || rawId === 'user_me') ? auth.user.userId : rawId;
     const effectiveEmail = (rawId === 'me' || rawId === 'user_me') ? (auth.user.email || '') : '';
 
+    const tenantCheck = enforceTenant(auth.user, event.headers?.['x-organization-id'] || event.queryStringParameters?.organization_id);
+    if (!tenantCheck.allowed) return tenantCheck.errorResponse!;
+    if (!['me', 'user_me', auth.user.userId].includes(rawId)) {
+      const roleCheck = enforceRole(auth.user, LEADERSHIP_ROLES);
+      if (!roleCheck.allowed) return roleCheck.errorResponse!;
+    }
     const getQuery = `
       SELECT m.*, cg.name as cell_group_name 
       FROM members m 
       LEFT JOIN cell_groups cg ON m.cell_group_id = cg.id 
-      WHERE (m.id = ? AND m.id != '') OR (m.email IS NOT NULL AND LOWER(m.email) = LOWER(?))
+      WHERE m.organization_id = ? AND ((m.id = ? AND m.id != '') OR (m.email IS NOT NULL AND LOWER(m.email) = LOWER(?)))
       LIMIT 1;
     `;
-    const dbResult = await query(getQuery, [effectiveId, effectiveEmail || effectiveId]);
+    const dbResult = await query(getQuery, [tenantCheck.effectiveOrgId, effectiveId, effectiveEmail || effectiveId]);
 
     if (dbResult.rows.length === 0) {
       return { statusCode: 404, headers, body: JSON.stringify({ message: "Membro não encontrado" }) };
@@ -541,27 +565,19 @@ export const update: APIGatewayProxyHandlerV2 = async (event) => {
     const effectiveId = (rawId === 'me' || rawId === 'user_me') ? auth.user.userId : rawId;
     const effectiveEmail = (rawId === 'me' || rawId === 'user_me') ? (auth.user.email || '') : '';
 
+    const scope = enforceTenant(auth.user, event.headers?.['x-organization-id'] || event.queryStringParameters?.organization_id);
+    if (!scope.allowed) return scope.errorResponse!;
     let { rows: existingRows } = await query(
-      `SELECT id, organization_id, email FROM members WHERE (id = ? AND id != '') OR (email IS NOT NULL AND LOWER(email) = LOWER(?)) LIMIT 1`, 
-      [effectiveId, effectiveEmail || effectiveId]
+      `SELECT id, organization_id, email, role FROM members WHERE organization_id = ? AND ((id = ? AND id != '') OR (email IS NOT NULL AND LOWER(email) = LOWER(?))) LIMIT 1`,
+      [scope.effectiveOrgId, effectiveId, effectiveEmail || effectiveId]
     );
 
-    if (existingRows.length === 0) {
-      if (rawId === 'me' || rawId === 'user_me' || auth.user.email) {
-        const newId = auth.user.userId || uuidv4();
-        const userOrg = auth.user.organizationId || 'org_default';
-        await query(
-          `INSERT INTO members (id, name, email, role, status, organization_id, campus_id, campus_ids)
-           VALUES (?, ?, ?, 'Membro', 'Ativo', ?, 'campus_sede', '["campus_sede"]')`,
-          [newId, auth.user.name || 'Membro', auth.user.email, userOrg]
-        );
-        existingRows = [{ id: newId, organization_id: userOrg, email: auth.user.email }];
-      } else {
-        return { statusCode: 404, headers, body: JSON.stringify({ error: "Membro não encontrado" }) };
-      }
-    }
+    if (!existingRows.length) return { statusCode: 404, headers, body: JSON.stringify({ error: 'Membro não encontrado' }) };
 
     const targetMemberId = existingRows[0].id;
+    const targetRole = normalizeRole(existingRows[0].role);
+    const ranks = ['MEMBER', 'VOLUNTEER', 'LEADER', 'TREASURER', 'ADMIN', 'PASTOR', 'SUPERADMIN'];
+    if (!auth.user.isSuperAdmin && ranks.indexOf(targetRole) > ranks.indexOf(auth.user.role)) return { statusCode: 403, headers, body: JSON.stringify({ error: 'Sem permissão para alterar este perfil' }) };
     const isSelf = rawId === 'me' || rawId === 'user_me' || auth.user.userId === targetMemberId || (auth.user.email && auth.user.email.toLowerCase() === (existingRows[0].email || '').toLowerCase());
     const isLeadership = ['SUPERADMIN', 'PASTOR', 'ADMIN', 'LEADER'].includes(auth.user.role);
 
@@ -584,6 +600,16 @@ export const update: APIGatewayProxyHandlerV2 = async (event) => {
       operational_permissions
     } = body;
 
+    const requestedRole = normalizeRole(role || 'MEMBER');
+    const rank = ['MEMBER', 'VOLUNTEER', 'LEADER', 'TREASURER', 'ADMIN', 'PASTOR', 'SUPERADMIN'];
+    if (!rank.includes(requestedRole) || (!auth.user.isSuperAdmin && (requestedRole === 'SUPERADMIN' || rank.indexOf(requestedRole) > rank.indexOf(auth.user.role)))) {
+      return { statusCode: 403, headers, body: JSON.stringify({ error: 'Sem permissão para conceder este papel' }) };
+    }
+    if (operational_permissions !== undefined && !auth.user.isSuperAdmin && !['PASTOR', 'ADMIN'].includes(auth.user.role)) {
+      return { statusCode: 403, headers, body: JSON.stringify({ error: 'Sem permissão para alterar permissões operacionais' }) };
+    }
+    if ((campus_id !== undefined || campus_ids !== undefined) && !isLeadership) return { statusCode: 403, headers, body: JSON.stringify({ error: 'Somente liderança pode alterar unidades' }) };
+    if (role !== undefined && !isLeadership) return { statusCode: 403, headers, body: JSON.stringify({ error: 'Sem permissão para alterar papéis' }) };
     await ensureOperationalColumn();
 
     // Membro regular não pode alterar o próprio papel (Role escalation prevention)
@@ -591,7 +617,7 @@ export const update: APIGatewayProxyHandlerV2 = async (event) => {
     if (role && isEscalatingToMaster && !auth.user.isSuperAdmin) {
       return { statusCode: 403, headers, body: JSON.stringify({ error: "Apenas SuperAdmins podem conceder permissão Master" }) };
     }
-    const pRole = isLeadership && role !== undefined ? role : null;
+    const pRole = isLeadership && role !== undefined ? requestedRole : null;
 
     const pName = name !== undefined ? name : null;
     const pCpf = cpf !== undefined ? cpf : null;
@@ -638,14 +664,14 @@ export const update: APIGatewayProxyHandlerV2 = async (event) => {
         address_zip = COALESCE(?, address_zip),
         operational_permissions = COALESCE(?, operational_permissions),
         updated_at = NOW()
-      WHERE id = ?
+      WHERE id = ? AND organization_id = ?
     `;
 
     await query(updateQuery, [
       pName, pCpf, pBaptism, pCell, pRole, pPhone, pAddress, pAvatar, pCampus, pCampusIds,
       pBirthDate, pStreet, pNumber, pComplement, pNeighborhood, pCity, pState, pZip,
       pOperational,
-      targetMemberId
+      targetMemberId, scope.effectiveOrgId
     ]);
 
     await logSecurityEvent({
@@ -666,66 +692,19 @@ export const update: APIGatewayProxyHandlerV2 = async (event) => {
 
 // 7. Solicitar Participação em Célula (App Mobile & PWA)
 export const requestCell: APIGatewayProxyHandlerV2 = async (event) => {
-  try {
-    const user = await getAuthenticatedUser(event as any);
-    const pathId = event.pathParameters?.id;
-    const body = JSON.parse(event.body || '{}');
-    const { cellGroupId, email: bodyEmail, userId: bodyUserId } = body;
-
-    if (!cellGroupId) {
-      return { statusCode: 400, headers, body: JSON.stringify({ error: "cellGroupId é obrigatório" }) };
-    }
-
-    const effectiveEmail = user?.email || bodyEmail || '';
-    const effectiveId = user?.userId || bodyUserId || (pathId && pathId !== 'me' && pathId !== 'user_me' ? pathId : '');
-
-    // Busca o registro do membro por ID ou por E-mail
-    const { rows } = await query(
-      `SELECT id, organization_id, name, email FROM members 
-       WHERE (id = ? AND id != '') 
-          OR (email IS NOT NULL AND LOWER(email) = LOWER(?)) 
-       LIMIT 1`,
-      [effectiveId, effectiveEmail]
-    );
-
-    let targetMemberId = '';
-
-    if (rows.length > 0) {
-      targetMemberId = rows[0].id;
-      await query(
-        `UPDATE members SET pending_cell_group_id = ?, updated_at = NOW() WHERE id = ?`,
-        [cellGroupId, targetMemberId]
-      );
-    } else {
-      // Se ainda não estava cadastrado na tabela de membros, cria com pending_cell_group_id
-      targetMemberId = effectiveId || uuidv4();
-      const orgId = user?.organizationId || 'org_default';
-      const memberName = user?.name || (effectiveEmail ? effectiveEmail.split('@')[0] : 'Novo Membro');
-
-      await query(
-        `INSERT INTO members (id, name, email, role, status, organization_id, campus_id, pending_cell_group_id, created_at, updated_at)
-         VALUES (?, ?, ?, 'Membro', 'ACTIVE', ?, 'campus_sede', ?, NOW(), NOW())
-         ON DUPLICATE KEY UPDATE pending_cell_group_id = VALUES(pending_cell_group_id), updated_at = NOW()`,
-        [targetMemberId, memberName, effectiveEmail || null, orgId, cellGroupId]
-      );
-    }
-
-    return {
-      statusCode: 200,
-      headers,
-      body: JSON.stringify({
-        message: "Solicitação de entrada enviada com sucesso!",
-        member_id: targetMemberId,
-        cell_group_id: cellGroupId
-      })
-    };
-  } catch (error: any) {
-    console.error('Erro ao solicitar célula:', error);
-    return { statusCode: 500, headers, body: JSON.stringify({ error: "Erro ao processar solicitação de célula" }) };
-  }
+  const auth = await requireAuth(event as any);
+  if ('errorResponse' in auth) return auth.errorResponse;
+  const tenantCheck = enforceTenant(auth.user, event.headers?.['x-organization-id']);
+  if (!tenantCheck.allowed) return tenantCheck.errorResponse!;
+  const pathId = event.pathParameters?.id;
+  if (pathId && !['me', 'user_me', auth.user.userId].includes(pathId)) return { statusCode: 403, headers, body: JSON.stringify({ error: 'Solicitação permitida apenas para o próprio perfil' }) };
+  const { cellGroupId } = JSON.parse(event.body || '{}');
+  const { rows } = await query('SELECT id FROM cell_groups WHERE id = ? AND organization_id = ?', [cellGroupId, tenantCheck.effectiveOrgId]);
+  if (!rows.length) return { statusCode: 404, headers, body: JSON.stringify({ error: 'Célula não encontrada' }) };
+  await query('UPDATE members SET pending_cell_group_id = ?, updated_at = NOW() WHERE id = ? AND organization_id = ?', [cellGroupId, auth.user.userId, tenantCheck.effectiveOrgId]);
+  return { statusCode: 200, headers, body: JSON.stringify({ member_id: auth.user.userId, cell_group_id: cellGroupId }) };
 };
 
-// 8. Auto-cadastro / Sincronização de usuário logado (PWA / Mobile)
 export const selfRegister: APIGatewayProxyHandlerV2 = async (event) => {
   try {
     const rateLimit = checkRateLimit(event as any, {
@@ -741,16 +720,17 @@ export const selfRegister: APIGatewayProxyHandlerV2 = async (event) => {
       };
     }
 
-    if (!event.body) throw new Error("Missing request body");
-    const { 
-      id, email, name, phone, birthdate, birth_date, birthDate, address,
+    const claims = await getVerifiedClaims(event as any);
+    if (!claims?.sub || !claims.email || ![true, 'true'].includes(claims.email_verified as any)) return { statusCode: 401, headers, body: JSON.stringify({ error: 'Autenticação com e-mail verificado obrigatória' }) };
+    if (!event.body) throw new Error('Missing request body');
+    const {
+      name, phone, birthdate, birth_date, birthDate, address,
       address_street, address_number, address_complement, address_neighborhood, address_city, address_state, address_zip,
       organization_id, campus_id, avatar_url 
     } = JSON.parse(event.body);
 
-    if (!email) throw new Error("Email is required");
-
-    const memberId = id || uuidv4();
+    const email = String(claims.email).toLowerCase().trim();
+    const memberId = claims.sub;
     const memberName = name || email.split('@')[0];
     const orgValue = organization_id || 'org_default';
     const primaryCampus = campus_id || 'campus_sede';
@@ -767,9 +747,14 @@ export const selfRegister: APIGatewayProxyHandlerV2 = async (event) => {
     const pAddressFull = address || (pStreet ? `${pStreet}, ${pNumber || 'S/N'}${pComplement ? ` - ${pComplement}` : ''} - ${pNeighborhood || ''}, ${pCity || ''} - ${pState || ''}` : null);
     const pAvatar = avatar_url || null;
 
-    const checkSql = `SELECT id FROM members WHERE id = ? OR LOWER(email) = LOWER(?) LIMIT 1`;
+    const checkSql = `SELECT id, organization_id, status FROM members WHERE id = ? OR LOWER(email) = LOWER(?) LIMIT 2`;
     const checkRes = await query(checkSql, [memberId, email]);
 
+    if (checkRes.rows.length > 1) return { statusCode: 403, headers, body: JSON.stringify({ error: 'Identidade ambígua' }) };
+    const existing = checkRes.rows[0];
+    if (existing && (existing.organization_id !== orgValue || ['INACTIVE', 'INATIVO', 'BLOCKED', 'DISABLED'].includes(String(existing.status).toUpperCase()))) return { statusCode: 403, headers, body: JSON.stringify({ error: 'Cadastro indisponível nesta organização' }) };
+    const { rows: orgs } = await query('SELECT id FROM organizations WHERE id = ?', [orgValue]);
+    if (!orgs.length) return { statusCode: 404, headers, body: JSON.stringify({ error: 'Organização não encontrada' }) };
     if (checkRes.rows.length === 0) {
       const insertSql = `
         INSERT INTO members (
@@ -801,24 +786,21 @@ export const selfRegister: APIGatewayProxyHandlerV2 = async (event) => {
           address_zip = COALESCE(?, address_zip),
           address = COALESCE(?, address),
           avatar_url = COALESCE(?, avatar_url),
-          organization_id = CASE WHEN (organization_id = 'org_default' OR organization_id IS NULL) AND ? IS NOT NULL AND ? != 'org_default' THEN ? ELSE organization_id END,
-          status = 'Ativo',
           updated_at = NOW()
-        WHERE id = ?
+        WHERE id = ? AND organization_id = ?
       `;
       await query(updateSql, [
         name || null, phone || null, effectiveBirthDate,
         pStreet, pNumber, pComplement, pNeighborhood, pCity, pState, pZip, pAddressFull,
         pAvatar,
-        orgValue, orgValue, orgValue,
-        existingId
+        existingId, orgValue
       ]);
     }
 
     return {
       statusCode: 200,
       headers,
-      body: JSON.stringify({ message: "Membro sincronizado com sucesso", id: memberId })
+      body: JSON.stringify({ message: "Membro sincronizado com sucesso", id: checkRes.rows[0]?.id || memberId })
     };
   } catch (error: any) {
     console.error("Erro no selfRegister:", error);
@@ -899,7 +881,9 @@ export const batchImport: APIGatewayProxyHandlerV2 = async (event) => {
       }
 
       // Prevenção de escalonamento de privilégio
-      let roleValue = item.role || 'Membro';
+      let roleValue = normalizeRole(item.role || 'MEMBER');
+      const ranks = ['MEMBER', 'VOLUNTEER', 'LEADER', 'TREASURER', 'ADMIN', 'PASTOR', 'SUPERADMIN'];
+      if (!auth.user.isSuperAdmin && ranks.indexOf(roleValue) > ranks.indexOf(auth.user.role)) roleValue = 'MEMBER';
       const isMasterRole = ['SUPERADMIN', 'SUPER_ADMIN', 'MASTER_ADMIN', 'MASTER', 'ADMIN_MASTER'].includes(String(roleValue).toUpperCase());
       if (isMasterRole && !auth.user.isSuperAdmin) {
         roleValue = 'Membro';
@@ -1104,3 +1088,67 @@ export const batchImport: APIGatewayProxyHandlerV2 = async (event) => {
   }
 };
 
+// 12. Verificar Credencial Digital do Membro (QR Code)
+export const verifyCredential: APIGatewayProxyHandlerV2 = async (event) => {
+  try {
+    const auth = await requireAuth(event as any);
+    if ('errorResponse' in auth) {
+      return { statusCode: auth.errorResponse.statusCode, headers, body: auth.errorResponse.body };
+    }
+
+    const requestedOrgId = event.queryStringParameters?.organization_id;
+    const memberId = event.queryStringParameters?.member_id || event.pathParameters?.id;
+
+    const tenantCheck = enforceTenant(auth.user, requestedOrgId);
+    if (!tenantCheck.allowed) {
+      return { statusCode: 403, headers, body: JSON.stringify({ error: "Acesso negado à congregação" }) };
+    }
+    const orgId = tenantCheck.effectiveOrgId;
+
+    if (!memberId) {
+      return { statusCode: 400, headers, body: JSON.stringify({ error: "ID do membro é obrigatório" }) };
+    }
+
+    const { rows } = await query(`
+      SELECT m.id, m.name, m.email, m.role, m.status, m.phone, m.birth_date,
+             m.created_at, m.baptism_date, m.organization_id, m.campus_id,
+             c.name as campus_name, cg.name as cell_group_name
+      FROM members m
+      LEFT JOIN campuses c ON c.id = m.campus_id
+      LEFT JOIN cell_groups cg ON cg.id = m.cell_group_id
+      WHERE (m.id = ? OR m.email = ?) AND m.organization_id = ?
+      LIMIT 1
+    `, [memberId, memberId, orgId]);
+
+    if (rows.length === 0) {
+      return { statusCode: 404, headers, body: JSON.stringify({ valid: false, error: "Credencial ou membro não localizado nesta igreja" }) };
+    }
+
+    const member = rows[0];
+    const memberCode = `FH-${(member.id || '').replace(/[^0-9a-zA-Z]/g, '').slice(-5).toUpperCase()}`;
+
+    return {
+      statusCode: 200,
+      headers,
+      body: JSON.stringify({
+        valid: true,
+        credential: {
+          id: member.id,
+          member_code: memberCode,
+          name: member.name,
+          email: member.email,
+          role: member.role || 'Membro',
+          status: member.status || 'ACTIVE',
+          campus_name: member.campus_name || 'Sede Principal',
+          cell_group_name: member.cell_group_name,
+          created_at: member.created_at,
+          baptism_date: member.baptism_date,
+          verified_at: new Date().toISOString()
+        }
+      })
+    };
+  } catch (error: any) {
+    console.error("Erro ao verificar credencial de membro:", error);
+    return { statusCode: 500, headers, body: JSON.stringify({ error: "Erro interno ao validar credencial" }) };
+  }
+};
