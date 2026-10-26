@@ -47,11 +47,11 @@ test('hosted recurrence uses the sandbox endpoint and never sends card credentia
   assert.deepEqual(request.body.chargeTypes, ['RECURRENT']);
   assert.deepEqual(request.body.billingTypes, ['CREDIT_CARD']);
   assert.equal(request.body.customerData.cpfCnpj, '12345678000190');
-  assert.ok(request.body.items[0].imageBase64.length > 20);
+  assert.equal(request.body.items[0].imageBase64, undefined);
   assert.equal(request.body.callback.cancelUrl.includes('cancelado'), true);
   assert.equal(request.body.callback.autoRedirect, undefined);
   assert.equal(JSON.stringify(request.body).match(/creditCard|ccv|cardNumber/), null);
-  assert.equal(result.url, 'https://sandbox.asaas.com/checkoutSession/show/chk_test');
+  assert.equal(result.url, 'https://sandbox.asaas.com/checkoutSession/show?id=chk_test');
 });
 
 test('hosted recurrence rejects PIX and values below the provider minimum before any request', async () => {

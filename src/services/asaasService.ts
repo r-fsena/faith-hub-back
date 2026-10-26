@@ -88,7 +88,6 @@ export class AsaasService {
         items: [{
           name: input.name.slice(0, 30),
           description: input.description.slice(0, 150),
-          imageBase64: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScL4WQAAAABJRU5ErkJggg==',
           quantity: 1,
           value: input.value
         }],
@@ -111,7 +110,7 @@ export class AsaasService {
     const host = config.environment === 'production' ? 'https://asaas.com' : 'https://sandbox.asaas.com';
     return {
       ...checkout,
-      url: checkout.link || `${host}/checkoutSession/show/${encodeURIComponent(checkout.id)}`,
+      url: checkout.link || `${host}/checkoutSession/show?id=${encodeURIComponent(checkout.id)}`,
       environment: config.environment
     };
   }
