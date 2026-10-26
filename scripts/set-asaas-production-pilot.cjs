@@ -31,7 +31,7 @@ async function main() {
       const recurringValue = proposal.discount_type === 'PERMANENT_DISCOUNT'
         ? Number(proposal.first_cycle_amount)
         : Number(proposal.monthly_amount);
-      if (!Number.isFinite(recurringValue) || recurringValue <= 0) throw new Error('PILOT_RECURRING_VALUE_INVALID');
+      if (!Number.isFinite(recurringValue) || recurringValue < 5) throw new Error('PILOT_RECURRING_VALUE_BELOW_ASAAS_MINIMUM');
     }
 
     const config = disable

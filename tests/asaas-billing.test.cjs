@@ -34,7 +34,7 @@ test('hosted recurrence uses the sandbox endpoint and never sends card credentia
 
   const result = await AsaasService.createHostedRecurringCheckout({
     externalReference: 'faithhub:proposal:00000000-0000-4000-8000-000000000001',
-    billingTypes: ['PIX', 'CREDIT_CARD'],
+    billingTypes: ['CREDIT_CARD'],
     name: 'Faith-Hub PRO', description: 'Assinatura', value: 297,
     cycle: 'MONTHLY', nextDueDate: '2026-11-26',
     customerData: { name: 'Igreja Teste', email: 'financeiro@example.org', cpfCnpj: '12.345.678/0001-90' },
@@ -45,13 +45,28 @@ test('hosted recurrence uses the sandbox endpoint and never sends card credentia
 
   assert.equal(request.url, 'https://api-sandbox.asaas.com/v3/checkouts');
   assert.deepEqual(request.body.chargeTypes, ['RECURRENT']);
-  assert.deepEqual(request.body.billingTypes, ['PIX', 'CREDIT_CARD']);
+  assert.deepEqual(request.body.billingTypes, ['CREDIT_CARD']);
   assert.equal(request.body.customerData.cpfCnpj, '12345678000190');
   assert.ok(request.body.items[0].imageBase64.length > 20);
   assert.equal(request.body.callback.cancelUrl.includes('cancelado'), true);
   assert.equal(request.body.callback.autoRedirect, undefined);
   assert.equal(JSON.stringify(request.body).match(/creditCard|ccv|cardNumber/), null);
   assert.equal(result.url, 'https://sandbox.asaas.com/checkoutSession/show/chk_test');
+});
+
+test('hosted recurrence rejects PIX and values below the provider minimum before any request', async () => {
+  const { AsaasService } = require('../src/services/asaasService.ts');
+  const base = {
+    externalReference: 'faithhub:proposal:00000000-0000-4000-8000-000000000001',
+    name: 'Faith-Hub PRO', description: 'Assinatura', value: 5,
+    cycle: 'MONTHLY', nextDueDate: '2026-11-26',
+    customerData: { name: 'Igreja Teste', email: 'financeiro@example.org', cpfCnpj: '12345678000190' },
+    successUrl: 'https://studio.faithhubs.com/sucesso',
+    cancelUrl: 'https://studio.faithhubs.com/cancelado',
+    expiredUrl: 'https://studio.faithhubs.com/expirado'
+  };
+  await assert.rejects(AsaasService.createHostedRecurringCheckout({ ...base, billingTypes: ['PIX'] }), /REQUIRES_CREDIT_CARD/);
+  await assert.rejects(AsaasService.createHostedRecurringCheckout({ ...base, billingTypes: ['CREDIT_CARD'], value: 4.99 }), /MINIMUM_VALUE/);
 });
 
 test('deployment and Studio contracts contain no fake or raw-card payment path', () => {

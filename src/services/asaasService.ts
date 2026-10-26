@@ -73,6 +73,12 @@ export class AsaasService {
   }
 
   static async createHostedRecurringCheckout(input: HostedCheckoutInput) {
+    if (input.billingTypes.length !== 1 || input.billingTypes[0] !== 'CREDIT_CARD') {
+      throw new Error('ASAAS_RECURRENT_CHECKOUT_REQUIRES_CREDIT_CARD');
+    }
+    if (!Number.isFinite(input.value) || input.value < 5) {
+      throw new Error('ASAAS_CHECKOUT_MINIMUM_VALUE_5_BRL');
+    }
     const checkout = await this.request<any>('/checkouts', {
       body: {
         billingTypes: input.billingTypes,

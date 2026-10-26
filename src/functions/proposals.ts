@@ -309,11 +309,15 @@ export const acceptProposal = async (event: APIGatewayProxyEvent): Promise<APIGa
     const recurringValue = proposal.discount_type === 'PERMANENT_DISCOUNT'
       ? Number(proposal.first_cycle_amount)
       : Number(proposal.monthly_amount);
+    if (!Number.isFinite(recurringValue) || recurringValue < 5) {
+      await connection.rollback();
+      return apiResponse(409, { message: 'O valor recorrente mínimo aceito pelo Asaas é R$ 5,00.' });
+    }
     const daysAhead = isFirstFree ? 30 : 2;
     const nextDueDate = new Date(Date.now() + daysAhead * 86400000).toISOString().slice(0, 10);
     const checkout = await AsaasService.createHostedRecurringCheckout({
       externalReference,
-      billingTypes: ['PIX', 'CREDIT_CARD'],
+      billingTypes: ['CREDIT_CARD'],
       name: `Faith-Hub ${proposal.plan_tier}`,
       description: `Assinatura recorrente Faith-Hub para ${proposal.church_name}`,
       value: recurringValue,
@@ -353,7 +357,7 @@ export const acceptProposal = async (event: APIGatewayProxyEvent): Promise<APIGa
       action: 'CREATE_ASAAS_HOSTED_CHECKOUT',
       resource: 'saas_proposals',
       resourceId: proposal.id,
-      details: { checkoutId: checkout.id, billingTypes: ['PIX', 'CREDIT_CARD'], environment: checkout.environment },
+      details: { checkoutId: checkout.id, billingTypes: ['CREDIT_CARD'], environment: checkout.environment },
       event
     });
 
