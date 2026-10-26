@@ -60,3 +60,12 @@ test('Amplify applications define baseline security response headers', () => {
     assert.match(headers, /Permissions-Policy/);
   }
 });
+
+test('production cutover remains configurable and the Asaas webhook can move safely', () => {
+  const webhookSync = read('faith-hub-backend/scripts/sync-asaas-webhook.cjs');
+  const auditLogs = read('faith-hub-web/src/modules/SecurityAuditLogs.tsx');
+  assert.match(webhookSync, /ASAAS_WEBHOOK_SOURCE_URL/);
+  assert.match(webhookSync, /GetSecretValueCommand/);
+  assert.match(webhookSync, /ASAAS_WEBHOOK_URL_NOT_UPDATED/);
+  assert.match(auditLogs, /import\.meta\.env\.VITE_API_URL/);
+});
