@@ -10,6 +10,8 @@ export interface HostedCheckoutInput {
   nextDueDate: string;
   customerData: { name: string; email: string; cpfCnpj: string; phone?: string };
   successUrl: string;
+  cancelUrl: string;
+  expiredUrl: string;
 }
 
 export interface AsaasPayment {
@@ -55,10 +57,16 @@ export class AsaasService {
       body: options.body === undefined ? undefined : JSON.stringify(options.body),
       signal: AbortSignal.timeout(15000)
     });
-    const data = await response.json().catch(() => ({}));
+    const data: any = await response.json().catch(() => ({}));
     if (!response.ok) {
       const error = new Error(`ASAAS_REQUEST_FAILED:${response.status}`);
       (error as any).providerStatus = response.status;
+      (error as any).providerErrors = Array.isArray(data?.errors)
+        ? data.errors.slice(0, 5).map((item: any) => ({
+          code: String(item?.code || 'UNKNOWN').slice(0, 80),
+          description: String(item?.description || '').slice(0, 300)
+        }))
+        : [];
       throw error;
     }
     return data as T;
@@ -71,7 +79,13 @@ export class AsaasService {
         chargeTypes: ['RECURRENT'],
         minutesToExpire: 60,
         externalReference: input.externalReference,
-        items: [{ name: input.name, description: input.description, quantity: 1, value: input.value }],
+        items: [{
+          name: input.name.slice(0, 30),
+          description: input.description.slice(0, 150),
+          imageBase64: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScL4WQAAAABJRU5ErkJggg==',
+          quantity: 1,
+          value: input.value
+        }],
         subscription: { cycle: input.cycle, nextDueDate: input.nextDueDate },
         customerData: {
           name: input.customerData.name,
@@ -79,7 +93,11 @@ export class AsaasService {
           cpfCnpj: input.customerData.cpfCnpj.replace(/\D/g, ''),
           phone: input.customerData.phone?.replace(/\D/g, '') || undefined
         },
-        callback: { successUrl: input.successUrl, autoRedirect: true }
+        callback: {
+          successUrl: input.successUrl,
+          cancelUrl: input.cancelUrl,
+          expiredUrl: input.expiredUrl
+        }
       }
     });
     if (!checkout.id) throw new Error('ASAAS_CHECKOUT_INVALID_RESPONSE');
@@ -87,7 +105,7 @@ export class AsaasService {
     const host = config.environment === 'production' ? 'https://asaas.com' : 'https://sandbox.asaas.com';
     return {
       ...checkout,
-      url: `${host}/checkoutSession/show?id=${encodeURIComponent(checkout.id)}`,
+      url: checkout.link || `${host}/checkoutSession/show/${encodeURIComponent(checkout.id)}`,
       environment: config.environment
     };
   }

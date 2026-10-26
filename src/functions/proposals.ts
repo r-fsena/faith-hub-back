@@ -327,7 +327,9 @@ export const acceptProposal = async (event: APIGatewayProxyEvent): Promise<APIGa
         cpfCnpj: proposal.cnpj_cpf,
         phone: proposal.contact_phone || undefined
       },
-      successUrl: `https://studio.faithhubs.com/?proposta=${encodeURIComponent(token)}&retorno=asaas`
+      successUrl: `https://studio.faithhubs.com/?proposta=${encodeURIComponent(token)}&retorno=asaas-sucesso`,
+      cancelUrl: `https://studio.faithhubs.com/?proposta=${encodeURIComponent(token)}&retorno=asaas-cancelado`,
+      expiredUrl: `https://studio.faithhubs.com/?proposta=${encodeURIComponent(token)}&retorno=asaas-expirado`
     });
 
     await connection.query(`UPDATE saas_proposals
@@ -364,7 +366,10 @@ export const acceptProposal = async (event: APIGatewayProxyEvent): Promise<APIGa
     });
   } catch (error: any) {
     if (connection) await connection.rollback().catch(() => undefined);
-    console.error('Erro ao criar checkout hospedado:', { error: error?.message || 'UNKNOWN' });
+    console.error('Erro ao criar checkout hospedado:', {
+      error: error?.message || 'UNKNOWN',
+      providerErrors: error?.providerErrors || []
+    });
     return apiResponse(502, { message: 'Não foi possível iniciar o checkout seguro. Tente novamente.' });
   } finally {
     connection?.release();

@@ -38,15 +38,20 @@ test('hosted recurrence uses the sandbox endpoint and never sends card credentia
     name: 'Faith-Hub PRO', description: 'Assinatura', value: 297,
     cycle: 'MONTHLY', nextDueDate: '2026-11-26',
     customerData: { name: 'Igreja Teste', email: 'financeiro@example.org', cpfCnpj: '12.345.678/0001-90' },
-    successUrl: 'https://studio.faithhubs.com/?proposta=token'
+    successUrl: 'https://studio.faithhubs.com/?proposta=token&retorno=sucesso',
+    cancelUrl: 'https://studio.faithhubs.com/?proposta=token&retorno=cancelado',
+    expiredUrl: 'https://studio.faithhubs.com/?proposta=token&retorno=expirado'
   });
 
   assert.equal(request.url, 'https://api-sandbox.asaas.com/v3/checkouts');
   assert.deepEqual(request.body.chargeTypes, ['RECURRENT']);
   assert.deepEqual(request.body.billingTypes, ['PIX', 'CREDIT_CARD']);
   assert.equal(request.body.customerData.cpfCnpj, '12345678000190');
+  assert.ok(request.body.items[0].imageBase64.length > 20);
+  assert.equal(request.body.callback.cancelUrl.includes('cancelado'), true);
+  assert.equal(request.body.callback.autoRedirect, undefined);
   assert.equal(JSON.stringify(request.body).match(/creditCard|ccv|cardNumber/), null);
-  assert.equal(result.url, 'https://sandbox.asaas.com/checkoutSession/show?id=chk_test');
+  assert.equal(result.url, 'https://sandbox.asaas.com/checkoutSession/show/chk_test');
 });
 
 test('deployment and Studio contracts contain no fake or raw-card payment path', () => {
