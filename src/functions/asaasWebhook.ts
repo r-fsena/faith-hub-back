@@ -51,6 +51,7 @@ export const handleAsaasWebhook = async (event: APIGatewayProxyEvent): Promise<A
     const paymentId = safeProviderId(body.payment?.id);
     const subscriptionId = safeProviderId(body.payment?.subscription || body.subscription?.id);
     const checkoutId = safeProviderId(body.checkout?.id);
+    const customerId = safeProviderId(body.payment?.customer || body.subscription?.customer || body.checkout?.customer);
     if (eventType.startsWith('PAYMENT_') && !paymentId) {
       return apiResponse(400, { message: 'Evento de pagamento sem identificador' });
     }
@@ -60,9 +61,9 @@ export const handleAsaasWebhook = async (event: APIGatewayProxyEvent): Promise<A
 
     const payloadHash = crypto.createHash('sha256').update(JSON.stringify(body)).digest('hex');
     const insert = await query(`INSERT IGNORE INTO asaas_webhook_events
-      (id, event_type, payment_id, subscription_id, checkout_id, payload_hash, status)
-      VALUES (?, ?, ?, ?, ?, ?, 'RECEIVED')`, [
-      eventId, eventType, paymentId, subscriptionId, checkoutId, payloadHash
+      (id, event_type, payment_id, subscription_id, checkout_id, customer_id, payload_hash, status)
+      VALUES (?, ?, ?, ?, ?, ?, ?, 'RECEIVED')`, [
+      eventId, eventType, paymentId, subscriptionId, checkoutId, customerId, payloadHash
     ]);
     const inserted = Number((insert.rows as any).affectedRows || 0) === 1;
     if (!inserted) {

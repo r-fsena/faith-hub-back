@@ -176,12 +176,13 @@ test('Asaas webhook accepts documented event ids and queues checkout events', as
     const result = await handleAsaasWebhook(event({
       id: 'evt_37260be8159d4472b4458d3de13efc2d&15370',
       event: 'CHECKOUT_PAID',
-      checkout: { id: '6bb2de01-af90-4e2c-a501-c40fe65c6b9c' }
+      checkout: { id: '6bb2de01-af90-4e2c-a501-c40fe65c6b9c', customer: 'cus_000209233951' }
     }, { headers: { 'asaas-access-token': 'expected' } }));
     assert.equal(result.statusCode, 200);
     const insert = calls.find(call => call.sql.includes('INSERT IGNORE INTO asaas_webhook_events'));
     assert.equal(insert.params[0], 'evt_37260be8159d4472b4458d3de13efc2d&15370');
     assert.equal(insert.params[1], 'CHECKOUT_PAID');
+    assert.equal(insert.params[5], 'cus_000209233951');
   } finally {
     SQSClient.prototype.send = originalSend;
     if (originalSecret === undefined) delete process.env.ASAAS_WEBHOOK_SECRET; else process.env.ASAAS_WEBHOOK_SECRET = originalSecret;

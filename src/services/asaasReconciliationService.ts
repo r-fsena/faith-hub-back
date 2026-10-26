@@ -35,12 +35,19 @@ async function resolveProposal(payment?: AsaasPayment, subscription?: AsaasSubsc
     return rows[0] || null;
   }
   const subscriptionId = payment?.subscription || subscription?.id;
-  if (!subscriptionId) return null;
-  const { rows } = await query(
-    'SELECT * FROM saas_proposals WHERE asaas_subscription_id = ? LIMIT 1',
-    [subscriptionId]
-  );
-  return rows[0] || null;
+  if (subscriptionId) {
+    const { rows } = await query(
+      'SELECT * FROM saas_proposals WHERE asaas_subscription_id = ? LIMIT 1',
+      [subscriptionId]
+    );
+    if (rows[0]) return rows[0];
+  }
+  const customerId = payment?.customer || subscription?.customer;
+  if (!customerId) return null;
+  const { rows } = await query(`SELECT * FROM saas_proposals
+    WHERE asaas_customer_id = ? AND status IN ('ACCEPTED', 'PAID')
+    ORDER BY accepted_at DESC LIMIT 2`, [customerId]);
+  return rows.length === 1 ? rows[0] : null;
 }
 
 async function reconcilePayment(eventRow: any): Promise<void> {
@@ -213,9 +220,9 @@ export async function processAsaasEvent(eventId: string): Promise<void> {
     if (eventRow.event_type.startsWith('PAYMENT_')) await reconcilePayment(eventRow);
     else if (eventRow.event_type.startsWith('SUBSCRIPTION_')) await reconcileSubscription(eventRow);
     else if (eventRow.event_type.startsWith('CHECKOUT_') && eventRow.checkout_id) {
-      const status = eventRow.event_type.replace('CHECKOUT_', '');
-      await query(`UPDATE saas_proposals SET billing_status = ?, updated_at = NOW()
-        WHERE asaas_checkout_id = ?`, [status, eventRow.checkout_id]);
+      await query(`UPDATE saas_proposals SET billing_status = ?,
+        asaas_customer_id = COALESCE(?, asaas_customer_id), updated_at = NOW()
+        WHERE asaas_checkout_id = ?`, [eventRow.event_type, eventRow.customer_id || null, eventRow.checkout_id]);
     }
     await query(`UPDATE asaas_webhook_events SET status = 'PROCESSED', processed_at = NOW(),
       last_error = NULL, updated_at = NOW() WHERE id = ?`, [eventId]);
