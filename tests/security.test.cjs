@@ -158,6 +158,39 @@ test('Asaas webhook fails closed when its secret is missing or invalid', async (
   assert.equal(calls.length, 0);
 });
 
+test('Asaas webhook accepts documented event ids and queues checkout events', async () => {
+  reset();
+  const originalSecret = process.env.ASAAS_WEBHOOK_SECRET;
+  const originalKey = process.env.ASAAS_API_KEY;
+  const originalQueue = process.env.SAAS_OPERATIONS_QUEUE_URL;
+  const { SQSClient } = require('@aws-sdk/client-sqs');
+  const originalSend = SQSClient.prototype.send;
+  const { resetAsaasConfigCache } = require('../src/services/asaasConfig.ts');
+  process.env.ASAAS_WEBHOOK_SECRET = 'expected';
+  process.env.ASAAS_API_KEY = 'test-key';
+  process.env.SAAS_OPERATIONS_QUEUE_URL = 'https://sqs.us-east-2.amazonaws.com/123/test';
+  resetAsaasConfigCache();
+  SQSClient.prototype.send = async () => ({});
+  dbQuery = async () => ({ rows: { affectedRows: 1 } });
+  try {
+    const result = await handleAsaasWebhook(event({
+      id: 'evt_37260be8159d4472b4458d3de13efc2d&15370',
+      event: 'CHECKOUT_PAID',
+      checkout: { id: '6bb2de01-af90-4e2c-a501-c40fe65c6b9c' }
+    }, { headers: { 'asaas-access-token': 'expected' } }));
+    assert.equal(result.statusCode, 200);
+    const insert = calls.find(call => call.sql.includes('INSERT IGNORE INTO asaas_webhook_events'));
+    assert.equal(insert.params[0], 'evt_37260be8159d4472b4458d3de13efc2d&15370');
+    assert.equal(insert.params[1], 'CHECKOUT_PAID');
+  } finally {
+    SQSClient.prototype.send = originalSend;
+    if (originalSecret === undefined) delete process.env.ASAAS_WEBHOOK_SECRET; else process.env.ASAAS_WEBHOOK_SECRET = originalSecret;
+    if (originalKey === undefined) delete process.env.ASAAS_API_KEY; else process.env.ASAAS_API_KEY = originalKey;
+    if (originalQueue === undefined) delete process.env.SAAS_OPERATIONS_QUEUE_URL; else process.env.SAAS_OPERATIONS_QUEUE_URL = originalQueue;
+    resetAsaasConfigCache();
+  }
+});
+
 test('Gateway credentials are tenant scoped, masked and not copied from shared legacy records', async () => {
   reset(); member.role = 'ADMIN';
   const result = await gateway.updateGatewayConfig(event({ id: 'foreign-gateway', api_key: 'sk_sensitive', ui_settings: { secret_key: 'never-store', recipient_email: 'treasury@example.org' } }));

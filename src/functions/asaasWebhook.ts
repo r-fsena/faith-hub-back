@@ -12,7 +12,7 @@ function secureEqual(received: string | undefined, expected: string): boolean {
 }
 
 function safeProviderId(value: unknown): string | null {
-  if (typeof value !== 'string' || !/^[A-Za-z0-9_-]{1,100}$/.test(value)) return null;
+  if (typeof value !== 'string' || !/^[A-Za-z0-9_.:&-]{1,100}$/.test(value)) return null;
   return value;
 }
 
