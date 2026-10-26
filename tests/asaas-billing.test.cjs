@@ -76,6 +76,7 @@ test('deployment and Studio contracts contain no fake or raw-card payment path',
   assert.ok(!serverless.includes('ASAAS_WEBHOOK_SECRET:'));
   assert.ok(!serverless.includes('simulate-payment'));
   assert.ok(proposals.includes('Dados de cartão devem ser informados somente no checkout seguro do Asaas.'));
+  assert.ok(proposals.includes('const daysAhead = isFirstFree ? 30 : 0;'));
   assert.ok(!studio.includes('cardCvv'));
   assert.ok(!studio.includes('api.qrserver.com'));
   assert.ok(!studio.includes('Modo Simulação'));

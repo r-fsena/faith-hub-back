@@ -313,7 +313,7 @@ export const acceptProposal = async (event: APIGatewayProxyEvent): Promise<APIGa
       await connection.rollback();
       return apiResponse(409, { message: 'O valor recorrente mínimo aceito pelo Asaas é R$ 5,00.' });
     }
-    const daysAhead = isFirstFree ? 30 : 2;
+    const daysAhead = isFirstFree ? 30 : 0;
     const nextDueDate = new Date(Date.now() + daysAhead * 86400000).toISOString().slice(0, 10);
     const checkout = await AsaasService.createHostedRecurringCheckout({
       externalReference,
