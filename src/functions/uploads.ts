@@ -37,7 +37,7 @@ const FORBIDDEN_EXTENSIONS = [
 export const getUploadUrl = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   try {
     // 0. Rate Limiting: Máximo de 15 uploads por minuto por IP
-    const rateCheck = checkRateLimit(event, {
+    const rateCheck = await checkRateLimit(event, {
       maxRequests: 15,
       windowSeconds: 60,
       identifierPrefix: 'uploads_presigned'

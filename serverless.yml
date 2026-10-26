@@ -59,12 +59,9 @@ provider:
   environment:
     USER_POOL_ID: ${env:USER_POOL_ID, 'us-east-2_pLrj1NgHI'}
     USER_POOL_CLIENT_ID: ${env:USER_POOL_CLIENT_ID, '3ik571j3u4o4sb13bo7n4o9822'}
-    DB_HOST: ${env:DB_HOST, 'faith-hub.cc7220s4ekvj.us-east-1.rds.amazonaws.com'}
-    DB_PORT: ${env:DB_PORT, '3306'}
-    DB_USER: ${env:DB_USER, 'admin_faith_hub'}
-    DB_PASSWORD: ${env:DB_PASSWORD}
-    DB_NAME: ${env:DB_NAME, 'faith-hub'}
-    DB_SSL: ${env:DB_SSL, 'false'}
+    DB_SECRET_ARN: ${env:DB_SECRET_ARN, ''}
+    DB_SSL: ${env:DB_SSL, 'require'}
+    RATE_LIMIT_TABLE: !Ref RateLimitTable
     S3_MEDIA_BUCKET: ${env:S3_MEDIA_BUCKET, 'faith-hub-media-bucket-rafaelsena'}
     ASAAS_API_KEY: ${env:ASAAS_API_KEY}
     ASAAS_ENVIRONMENT: ${env:ASAAS_ENVIRONMENT, 'production'}
@@ -81,6 +78,14 @@ provider:
             - cognito-idp:AdminAddUserToGroup
             - cognito-idp:AdminUpdateUserAttributes
           Resource: "arn:aws:cognito-idp:us-east-2:*:userpool/${env:USER_POOL_ID, 'us-east-2_pLrj1NgHI'}"
+        - Effect: Allow
+          Action:
+            - secretsmanager:GetSecretValue
+          Resource: ${env:DB_SECRET_ARN, 'arn:aws:secretsmanager:us-east-2:*:secret:faith-hub/database/runtime-*'}
+        - Effect: Allow
+          Action:
+            - dynamodb:UpdateItem
+          Resource: !GetAtt RateLimitTable.Arn
 
 plugins:
   - serverless-plugin-split-stacks
@@ -96,6 +101,23 @@ custom:
     bundle: true
     minify: false
     sourcemap: true
+
+resources:
+  Resources:
+    RateLimitTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:service}-${sls:stage}-rate-limits
+        BillingMode: PAY_PER_REQUEST
+        AttributeDefinitions:
+          - AttributeName: rate_key
+            AttributeType: S
+        KeySchema:
+          - AttributeName: rate_key
+            KeyType: HASH
+        TimeToLiveSpecification:
+          AttributeName: expires_at
+          Enabled: true
 
 functions:
   inviteMember:

@@ -10,7 +10,7 @@ const STORE_ADMIN_ROLES = ['SUPERADMIN', 'PASTOR', 'ADMIN', 'LEADER', 'VOLUNTEER
 // POST /pdv/orders
 export const createOrder = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   try {
-    const rateCheck = checkRateLimit(event, {
+    const rateCheck = await checkRateLimit(event, {
       maxRequests: 20,
       windowSeconds: 60,
       identifierPrefix: 'pdv_create_order'

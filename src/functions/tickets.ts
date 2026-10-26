@@ -15,7 +15,7 @@ const generateShortCode = (): string => {
 
 // POST /tickets/checkout — public registration, all prices and settlement are server-owned.
 export const checkout = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
-  const rateCheck = checkRateLimit(event, { maxRequests: 20, windowSeconds: 60, identifierPrefix: 'ticket_checkout' });
+  const rateCheck = await checkRateLimit(event, { maxRequests: 20, windowSeconds: 60, identifierPrefix: 'ticket_checkout' });
   if (!rateCheck.allowed) return rateCheck.errorResponse!;
   const user = await getAuthenticatedUser(event);
   const body = JSON.parse(event.body || '{}');

@@ -26,17 +26,6 @@ const headers = {
 
 const LEADERSHIP_ROLES = ['SUPERADMIN', 'PASTOR', 'ADMIN', 'LEADER'];
 
-let columnChecked = false;
-async function ensureOperationalColumn() {
-  if (columnChecked) return;
-  try {
-    await query(`ALTER TABLE members ADD COLUMN operational_permissions TEXT;`);
-  } catch (e: any) {
-    // Coluna já existe
-  }
-  columnChecked = true;
-}
-
 // 1. Convidar / Cadastrar Membro
 export const invite: APIGatewayProxyHandlerV2 = async (event) => {
   try {
@@ -74,8 +63,6 @@ export const invite: APIGatewayProxyHandlerV2 = async (event) => {
     if (operational_permissions !== undefined && !auth.user.isSuperAdmin && !['PASTOR', 'ADMIN'].includes(auth.user.role)) {
       return { statusCode: 403, headers, body: JSON.stringify({ error: 'Sem permissão para alterar permissões operacionais' }) };
     }
-    await ensureOperationalColumn();
-
     const userAttributes: { Name: string; Value: string }[] = [
       { Name: "email", Value: email },
       { Name: "name", Value: name },
@@ -297,7 +284,7 @@ export const updateStatus: APIGatewayProxyHandlerV2 = async (event) => {
 // 3. Reset de Senha / Reenvio de Convite
 export const resetPassword: APIGatewayProxyHandlerV2 = async (event) => {
   try {
-    const rateLimit = checkRateLimit(event as any, {
+    const rateLimit = await checkRateLimit(event as any, {
       maxRequests: 10,
       windowSeconds: 60,
       identifierPrefix: 'reset-password'
@@ -610,8 +597,6 @@ export const update: APIGatewayProxyHandlerV2 = async (event) => {
     }
     if ((campus_id !== undefined || campus_ids !== undefined) && !isLeadership) return { statusCode: 403, headers, body: JSON.stringify({ error: 'Somente liderança pode alterar unidades' }) };
     if (role !== undefined && !isLeadership) return { statusCode: 403, headers, body: JSON.stringify({ error: 'Sem permissão para alterar papéis' }) };
-    await ensureOperationalColumn();
-
     // Membro regular não pode alterar o próprio papel (Role escalation prevention)
     const isEscalatingToMaster = ['SUPERADMIN', 'SUPER_ADMIN', 'MASTER_ADMIN', 'MASTER', 'ADMIN_MASTER'].includes(String(role || '').toUpperCase());
     if (role && isEscalatingToMaster && !auth.user.isSuperAdmin) {
@@ -707,7 +692,7 @@ export const requestCell: APIGatewayProxyHandlerV2 = async (event) => {
 
 export const selfRegister: APIGatewayProxyHandlerV2 = async (event) => {
   try {
-    const rateLimit = checkRateLimit(event as any, {
+    const rateLimit = await checkRateLimit(event as any, {
       maxRequests: 10,
       windowSeconds: 60,
       identifierPrefix: 'self-register'

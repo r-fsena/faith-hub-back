@@ -1,7 +1,8 @@
-import { pool } from './index';
+import { getPool } from './index';
 
 async function migrateMultiCampus() {
   console.log('🚀 Iniciando Migração Multi-Organização & Multi-Unidade (Campi)...');
+  const pool = await getPool();
 
   try {
     // 1. Criar tabela de Organizações

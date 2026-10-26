@@ -99,7 +99,7 @@ export const getPrayers = async (event: APIGatewayProxyEvent): Promise<APIGatewa
 export const createPrayer = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   try {
     // Rate Limiting: Máximo de 10 pedidos de oração por minuto por IP
-    const rateCheck = checkRateLimit(event, {
+    const rateCheck = await checkRateLimit(event, {
       maxRequests: 10,
       windowSeconds: 60,
       identifierPrefix: 'prayers_create'

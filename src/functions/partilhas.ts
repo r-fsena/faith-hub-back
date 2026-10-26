@@ -45,7 +45,7 @@ export const getPartilhas = async (event: APIGatewayProxyEvent): Promise<APIGate
 // POST /partilhas
 export const createPartilha = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   try {
-    const rateCheck = checkRateLimit(event, {
+    const rateCheck = await checkRateLimit(event, {
       maxRequests: 20,
       windowSeconds: 60,
       identifierPrefix: 'partilhas_create'
@@ -103,7 +103,7 @@ export const createPartilha = async (event: APIGatewayProxyEvent): Promise<APIGa
 // PUT /partilhas/{id}/toggle
 export const togglePartilha = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   try {
-    const rateCheck = checkRateLimit(event, {
+    const rateCheck = await checkRateLimit(event, {
       maxRequests: 30,
       windowSeconds: 60,
       identifierPrefix: 'partilhas_toggle'

@@ -399,7 +399,7 @@ export const registerVisitor = async (event: any): Promise<APIGatewayProxyResult
 
     // Se é acesso público anônimo, aplica rate limiting estrito
     if (!authUser) {
-      const rate = checkRateLimit(event, { maxRequests: 15, windowSeconds: 60, identifierPrefix: 'public_visitor' });
+      const rate = await checkRateLimit(event, { maxRequests: 15, windowSeconds: 60, identifierPrefix: 'public_visitor' });
       if (!rate.allowed) return rate.errorResponse!;
     }
 

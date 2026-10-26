@@ -58,7 +58,7 @@ export const getPosts = async (event: APIGatewayProxyEvent): Promise<APIGatewayP
 // POST /posts
 export const createPost = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   try {
-    const rateCheck = checkRateLimit(event, {
+    const rateCheck = await checkRateLimit(event, {
       maxRequests: 15,
       windowSeconds: 60,
       identifierPrefix: 'posts_create'
@@ -157,7 +157,7 @@ export const createPost = async (event: APIGatewayProxyEvent): Promise<APIGatewa
 // POST /posts/{id}/react
 export const reactPost = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   try {
-    const rateCheck = checkRateLimit(event, {
+    const rateCheck = await checkRateLimit(event, {
       maxRequests: 40,
       windowSeconds: 60,
       identifierPrefix: 'posts_react'

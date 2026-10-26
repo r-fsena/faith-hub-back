@@ -252,7 +252,7 @@ export const getPublicProposal = async (event: APIGatewayProxyEvent): Promise<AP
 // 4. Aceitar Proposta e Gerar Checkout / Ativação (POST /proposals/public/{token}/accept)
 export const acceptProposal = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   try {
-    const limit = checkRateLimit(event, { maxRequests: 10, windowSeconds: 60, identifierPrefix: 'accept-proposal' });
+    const limit = await checkRateLimit(event, { maxRequests: 10, windowSeconds: 60, identifierPrefix: 'accept-proposal' });
     if (!limit.allowed) return limit.errorResponse!;
     const token = event.pathParameters?.token || event.queryStringParameters?.token;
     const body = JSON.parse(event.body || '{}');
