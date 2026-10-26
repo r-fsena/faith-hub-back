@@ -399,6 +399,46 @@ functions:
           method: ANY
           path: /pastoral
 
+  corsPreflight:
+    handler: src/functions/corsPreflight.corsPreflight
+    events:
+      - httpApi:
+          method: OPTIONS
+          path: /pastoral/{proxy+}
+      - httpApi:
+          method: OPTIONS
+          path: /pastoral
+      - httpApi:
+          method: OPTIONS
+          path: /ministries/{proxy+}
+      - httpApi:
+          method: OPTIONS
+          path: /ministries
+      - httpApi:
+          method: OPTIONS
+          path: /volunteers/{proxy+}
+      - httpApi:
+          method: OPTIONS
+          path: /volunteers
+      - httpApi:
+          method: OPTIONS
+          path: /kids/{proxy+}
+      - httpApi:
+          method: OPTIONS
+          path: /kids
+      - httpApi:
+          method: OPTIONS
+          path: /financial/{proxy+}
+      - httpApi:
+          method: OPTIONS
+          path: /financial
+      - httpApi:
+          method: OPTIONS
+          path: /saas/invoices/{proxy+}
+      - httpApi:
+          method: OPTIONS
+          path: /saas/invoices
+
   ministriesHandler:
     handler: src/functions/ministries.ministriesHandler
     events:

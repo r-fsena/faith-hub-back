@@ -69,3 +69,14 @@ test('production cutover remains configurable and the Asaas webhook can move saf
   assert.match(webhookSync, /ASAAS_WEBHOOK_URL_NOT_UPDATED/);
   assert.match(auditLogs, /import\.meta\.env\.VITE_API_URL/);
 });
+
+test('authenticated aggregate routes expose unauthenticated CORS preflight only', () => {
+  const serverless = read('faith-hub-backend/serverless.yml');
+  const preflight = read('faith-hub-backend/src/functions/corsPreflight.ts');
+  for (const route of ['pastoral', 'ministries', 'volunteers', 'kids', 'financial', 'saas/invoices']) {
+    const escaped = route.replace('/', '\\/');
+    assert.match(serverless, new RegExp(`method: OPTIONS\\s+path: \\/${escaped}(?:\\/\\{proxy\\+\\})?`));
+  }
+  assert.match(preflight, /statusCode:\s*204/);
+  assert.doesNotMatch(preflight, /Access-Control-Allow-Origin/);
+});
