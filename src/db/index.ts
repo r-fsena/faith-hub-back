@@ -86,9 +86,6 @@ export async function closePool(): Promise<void> {
 
 export const corsHeaders = {
   'Content-Type': 'application/json',
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'OPTIONS,GET,POST,PUT,PATCH,DELETE',
-  'Access-Control-Allow-Headers': 'Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token,x-organization-id,x-campus-id',
 };
 
 export function apiResponse(statusCode: number, body: any, customHeaders?: Record<string, any>) {

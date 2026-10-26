@@ -1,0 +1,143 @@
+service: faith-hub-ops
+frameworkVersion: '3'
+
+params:
+  default:
+    targetStage: dev
+    alertEmail: suporte@faithhubs.com
+  prod:
+    targetStage: prod
+
+provider:
+  name: aws
+  region: us-east-2
+  stage: ${opt:stage, 'live'}
+  stackTags:
+    Application: faith-hub
+    Component: operations
+    ManagedBy: serverless
+
+resources:
+  Resources:
+    OperationsAlertsTopic:
+      Type: AWS::SNS::Topic
+      Properties:
+        TopicName: faith-hub-${param:targetStage}-operations-alerts
+        Subscription:
+          - Endpoint: ${param:alertEmail}
+            Protocol: email
+
+    AsaasWebhookErrorsAlarm:
+      Type: AWS::CloudWatch::Alarm
+      Properties:
+        AlarmName: faith-hub-${param:targetStage}-asaas-webhook-errors
+        AlarmDescription: Falhas no recebimento ou persistência de webhooks do Asaas.
+        Namespace: AWS/Lambda
+        MetricName: Errors
+        Dimensions:
+          - Name: FunctionName
+            Value: faith-hub-backend-${param:targetStage}-handleAsaasWebhook
+        Statistic: Sum
+        Period: 60
+        EvaluationPeriods: 1
+        DatapointsToAlarm: 1
+        Threshold: 1
+        ComparisonOperator: GreaterThanOrEqualToThreshold
+        TreatMissingData: notBreaching
+        AlarmActions:
+          - !Ref OperationsAlertsTopic
+        OKActions:
+          - !Ref OperationsAlertsTopic
+
+    BillingWorkerErrorsAlarm:
+      Type: AWS::CloudWatch::Alarm
+      Properties:
+        AlarmName: faith-hub-${param:targetStage}-billing-worker-errors
+        AlarmDescription: Falhas ao reconciliar pagamentos ou provisionar clientes SaaS.
+        Namespace: AWS/Lambda
+        MetricName: Errors
+        Dimensions:
+          - Name: FunctionName
+            Value: faith-hub-backend-${param:targetStage}-processSaasBillingQueue
+        Statistic: Sum
+        Period: 60
+        EvaluationPeriods: 1
+        DatapointsToAlarm: 1
+        Threshold: 1
+        ComparisonOperator: GreaterThanOrEqualToThreshold
+        TreatMissingData: notBreaching
+        AlarmActions:
+          - !Ref OperationsAlertsTopic
+        OKActions:
+          - !Ref OperationsAlertsTopic
+
+    ProposalCheckoutErrorsAlarm:
+      Type: AWS::CloudWatch::Alarm
+      Properties:
+        AlarmName: faith-hub-${param:targetStage}-proposal-checkout-errors
+        AlarmDescription: Falhas na criação do checkout recorrente SaaS.
+        Namespace: AWS/Lambda
+        MetricName: Errors
+        Dimensions:
+          - Name: FunctionName
+            Value: faith-hub-backend-${param:targetStage}-acceptProposal
+        Statistic: Sum
+        Period: 60
+        EvaluationPeriods: 1
+        DatapointsToAlarm: 1
+        Threshold: 1
+        ComparisonOperator: GreaterThanOrEqualToThreshold
+        TreatMissingData: notBreaching
+        AlarmActions:
+          - !Ref OperationsAlertsTopic
+        OKActions:
+          - !Ref OperationsAlertsTopic
+
+    BillingDeadLetterQueueAlarm:
+      Type: AWS::CloudWatch::Alarm
+      Properties:
+        AlarmName: faith-hub-${param:targetStage}-billing-dlq-not-empty
+        AlarmDescription: Eventos de cobrança esgotaram as tentativas e chegaram à DLQ.
+        Namespace: AWS/SQS
+        MetricName: ApproximateNumberOfMessagesVisible
+        Dimensions:
+          - Name: QueueName
+            Value: faith-hub-backend-${param:targetStage}-saas-operations-dlq
+        Statistic: Maximum
+        Period: 300
+        EvaluationPeriods: 2
+        DatapointsToAlarm: 2
+        Threshold: 1
+        ComparisonOperator: GreaterThanOrEqualToThreshold
+        TreatMissingData: notBreaching
+        AlarmActions:
+          - !Ref OperationsAlertsTopic
+        OKActions:
+          - !Ref OperationsAlertsTopic
+
+    BillingQueueAgeAlarm:
+      Type: AWS::CloudWatch::Alarm
+      Properties:
+        AlarmName: faith-hub-${param:targetStage}-billing-queue-age
+        AlarmDescription: Evento de cobrança aguardando processamento por mais de cinco minutos.
+        Namespace: AWS/SQS
+        MetricName: ApproximateAgeOfOldestMessage
+        Dimensions:
+          - Name: QueueName
+            Value: faith-hub-backend-${param:targetStage}-saas-operations
+        Statistic: Maximum
+        Period: 60
+        EvaluationPeriods: 3
+        DatapointsToAlarm: 3
+        Threshold: 300
+        ComparisonOperator: GreaterThanOrEqualToThreshold
+        TreatMissingData: notBreaching
+        AlarmActions:
+          - !Ref OperationsAlertsTopic
+        OKActions:
+          - !Ref OperationsAlertsTopic
+
+  Outputs:
+    OperationsAlertsTopicArn:
+      Value: !Ref OperationsAlertsTopic
+      Description: Tópico SNS dos alertas operacionais do Faith-Hub.

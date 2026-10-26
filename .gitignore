@@ -1,6 +1,20 @@
 node_modules/
 .env
 .serverless/
+.serverless-*/
 dist/
 coverage/
 .DS_Store
+
+# Duplicatas locais geradas por sincronização; preservar no disco e nunca versionar.
+migrate_asaas_billing 2.js
+scripts/sync-asaas-secret 2.cjs
+src/db/index 2.ts
+src/functions/saasBillingWorker 2.ts
+src/services/asaasConfig 2.ts
+src/services/asaasReconciliationService 2.ts
+src/services/rateLimiter 2.ts
+src/services/saasQueueService 2.ts
+src/types/aws-ssl-profiles.d 2.ts
+tests/asaas-billing.test 2.cjs
+tests/rate-limiter.test 2.cjs

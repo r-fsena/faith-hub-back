@@ -2,9 +2,17 @@ service: faith-hub-backend
 frameworkVersion: '3'
 useDotenv: true
 
+params:
+  default:
+    splitStacksPerType: true
+    splitStacksPerGroupFunction: false
+  prod:
+    splitStacksPerType: false
+    splitStacksPerGroupFunction: true
+
 provider:
   name: aws
-  runtime: nodejs18.x
+  runtime: nodejs22.x
   region: us-east-2
   versionFunctions: false
   httpApi:
@@ -38,7 +46,6 @@ provider:
         - X-Amz-Date
         - X-Api-Key
         - X-Amz-Security-Token
-        - asaas-access-token
         - x-organization-id
         - x-campus-id
       allowedMethods:
@@ -57,6 +64,7 @@ provider:
         audience:
           - ${env:USER_POOL_CLIENT_ID, '3ik571j3u4o4sb13bo7n4o9822'}
   environment:
+    APP_STAGE: ${sls:stage}
     USER_POOL_ID: ${env:USER_POOL_ID, 'us-east-2_pLrj1NgHI'}
     USER_POOL_CLIENT_ID: ${env:USER_POOL_CLIENT_ID, '3ik571j3u4o4sb13bo7n4o9822'}
     DB_SECRET_ARN: ${env:DB_SECRET_ARN, ''}
@@ -103,9 +111,10 @@ plugins:
 
 custom:
   splitStacks:
+    nestedStackCount: 20
     perFunction: false
-    perType: true
-    perGroupFunction: false
+    perType: ${param:splitStacksPerType}
+    perGroupFunction: ${param:splitStacksPerGroupFunction}
   esbuild:
     bundle: true
     minify: false

@@ -89,7 +89,7 @@ function limitedResponse(resetAt: number): APIGatewayProxyResult {
   const retryAfter = Math.max(1, Math.ceil((resetAt - Date.now()) / 1000));
   return {
     statusCode: 429,
-    headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*', 'Retry-After': String(retryAfter) },
+    headers: { 'Content-Type': 'application/json', 'Retry-After': String(retryAfter) },
     body: JSON.stringify({ error: 'RATE_LIMIT_EXCEEDED', message: `Limite de requisições excedido. Aguarde ${retryAfter} segundos.`, retryAfter })
   };
 }
@@ -114,7 +114,7 @@ export async function checkRateLimit(
       remaining: 0,
       errorResponse: {
         statusCode: 503,
-        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ error: 'RATE_LIMIT_UNAVAILABLE', message: 'Proteção temporariamente indisponível. Tente novamente.' })
       }
     };
