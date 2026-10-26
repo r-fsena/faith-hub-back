@@ -1,76 +1,111 @@
-// Serviço de Integração com a API Asaas v3
+import { getAsaasConfig } from './asaasConfig';
 
-const ASAAS_API_KEY = process.env.ASAAS_API_KEY || '';
-const ASAAS_ENVIRONMENT = process.env.ASAAS_ENVIRONMENT || 'sandbox'; // 'sandbox' ou 'production'
-const ASAAS_API_URL = ASAAS_ENVIRONMENT === 'production' 
-  ? 'https://api.asaas.com/v3' 
-  : 'https://sandbox.asaas.com/api/v3';
-
-export interface AsaasCustomerInput {
+export interface HostedCheckoutInput {
+  externalReference: string;
+  billingTypes: Array<'PIX' | 'CREDIT_CARD'>;
   name: string;
-  email: string;
-  cpfCnpj?: string;
-  phone?: string;
-  mobilePhone?: string;
-  postalCode?: string;
-  address?: string;
-  addressNumber?: string;
-  complement?: string;
-  province?: string;
+  description: string;
+  value: number;
+  cycle: 'MONTHLY' | 'QUARTERLY' | 'SEMIANNUALLY' | 'YEARLY';
+  nextDueDate: string;
+  customerData: { name: string; email: string; cpfCnpj: string; phone?: string };
+  successUrl: string;
 }
 
-export interface AsaasSubscriptionInput {
-  customer: string;
-  billingType: 'BOLETO' | 'CREDIT_CARD' | 'PIX' | 'UNDEFINED';
-  value: number;
-  nextDueDate: string; // YYYY-MM-DD
-  cycle: 'WEEKLY' | 'BIWEEKLY' | 'MONTHLY' | 'QUARTERLY' | 'SEMIANNUALLY' | 'YEARLY';
-  description?: string;
-  creditCard?: {
-    holderName: string;
-    number: string;
-    expiryMonth: string;
-    expiryYear: string;
-    ccv: string;
-  };
-  creditCardHolderInfo?: {
-    name: string;
-    email: string;
-    cpfCnpj: string;
-    postalCode: string;
-    addressNumber: string;
-    phone: string;
-  };
+export interface AsaasPayment {
+  id: string;
+  customer?: string;
+  subscription?: string;
+  externalReference?: string;
+  status?: string;
+  value?: number;
+  netValue?: number;
+  dueDate?: string;
+  paymentDate?: string;
+  clientPaymentDate?: string;
+  billingType?: string;
+  invoiceUrl?: string;
+  bankSlipUrl?: string;
+}
+
+export interface AsaasSubscription {
+  id: string;
+  customer?: string;
+  externalReference?: string;
+  status?: string;
+  value?: number;
+  cycle?: string;
+  billingType?: string;
+  nextDueDate?: string;
 }
 
 export class AsaasService {
-  private static async request(path: string, body?: unknown): Promise<any> {
-    if (!ASAAS_API_KEY) throw new Error('Provedor de pagamentos não configurado');
-    const response = await fetch(ASAAS_API_URL + path, {
-      method: body === undefined ? 'GET' : 'POST',
-      headers: { 'Content-Type': 'application/json', access_token: ASAAS_API_KEY },
-      body: body === undefined ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(15000)
+  private static async request<T>(path: string, options: { method?: 'GET' | 'POST' | 'PUT'; body?: unknown } = {}): Promise<T> {
+    const config = await getAsaasConfig();
+    const baseUrl = config.environment === 'production'
+      ? 'https://api.asaas.com/v3'
+      : 'https://api-sandbox.asaas.com/v3';
+    const response = await fetch(baseUrl + path, {
+      method: options.method || (options.body === undefined ? 'GET' : 'POST'),
+      headers: {
+        'Content-Type': 'application/json',
+        'User-Agent': 'faith-hub-backend/1.0',
+        access_token: config.apiKey
+      },
+      body: options.body === undefined ? undefined : JSON.stringify(options.body),
+      signal: AbortSignal.timeout(15000)
     });
-    const data: any = await response.json();
-    if (!response.ok) throw new Error('Provedor de pagamentos recusou a operação');
-    return data;
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const error = new Error(`ASAAS_REQUEST_FAILED:${response.status}`);
+      (error as any).providerStatus = response.status;
+      throw error;
+    }
+    return data as T;
   }
-  static async createCustomer(data: AsaasCustomerInput) {
-    const result = await this.request('/customers?email=' + encodeURIComponent(data.email));
-    if (result.data?.length) return result.data[0];
-    const customer = await this.request('/customers', {
-      ...data, cpfCnpj: data.cpfCnpj?.replace(/\D/g, ''),
-      mobilePhone: (data.mobilePhone || data.phone)?.replace(/\D/g, ''), notificationDisabled: false
+
+  static async createHostedRecurringCheckout(input: HostedCheckoutInput) {
+    const checkout = await this.request<any>('/checkouts', {
+      body: {
+        billingTypes: input.billingTypes,
+        chargeTypes: ['RECURRENT'],
+        minutesToExpire: 60,
+        externalReference: input.externalReference,
+        items: [{ name: input.name, description: input.description, quantity: 1, value: input.value }],
+        subscription: { cycle: input.cycle, nextDueDate: input.nextDueDate },
+        customerData: {
+          name: input.customerData.name,
+          email: input.customerData.email,
+          cpfCnpj: input.customerData.cpfCnpj.replace(/\D/g, ''),
+          phone: input.customerData.phone?.replace(/\D/g, '') || undefined
+        },
+        callback: { successUrl: input.successUrl, autoRedirect: true }
+      }
     });
-    if (!customer.id) throw new Error('Resposta inválida do provedor');
-    return customer;
+    if (!checkout.id) throw new Error('ASAAS_CHECKOUT_INVALID_RESPONSE');
+    const config = await getAsaasConfig();
+    const host = config.environment === 'production' ? 'https://asaas.com' : 'https://sandbox.asaas.com';
+    return {
+      ...checkout,
+      url: `${host}/checkoutSession/show?id=${encodeURIComponent(checkout.id)}`,
+      environment: config.environment
+    };
   }
-  static async createSubscription(data: AsaasSubscriptionInput) {
-    const subscription = await this.request('/subscriptions', data);
-    if (!subscription.id) throw new Error('Resposta inválida do provedor');
-    return subscription;
+
+  static getPayment(paymentId: string): Promise<AsaasPayment> {
+    return this.request(`/payments/${encodeURIComponent(paymentId)}`);
   }
-  static async getPaymentQrCode(paymentId: string) {
-    return this.request('/payments/' + encodeURIComponent(paymentId) + '/pixQrCode');
+
+  static getSubscription(subscriptionId: string): Promise<AsaasSubscription> {
+    return this.request(`/subscriptions/${encodeURIComponent(subscriptionId)}`);
+  }
+
+  static listSubscriptionPayments(subscriptionId: string): Promise<{ data: AsaasPayment[]; hasMore?: boolean }> {
+    return this.request(`/subscriptions/${encodeURIComponent(subscriptionId)}/payments?limit=100`);
+  }
+
+  /** @deprecated Direct subscriptions could expose card data to Faith-Hub. */
+  static createSubscription(): Promise<never> {
+    return Promise.reject(new Error('DIRECT_SUBSCRIPTION_DISABLED_USE_HOSTED_CHECKOUT'));
   }
 }

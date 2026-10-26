@@ -1,0 +1,64 @@
+process.env.AWS_EC2_METADATA_DISABLED = 'true';
+const { test, afterEach } = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const ts = require('typescript');
+
+require.extensions['.ts'] = (module, filename) => module._compile(
+  ts.transpileModule(fs.readFileSync(filename, 'utf8'), {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true }
+  }).outputText,
+  filename
+);
+
+const originalFetch = global.fetch;
+
+afterEach(() => {
+  global.fetch = originalFetch;
+});
+
+test('hosted recurrence uses the sandbox endpoint and never sends card credentials', async () => {
+  process.env.ASAAS_API_KEY = 'sandbox-key';
+  process.env.ASAAS_WEBHOOK_SECRET = 'webhook-secret';
+  process.env.ASAAS_ENVIRONMENT = 'sandbox';
+  delete process.env.ASAAS_SECRET_ARN;
+  const { resetAsaasConfigCache } = require('../src/services/asaasConfig.ts');
+  const { AsaasService } = require('../src/services/asaasService.ts');
+  resetAsaasConfigCache();
+  let request;
+  global.fetch = async (url, options) => {
+    request = { url, options, body: JSON.parse(options.body) };
+    return { ok: true, json: async () => ({ id: 'chk_test' }) };
+  };
+
+  const result = await AsaasService.createHostedRecurringCheckout({
+    externalReference: 'faithhub:proposal:00000000-0000-4000-8000-000000000001',
+    billingTypes: ['PIX', 'CREDIT_CARD'],
+    name: 'Faith-Hub PRO', description: 'Assinatura', value: 297,
+    cycle: 'MONTHLY', nextDueDate: '2026-11-26',
+    customerData: { name: 'Igreja Teste', email: 'financeiro@example.org', cpfCnpj: '12.345.678/0001-90' },
+    successUrl: 'https://studio.faithhubs.com/?proposta=token'
+  });
+
+  assert.equal(request.url, 'https://api-sandbox.asaas.com/v3/checkouts');
+  assert.deepEqual(request.body.chargeTypes, ['RECURRENT']);
+  assert.deepEqual(request.body.billingTypes, ['PIX', 'CREDIT_CARD']);
+  assert.equal(request.body.customerData.cpfCnpj, '12345678000190');
+  assert.equal(JSON.stringify(request.body).match(/creditCard|ccv|cardNumber/), null);
+  assert.equal(result.url, 'https://sandbox.asaas.com/checkoutSession/show?id=chk_test');
+});
+
+test('deployment and Studio contracts contain no fake or raw-card payment path', () => {
+  const root = path.join(__dirname, '..');
+  const serverless = fs.readFileSync(path.join(root, 'serverless.yml'), 'utf8');
+  const proposals = fs.readFileSync(path.join(root, 'src/functions/proposals.ts'), 'utf8');
+  const studio = fs.readFileSync(path.join(root, '../faith-hub-web/src/modules/ProposalPublicView.tsx'), 'utf8');
+  assert.ok(!serverless.includes('ASAAS_API_KEY:'));
+  assert.ok(!serverless.includes('ASAAS_WEBHOOK_SECRET:'));
+  assert.ok(!serverless.includes('simulate-payment'));
+  assert.ok(proposals.includes('Dados de cartão devem ser informados somente no checkout seguro do Asaas.'));
+  assert.ok(!studio.includes('cardCvv'));
+  assert.ok(!studio.includes('api.qrserver.com'));
+  assert.ok(!studio.includes('Modo Simulação'));
+});

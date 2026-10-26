@@ -190,7 +190,7 @@ export async function requireFeature(
     return Boolean(evaluated.flags[featureKey]);
   } catch (error) {
     console.error(`Error evaluating feature flag [${featureKey}]:`, error);
-    return true; // Graceful fallback
+    return false; // Fail closed: indisponibilidade não pode liberar funcionalidade nova.
   }
 }
 

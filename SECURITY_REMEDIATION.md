@@ -20,7 +20,7 @@
 2. A migração adiciona `organization_id`, índice único por organização e `config_payload` à tabela `payment_gateway_settings`. É aditiva e pode ser repetida.
 3. A migração também cadastra `members.digital_card` e `financial.advanced_reports`, consumidas pelas interfaces. Os relatórios não usam valores demonstrativos quando não existem dados.
 4. Configurações legadas sem organização ficam inacessíveis. Atribuir cada configuração à igreja correta mediante revisão, ou recadastrar pela interface; não copiar uma credencial global para todos os tenants.
-5. Confirmar `USER_POOL_ID`, `USER_POOL_CLIENT_ID`, `ASAAS_API_KEY`, `ASAAS_ENVIRONMENT` e `ASAAS_WEBHOOK_SECRET` no ambiente de destino. Não expor valores em logs.
+5. Confirmar `USER_POOL_ID`, `USER_POOL_CLIENT_ID`, `DB_SECRET_ARN` e `ASAAS_SECRET_ARN` no ambiente de destino. A chave da API, o token do webhook e o ambiente do Asaas ficam exclusivamente no JSON do Secrets Manager; não expor valores em variáveis das Lambdas ou logs.
 6. Publicar backend, Studio e PWA de forma coordenada: os contratos de identidade, itens do PDV e checkout foram endurecidos. Validar separadamente os consumidores nativos antes de atualizá-los.
 7. Validar em homologação duas igrejas, diferentes papéis, login/cadastro, Kids, comprovantes e os webhooks reais do provedor.
 

@@ -142,11 +142,19 @@ test('Self-registration cannot mutate accounts without a verified Cognito identi
 });
 test('Asaas webhook fails closed when its secret is missing or invalid', async () => {
   reset(); const original = process.env.ASAAS_WEBHOOK_SECRET;
+  const originalKey = process.env.ASAAS_API_KEY;
+  const { resetAsaasConfigCache } = require('../src/services/asaasConfig.ts');
   delete process.env.ASAAS_WEBHOOK_SECRET;
+  delete process.env.ASAAS_API_KEY;
+  resetAsaasConfigCache();
   assert.equal((await handleAsaasWebhook(event({ event: 'PAYMENT_RECEIVED' }))).statusCode, 503);
   process.env.ASAAS_WEBHOOK_SECRET = 'expected';
+  process.env.ASAAS_API_KEY = 'test-key';
+  resetAsaasConfigCache();
   assert.equal((await handleAsaasWebhook(event({ event: 'PAYMENT_RECEIVED' }))).statusCode, 401);
   if (original === undefined) delete process.env.ASAAS_WEBHOOK_SECRET; else process.env.ASAAS_WEBHOOK_SECRET = original;
+  if (originalKey === undefined) delete process.env.ASAAS_API_KEY; else process.env.ASAAS_API_KEY = originalKey;
+  resetAsaasConfigCache();
   assert.equal(calls.length, 0);
 });
 

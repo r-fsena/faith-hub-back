@@ -1,108 +1,83 @@
-// Webhook Receiver para o Asaas v3
+import crypto from 'crypto';
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
-import { query, apiResponse } from '../db';
-import { ProvisioningService } from '../services/provisioningService';
+import { apiResponse, query } from '../db';
+import { getAsaasConfig } from '../services/asaasConfig';
+import { enqueueAsaasEvent } from '../services/saasQueueService';
+
+function secureEqual(received: string | undefined, expected: string): boolean {
+  if (!received) return false;
+  const left = Buffer.from(received, 'utf8');
+  const right = Buffer.from(expected, 'utf8');
+  return left.length === right.length && crypto.timingSafeEqual(left, right);
+}
+
+function safeProviderId(value: unknown): string | null {
+  if (typeof value !== 'string' || !/^[A-Za-z0-9_-]{1,100}$/.test(value)) return null;
+  return value;
+}
 
 export const handleAsaasWebhook = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   try {
-    // 0. Validação Rigorosa de Segurança do Token de Autenticação do Webhook Asaas
-    const expectedToken = process.env.ASAAS_WEBHOOK_SECRET;
-    const headers = event.headers || {};
-    const receivedToken = Object.entries(headers).find(
-      ([k]) => k.toLowerCase() === 'asaas-access-token'
-    )?.[1];
-
-    if (!expectedToken) return apiResponse(503, { message: 'Webhook não configurado' });
-    if (expectedToken) {
-      if (!receivedToken || receivedToken !== expectedToken) {
-        console.warn('⚠️ Token de autenticação do Webhook Asaas inválido ou ausente!', {
-          hasReceivedToken: Boolean(receivedToken)
-        });
-        return apiResponse(401, { message: 'Acesso não autorizado: token do webhook inválido ou ausente' });
-      }
-    }
-
-    let body: any = {};
+    let config;
     try {
-      body = typeof event.body === 'string' ? JSON.parse(event.body || '{}') : (event.body || {});
+      config = await getAsaasConfig();
     } catch {
-      body = {};
+      return apiResponse(503, { message: 'Webhook não configurado' });
+    }
+    const receivedToken = Object.entries(event.headers || {}).find(
+      ([key]) => key.toLowerCase() === 'asaas-access-token'
+    )?.[1];
+    if (!secureEqual(receivedToken, config.webhookSecret)) {
+      console.warn('Webhook Asaas rejeitado por token inválido', { hasToken: Boolean(receivedToken) });
+      return apiResponse(401, { message: 'Não autorizado' });
     }
 
-    const webhookEvent = body.event;
-    const payment = body.payment || {};
-    const subscriptionId = payment.subscription || body.subscription?.id;
-    const customerId = payment.customer || body.customer?.id;
-
-    // Se for apenas um ping/health check do Asaas
-    if (!webhookEvent) {
-      return apiResponse(200, { received: true, message: 'Faith-Hub Asaas Webhook is Healthy' });
+    let body: any;
+    try {
+      const rawBody = event.isBase64Encoded
+        ? Buffer.from(event.body || '', 'base64').toString('utf8')
+        : (event.body || '{}');
+      body = JSON.parse(rawBody);
+    } catch {
+      return apiResponse(400, { message: 'Payload inválido' });
     }
 
-    console.log(`🔔 Webhook Asaas Recebido: ${webhookEvent}`, {
-      subscriptionId,
-      customerId,
-      paymentId: payment.id,
-      value: payment.value
-    });
+    const eventId = safeProviderId(body.id);
+    const eventType = typeof body.event === 'string' && /^[A-Z_]{3,80}$/.test(body.event)
+      ? body.event
+      : null;
+    if (!eventId || !eventType) return apiResponse(400, { message: 'Evento Asaas inválido' });
 
-    // 1. Pagamento Confirmado / Recebido (Liquidação)
-    if (webhookEvent === 'PAYMENT_CONFIRMED' || webhookEvent === 'PAYMENT_RECEIVED') {
-      // Localiza a proposta pelo subscription_id ou customer_id
-      let proposalId: string | null = null;
-      if (subscriptionId) {
-        const { rows } = await query(`SELECT id FROM saas_proposals WHERE asaas_subscription_id = ? LIMIT 1`, [subscriptionId]);
-        if (rows.length > 0) proposalId = rows[0].id;
-      }
-
-      if (!proposalId && customerId) {
-        const { rows } = await query(`SELECT id FROM saas_proposals WHERE asaas_customer_id = ? AND status != 'PAID' ORDER BY created_at DESC LIMIT 1`, [customerId]);
-        if (rows.length > 0) proposalId = rows[0].id;
-      }
-
-      if (proposalId) {
-        console.log(`🚀 Disparando provisionamento automático para a proposta: ${proposalId}`);
-        await ProvisioningService.provisionFromProposal(proposalId);
-      } else {
-        console.log('ℹ️ Pagamento recebido para assinatura avulsa ou já provisionada.');
-      }
-
-      // Atualiza status da assinatura em saas_subscriptions
-      if (subscriptionId) {
-        await query(`
-          UPDATE saas_subscriptions 
-          SET status = 'ACTIVE', updated_at = NOW() 
-          WHERE id = ? OR customer_id = ?
-        `, [subscriptionId, customerId]);
-      }
+    const paymentId = safeProviderId(body.payment?.id);
+    const subscriptionId = safeProviderId(body.payment?.subscription || body.subscription?.id);
+    const checkoutId = safeProviderId(body.checkout?.id);
+    if (eventType.startsWith('PAYMENT_') && !paymentId) {
+      return apiResponse(400, { message: 'Evento de pagamento sem identificador' });
+    }
+    if (eventType.startsWith('SUBSCRIPTION_') && !subscriptionId) {
+      return apiResponse(400, { message: 'Evento de assinatura sem identificador' });
     }
 
-    // 2. Pagamento Atrasado / Inadimplência
-    else if (webhookEvent === 'PAYMENT_OVERDUE') {
-      console.warn(`⚠️ Assinatura com pagamento em atraso: ${subscriptionId || customerId}`);
-      if (subscriptionId || customerId) {
-        await query(`
-          UPDATE saas_subscriptions 
-          SET status = 'OVERDUE', updated_at = NOW() 
-          WHERE id = ? OR customer_id = ?
-        `, [subscriptionId, customerId]);
+    const payloadHash = crypto.createHash('sha256').update(JSON.stringify(body)).digest('hex');
+    const insert = await query(`INSERT IGNORE INTO asaas_webhook_events
+      (id, event_type, payment_id, subscription_id, checkout_id, payload_hash, status)
+      VALUES (?, ?, ?, ?, ?, ?, 'RECEIVED')`, [
+      eventId, eventType, paymentId, subscriptionId, checkoutId, payloadHash
+    ]);
+    const inserted = Number((insert.rows as any).affectedRows || 0) === 1;
+    if (!inserted) {
+      const { rows } = await query('SELECT status FROM asaas_webhook_events WHERE id = ? LIMIT 1', [eventId]);
+      if (rows[0]?.status === 'PROCESSED') {
+        return apiResponse(200, { received: true, duplicate: true });
       }
     }
 
-    // 3. Pagamento Regularizado após atraso
-    else if (webhookEvent === 'PAYMENT_RESTORED' && ['CONFIRMED', 'RECEIVED'].includes(payment.status)) {
-      if (subscriptionId || customerId) {
-        await query(`
-          UPDATE saas_subscriptions 
-          SET status = 'ACTIVE', updated_at = NOW() 
-          WHERE id = ? OR customer_id = ?
-        `, [subscriptionId, customerId]);
-      }
-    }
-
-    return apiResponse(200, { received: true, event: webhookEvent });
+    await enqueueAsaasEvent(eventId);
+    await query(`UPDATE asaas_webhook_events SET status = 'QUEUED', last_error = NULL, updated_at = NOW()
+      WHERE id = ? AND status != 'PROCESSED'`, [eventId]);
+    return apiResponse(200, { received: true, event_id: eventId });
   } catch (error: any) {
-    console.error('Erro no processamento do Webhook Asaas:', error);
-    return apiResponse(500, { message: 'Erro interno ao processar webhook', error: error.message });
+    console.error('Falha ao persistir webhook Asaas', { error: error?.message || 'UNKNOWN' });
+    return apiResponse(500, { message: 'Falha temporária ao receber evento' });
   }
 };

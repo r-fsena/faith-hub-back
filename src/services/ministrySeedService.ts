@@ -98,7 +98,14 @@ export const BASE_MINISTRIES_TEMPLATE: BaseMinistryTemplate[] = [
  * Cria os 6 ministérios padrão e suas funções para uma nova organização/tenant.
  * Garante que cada tenant tenha seus próprios registros isolados (Multi-Tenant First).
  */
-export async function seedDefaultMinistries(orgId: string, campusId?: string): Promise<void> {
+type QueryExecutor = (sql: string, params?: any[]) => Promise<any>;
+
+export async function seedDefaultMinistries(
+  orgId: string,
+  campusId?: string,
+  executor: QueryExecutor = query,
+  throwOnError = false
+): Promise<void> {
   if (!orgId) return;
 
   try {
@@ -106,7 +113,7 @@ export async function seedDefaultMinistries(orgId: string, campusId?: string): P
       const ministryId = orgId === 'org_default' ? `min_${item.slug}` : `min_${orgId.replace(/[^a-zA-Z0-9]/g, '_')}_${item.slug}`;
       const finalCampusId = campusId || (orgId === 'org_default' ? 'campus_sede' : null);
 
-      await query(`
+      await executor(`
         INSERT INTO ministries (
           id, organization_id, campus_id, name, slug, description, icon, color, status
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'ACTIVE')
@@ -134,7 +141,7 @@ export async function seedDefaultMinistries(orgId: string, campusId?: string): P
           ? `role_${item.slug}_${i + 1}`
           : `role_${orgId.replace(/[^a-zA-Z0-9]/g, '_')}_${item.slug}_${i + 1}`;
 
-        await query(`
+        await executor(`
           INSERT INTO ministry_roles (
             id, organization_id, ministry_id, name, description, min_volunteers
           ) VALUES (?, ?, ?, ?, ?, ?)
@@ -154,5 +161,6 @@ export async function seedDefaultMinistries(orgId: string, campusId?: string): P
     console.log(`✅ [seedDefaultMinistries] Ministérios e funções criados com sucesso para tenant: ${orgId}`);
   } catch (err) {
     console.error(`❌ [seedDefaultMinistries] Erro ao criar ministérios para tenant ${orgId}:`, err);
+    if (throwOnError) throw err;
   }
 }

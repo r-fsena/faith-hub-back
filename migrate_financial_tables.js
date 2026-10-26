@@ -139,21 +139,8 @@ async function runMigration() {
       `, [orgId, orgId, orgId]);
     }
 
-    // Verificar faturas SaaS
-    const [existingInv] = await conn.query('SELECT COUNT(*) as total FROM saas_invoices WHERE organization_id = ?', [orgId]);
-    if (existingInv[0].total === 0) {
-      console.log(`Inserindo faturas de exemplo da Faith-Hub para org: ${orgId}`);
-      const nextMonth = new Date(Date.now() + 15 * 86400000).toISOString().split('T')[0];
-      const lastMonth = new Date(Date.now() - 15 * 86400000).toISOString().split('T')[0];
-
-      await conn.query(`
-        INSERT INTO saas_invoices
-        (id, subscription_id, organization_id, plan_id, amount, due_date, paid_at, status, payment_method, pix_copy_paste)
-        VALUES
-        (UUID(), 'sub_faith_pro', ?, 'plan_pro', 297.00, ?, NULL, 'PENDING', 'PIX', '00020126580014br.gov.bcb.pix0136fa89c092-231a-493e-bfa1-923847294820520400005303986540297.005802BR5916FAITH HUB SAAS6009SAO PAULO62070503***6304'),
-        (UUID(), 'sub_faith_pro', ?, 'plan_pro', 297.00, ?, NOW(), 'PAID', 'PIX', NULL)
-      `, [orgId, nextMonth, orgId, lastMonth]);
-    }
+    // Faturas SaaS nunca recebem dados demonstrativos. Elas são criadas somente
+    // após eventos autenticados e reconciliados com o provedor de pagamentos.
   }
 
   console.log('✅ Migração financeira e dados demonstrativos criados com sucesso!');

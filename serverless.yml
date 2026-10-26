@@ -62,16 +62,16 @@ provider:
     DB_SECRET_ARN: ${env:DB_SECRET_ARN, ''}
     DB_SSL: ${env:DB_SSL, 'require'}
     RATE_LIMIT_TABLE: !Ref RateLimitTable
+    SAAS_OPERATIONS_QUEUE_URL: !Ref SaasOperationsQueue
     S3_MEDIA_BUCKET: ${env:S3_MEDIA_BUCKET, 'faith-hub-media-bucket-rafaelsena'}
-    ASAAS_API_KEY: ${env:ASAAS_API_KEY}
-    ASAAS_ENVIRONMENT: ${env:ASAAS_ENVIRONMENT, 'production'}
-    ASAAS_WEBHOOK_SECRET: ${env:ASAAS_WEBHOOK_SECRET}
+    ASAAS_SECRET_ARN: ${env:ASAAS_SECRET_ARN, ''}
   iam:
     role:
       statements:
         - Effect: Allow
           Action:
             - cognito-idp:AdminCreateUser
+            - cognito-idp:AdminGetUser
             - cognito-idp:AdminDisableUser
             - cognito-idp:AdminEnableUser
             - cognito-idp:AdminResetUserPassword
@@ -81,11 +81,20 @@ provider:
         - Effect: Allow
           Action:
             - secretsmanager:GetSecretValue
-          Resource: ${env:DB_SECRET_ARN, 'arn:aws:secretsmanager:us-east-2:*:secret:faith-hub/database/runtime-*'}
+          Resource:
+            - ${env:DB_SECRET_ARN, 'arn:aws:secretsmanager:us-east-2:*:secret:faith-hub/database/runtime-*'}
+            - ${env:ASAAS_SECRET_ARN, 'arn:aws:secretsmanager:us-east-2:*:secret:faith-hub/asaas/platform-*'}
         - Effect: Allow
           Action:
             - dynamodb:UpdateItem
           Resource: !GetAtt RateLimitTable.Arn
+        - Effect: Allow
+          Action:
+            - sqs:SendMessage
+            - sqs:ReceiveMessage
+            - sqs:DeleteMessage
+            - sqs:GetQueueAttributes
+          Resource: !GetAtt SaasOperationsQueue.Arn
 
 plugins:
   - serverless-plugin-split-stacks
@@ -118,6 +127,19 @@ resources:
         TimeToLiveSpecification:
           AttributeName: expires_at
           Enabled: true
+    SaasOperationsDeadLetterQueue:
+      Type: AWS::SQS::Queue
+      Properties:
+        QueueName: ${self:service}-${sls:stage}-saas-operations-dlq
+        MessageRetentionPeriod: 1209600
+    SaasOperationsQueue:
+      Type: AWS::SQS::Queue
+      Properties:
+        QueueName: ${self:service}-${sls:stage}-saas-operations
+        VisibilityTimeout: 180
+        RedrivePolicy:
+          deadLetterTargetArn: !GetAtt SaasOperationsDeadLetterQueue.Arn
+          maxReceiveCount: 5
 
 functions:
   inviteMember:
@@ -815,14 +837,6 @@ functions:
           method: POST
           path: /proposals/public/{token}/accept
 
-  simulateProposalPayment:
-    handler: src/functions/proposals.simulatePayment
-    events:
-      - httpApi:
-          authorizer: cognitoAuthorizer
-          method: POST
-          path: /proposals/{id}/simulate-payment
-
   listSaasSubscriptions:
     handler: src/functions/proposals.listSubscriptions
     events:
@@ -837,6 +851,15 @@ functions:
       - httpApi:
           method: POST
           path: /webhooks/asaas
+
+  processSaasBillingQueue:
+    handler: src/functions/saasBillingWorker.handleSaasBillingQueue
+    timeout: 120
+    events:
+      - sqs:
+          arn: !GetAtt SaasOperationsQueue.Arn
+          batchSize: 5
+          functionResponseType: ReportBatchItemFailures
 
   listSaasPlans:
     handler: src/functions/saasPlans.listPlans

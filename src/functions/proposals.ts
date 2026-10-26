@@ -3,11 +3,11 @@ import { checkRateLimit } from '../services/rateLimiter';
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { v4 as uuidv4 } from 'uuid';
 import crypto from 'crypto';
-import { query, apiResponse } from '../db';
+import { query, apiResponse, getConnection } from '../db';
 import { AsaasService } from '../services/asaasService';
-import { ProvisioningService } from '../services/provisioningService';
 import { requireAuth, enforceRole, enforceTenant } from '../services/authMiddleware';
 import { logSecurityEvent } from '../services/auditLogService';
+import { requireFeature } from '../services/featureFlagService';
 
 // 1. Criar Nova Proposta Comercial (POST /proposals) - Apenas SuperAdmin
 export const createProposal = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
@@ -63,20 +63,6 @@ export const createProposal = async (event: APIGatewayProxyEvent): Promise<APIGa
       firstCycleAmount = Math.max(0, baseAmount - discVal);
     }
 
-    // 1. Cria cliente preliminar no Asaas (se configurado)
-    let asaasCustomerId: string | null = null;
-    try {
-      const asaasCustomer = await AsaasService.createCustomer({
-        name: contact_name,
-        email: contact_email,
-        cpfCnpj: cnpj_cpf,
-        mobilePhone: contact_phone
-      });
-      asaasCustomerId = asaasCustomer.id || null;
-    } catch (e) {
-      console.warn('Asaas createCustomer silencioso:', e);
-    }
-
     const defaultFeatures = [
       'Aplicativo PWA Mobile Whitelabel Personalizado',
       'Portal Administrativo Web Studio Multi-usuário',
@@ -116,7 +102,7 @@ export const createProposal = async (event: APIGatewayProxyEvent): Promise<APIGa
       featuresJson,
       notes || null,
       expiresAt,
-      asaasCustomerId,
+      null,
       created_by || 'Master Admin',
       discType,
       discVal,
@@ -190,7 +176,10 @@ export const listProposals = async (event: APIGatewayProxyEvent): Promise<APIGat
       else if (status === 'SENT') { funnel.sent++; pipelineMRR += amount; }
       else if (status === 'VIEWED') { funnel.viewed++; pipelineMRR += amount; }
       else if (status === 'ACCEPTED') { funnel.accepted++; pipelineMRR += amount; }
-      else if (status === 'PAID') { funnel.paid++; totalMRR += amount; }
+      else if (status === 'PAID') {
+        funnel.paid++;
+        if (p.billing_status !== 'LEGACY_UNVERIFIED') totalMRR += amount;
+      }
       else if (status === 'CANCELLED' || status === 'EXPIRED') funnel.cancelled++;
 
       p.proposal_url = `https://studio.faithhubs.com/?proposta=${p.token}`;
@@ -223,7 +212,13 @@ export const getPublicProposal = async (event: APIGatewayProxyEvent): Promise<AP
     const token = event.pathParameters?.token || event.queryStringParameters?.token;
     if (!token) return apiResponse(400, { message: 'Token de proposta ausente' });
 
-    const { rows } = await query(`SELECT * FROM saas_proposals WHERE token = ? OR id = ? LIMIT 1`, [token, token]);
+    const { rows } = await query(`SELECT
+      id, token, church_name, suggested_slug, contact_name, contact_email, contact_phone,
+      plan_tier, billing_cycle, monthly_amount, setup_fee, status, features_included,
+      notes, expires_at, accepted_at, created_organization_id, asaas_checkout_url,
+      discount_type, discount_value, discount_duration_months, first_cycle_amount,
+      notes_commercial, billing_status
+      FROM saas_proposals WHERE token = ? LIMIT 1`, [token]);
     if (rows.length === 0) {
       return apiResponse(404, { message: 'Proposta comercial não encontrada ou expirada' });
     }
@@ -251,159 +246,130 @@ export const getPublicProposal = async (event: APIGatewayProxyEvent): Promise<AP
 
 // 4. Aceitar Proposta e Gerar Checkout / Ativação (POST /proposals/public/{token}/accept)
 export const acceptProposal = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  let connection: Awaited<ReturnType<typeof getConnection>> | undefined;
   try {
     const limit = await checkRateLimit(event, { maxRequests: 10, windowSeconds: 60, identifierPrefix: 'accept-proposal' });
     if (!limit.allowed) return limit.errorResponse!;
+    if (!(await requireFeature(event, 'system.saas_billing_checkout'))) {
+      return apiResponse(503, { message: 'Checkout temporariamente indisponível para homologação segura.' });
+    }
     const token = event.pathParameters?.token || event.queryStringParameters?.token;
     const body = JSON.parse(event.body || '{}');
-    const clientIp = event.requestContext?.identity?.sourceIp || 'web_client';
+    const clientIp = (event.requestContext as any)?.http?.sourceIp || event.requestContext?.identity?.sourceIp || 'web_client';
 
     if (!token) return apiResponse(400, { message: 'Token de proposta ausente' });
+    if (body.creditCard || body.creditCardHolderInfo) {
+      return apiResponse(400, { message: 'Dados de cartão devem ser informados somente no checkout seguro do Asaas.' });
+    }
+    if (body.termsAccepted !== true) return apiResponse(400, { message: 'É necessário aceitar os termos da proposta.' });
 
-    const { rows } = await query(`SELECT * FROM saas_proposals WHERE token = ? LIMIT 1`, [token]);
+    connection = await getConnection();
+    await connection.beginTransaction();
+    const [rows] = await connection.query(`SELECT * FROM saas_proposals WHERE token = ? LIMIT 1 FOR UPDATE`, [token]) as any;
     if (rows.length === 0) {
+      await connection.rollback();
       return apiResponse(404, { message: 'Proposta não encontrada' });
     }
 
     const proposal = rows[0];
-    if (proposal.expires_at && new Date(proposal.expires_at) < new Date()) return apiResponse(410, { message: 'Proposta expirada' });
-
-    // Se já foi paga / provisionada
+    if (proposal.expires_at && new Date(proposal.expires_at) < new Date()) {
+      await connection.rollback();
+      return apiResponse(410, { message: 'Proposta expirada' });
+    }
     if (proposal.status === 'PAID') {
+      await connection.commit();
       return apiResponse(200, {
         message: 'Esta proposta já foi aprovada e o ambiente está ativo!',
         status: 'PAID',
         organization_id: proposal.created_organization_id
       });
     }
-
-    const isFirstFree = proposal.discount_type === 'FIRST_FREE';
-    let asaasSubId = proposal.asaas_subscription_id;
-    let paymentLink = proposal.asaas_payment_link;
-
-    try {
-      let customerId = proposal.asaas_customer_id;
-      if (!customerId) {
-        const customer = await AsaasService.createCustomer({
-          name: proposal.contact_name,
-          email: proposal.contact_email,
-          cpfCnpj: proposal.cnpj_cpf,
-          mobilePhone: proposal.contact_phone
-        });
-        customerId = customer.id;
-      }
-
-      // Se a primeira mensalidade for gratuita (carência de 30 dias), agenda para 30 dias à frente
-      const daysAhead = isFirstFree ? 30 : 2;
-      const dueDate = new Date(Date.now() + daysAhead * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-
-      // Cria assinatura recorrente no Asaas
-      const sub = await AsaasService.createSubscription({
-        customer: customerId,
-        billingType: body.billingType || 'PIX',
-        value: Number(proposal.monthly_amount),
-        nextDueDate: dueDate,
-        cycle: proposal.billing_cycle === 'YEARLY' ? 'YEARLY' : 'MONTHLY',
-        description: `Assinatura Faith-Hub SaaS - ${proposal.church_name} (${proposal.plan_tier})${isFirstFree ? ' [1º Mês Grátis]' : ''}`,
-        creditCard: body.creditCard,
-        creditCardHolderInfo: body.creditCardHolderInfo
-      });
-
-      asaasSubId = sub.id;
-      paymentLink = sub.paymentLink || sub.invoiceUrl || `https://studio.faithhubs.com/?proposta=${token}&step=pay`;
-    } catch (asaasErr) {
-      console.warn('Falha no provedor de assinaturas');
-      return apiResponse(502, { message: 'Não foi possível iniciar a cobrança. Tente novamente.' });
-    }
-
-    // Se a primeira mensalidade é 100% gratuita, PROVISIONA O AMBIENTE IMEDIATAMENTE NA AWS!
-    if (isFirstFree) {
-      console.log(`🎁 Proposta com 1º mês grátis aceita. Provisionando ambiente imediatamente: ${proposal.id}`);
-      const provisionResult = await ProvisioningService.provisionFromProposal(proposal.id);
-
-      await query(`
-        UPDATE saas_proposals 
-        SET status = 'PAID',
-            accepted_at = NOW(),
-            accepted_ip = ?,
-            asaas_subscription_id = ?,
-            asaas_payment_link = ?,
-            updated_at = NOW()
-        WHERE id = ?
-      `, [clientIp, asaasSubId, paymentLink, proposal.id]);
-
+    if (proposal.asaas_checkout_id && proposal.asaas_checkout_url) {
+      await connection.commit();
       return apiResponse(200, {
-        message: '🎉 Parabéns! Sua proposta com 1º Mês Grátis foi ativada e o ambiente já está pronto!',
-        status: 'PAID',
-        is_free_trial: true,
-        provision_result: provisionResult,
-        login_url: 'https://studio.faithhubs.com',
-        pwa_url: provisionResult.pwa_url
+        message: 'Checkout já criado.', status: 'ACCEPTED',
+        checkout_id: proposal.asaas_checkout_id, payment_link: proposal.asaas_checkout_url
+      });
+    }
+    if (!proposal.cnpj_cpf) {
+      await connection.rollback();
+      return apiResponse(422, { message: 'A proposta precisa de CPF/CNPJ para iniciar o checkout.' });
+    }
+    if (Number(proposal.setup_fee || 0) > 0 || ['FIRST_MONTH_DISCOUNT', 'RECURRING_MONTHS_DISCOUNT'].includes(proposal.discount_type)) {
+      await connection.rollback();
+      return apiResponse(409, {
+        message: 'Esta condição comercial precisa ser convertida em cobrança compatível antes do checkout recorrente.'
       });
     }
 
-    // Caso contrário, atualiza como ACCEPTED e aguarda pagamento da primeira mensalidade
-    await query(`
-      UPDATE saas_proposals 
+    const externalReference = `faithhub:proposal:${proposal.id}`;
+    const isFirstFree = proposal.discount_type === 'FIRST_FREE';
+    const recurringValue = proposal.discount_type === 'PERMANENT_DISCOUNT'
+      ? Number(proposal.first_cycle_amount)
+      : Number(proposal.monthly_amount);
+    const daysAhead = isFirstFree ? 30 : 2;
+    const nextDueDate = new Date(Date.now() + daysAhead * 86400000).toISOString().slice(0, 10);
+    const checkout = await AsaasService.createHostedRecurringCheckout({
+      externalReference,
+      billingTypes: ['PIX', 'CREDIT_CARD'],
+      name: `Faith-Hub ${proposal.plan_tier}`,
+      description: `Assinatura recorrente Faith-Hub para ${proposal.church_name}`,
+      value: recurringValue,
+      cycle: proposal.billing_cycle === 'YEARLY' ? 'YEARLY' :
+        proposal.billing_cycle === 'SEMIANNUAL' ? 'SEMIANNUALLY' :
+        proposal.billing_cycle === 'QUARTERLY' ? 'QUARTERLY' : 'MONTHLY',
+      nextDueDate,
+      customerData: {
+        name: proposal.contact_name,
+        email: proposal.contact_email,
+        cpfCnpj: proposal.cnpj_cpf,
+        phone: proposal.contact_phone || undefined
+      },
+      successUrl: `https://studio.faithhubs.com/?proposta=${encodeURIComponent(token)}&retorno=asaas`
+    });
+
+    await connection.query(`UPDATE saas_proposals
       SET status = 'ACCEPTED',
           accepted_at = NOW(),
           accepted_ip = ?,
-          asaas_subscription_id = ?,
+          asaas_checkout_id = ?,
+          asaas_checkout_url = ?,
           asaas_payment_link = ?,
+          billing_status = 'CHECKOUT_CREATED',
+          billing_external_reference = ?,
+          billing_environment = ?,
+          billing_error = NULL,
           updated_at = NOW()
       WHERE id = ?
-    `, [clientIp, asaasSubId, paymentLink, proposal.id]);
-
-    return apiResponse(200, {
-      message: 'Proposta aceita com sucesso!',
-      proposal_id: proposal.id,
-      status: 'ACCEPTED',
-      payment_link: paymentLink,
-      subscription_id: asaasSubId
-    });
-  } catch (error: any) {
-    console.error('Erro ao aceitar proposta:', error);
-    return apiResponse(500, { message: 'Erro ao aceitar proposta comercial', error: error.message });
-  }
-};
-
-// 5. Simular Pagamento e Testar Provisionamento Instantâneo (POST /proposals/{id}/simulate-payment) - Apenas SUPERADMIN
-export const simulatePayment = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
-  try {
-    if (process.env.ASAAS_ENVIRONMENT !== 'sandbox') return apiResponse(403, { message: 'Simulação disponível somente no sandbox' });
-    const auth = await requireAuth(event);
-    if ('errorResponse' in auth) return auth.errorResponse;
-
-    const roleCheck = enforceRole(auth.user, ['SUPERADMIN']);
-    if (!roleCheck.allowed) return roleCheck.errorResponse!;
-
-    const id = event.pathParameters?.id;
-    if (!id) return apiResponse(400, { message: 'ID da proposta ausente' });
-
-    console.log(`⚡ Simulando pagamento e disparando provisionamento da proposta: ${id} por ${auth.user.email}`);
-    const result = await ProvisioningService.provisionFromProposal(id);
+    `, [clientIp, checkout.id, checkout.url, checkout.url, externalReference, checkout.environment, proposal.id]);
+    await connection.commit();
 
     await logSecurityEvent({
-      organizationId: auth.user.organizationId,
-      user: auth.user,
-      action: 'SIMULATE_PAYMENT_PROVISION',
+      organizationId: proposal.created_organization_id || 'org_default',
+      action: 'CREATE_ASAAS_HOSTED_CHECKOUT',
       resource: 'saas_proposals',
-      resourceId: id,
-      details: { proposalId: id, triggeredBy: auth.user.email },
+      resourceId: proposal.id,
+      details: { checkoutId: checkout.id, billingTypes: ['PIX', 'CREDIT_CARD'], environment: checkout.environment },
       event
     });
 
     return apiResponse(200, {
-      message: 'Pagamento confirmado e Ambiente provisionado com sucesso!',
-      result
+      message: 'Checkout seguro criado com sucesso.',
+      proposal_id: proposal.id,
+      status: 'ACCEPTED',
+      checkout_id: checkout.id,
+      payment_link: checkout.url
     });
   } catch (error: any) {
-    console.error('Erro ao simular pagamento:', error);
-    return apiResponse(500, { message: 'Erro no provisionamento automático', error: error.message });
+    if (connection) await connection.rollback().catch(() => undefined);
+    console.error('Erro ao criar checkout hospedado:', { error: error?.message || 'UNKNOWN' });
+    return apiResponse(502, { message: 'Não foi possível iniciar o checkout seguro. Tente novamente.' });
+  } finally {
+    connection?.release();
   }
 };
 
-// 6. Listar Assinaturas do SaaS (GET /saas-subscriptions) - SUPERADMIN ou ADMIN com isolamento de tenant
+// 5. Listar Assinaturas do SaaS (GET /saas-subscriptions) - SUPERADMIN ou ADMIN com isolamento de tenant
 export const listSubscriptions = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   try {
     const auth = await requireAuth(event);
@@ -419,32 +385,29 @@ export const listSubscriptions = async (event: APIGatewayProxyEvent): Promise<AP
     const targetOrgId = requestedOrgId || (!auth.user.isSuperAdmin ? auth.user.organizationId : null);
 
     let sql = `
-      SELECT 
-        COALESCE(s.id, CONCAT('sub_auto_', o.id)) as id,
-        o.id as organization_id,
-        o.name as church_name,
+      SELECT
+        s.id,
+        s.organization_id,
+        COALESCE(s.church_name, o.name) as church_name,
         o.plan as org_plan,
         COALESCE(p.name, o.plan, 'Pro') as plan_name,
         p.description as plan_description,
-        COALESCE(p.badge_text, 'Ativo') as plan_badge,
-        COALESCE(s.value, IF(s.cycle = 'YEARLY', p.yearly_price, p.monthly_price), '399.90') as value,
-        COALESCE(s.cycle, 'MONTHLY') as cycle,
-        COALESCE(s.billing_type, 'PIX') as billing_type,
-        COALESCE(s.next_due_date, DATE_ADD(CURDATE(), INTERVAL 1 MONTH)) as next_due_date,
-        COALESCE(s.status, 'ACTIVE') as status,
+        p.badge_text as plan_badge,
+        s.value, s.cycle, s.billing_type, s.next_due_date, s.status,
+        s.provider_status, s.external_reference, s.is_verified,
         p.features as plan_features,
         p.max_members,
         p.max_campuses,
         s.created_at,
         s.updated_at
-      FROM organizations o
-      LEFT JOIN saas_subscriptions s ON s.organization_id = o.id
+      FROM saas_subscriptions s
+      LEFT JOIN organizations o ON o.id = s.organization_id
       LEFT JOIN saas_plans p ON p.id = o.plan
     `;
     const params: any[] = [];
 
     if (targetOrgId) {
-      sql += ` WHERE o.id = ?`;
+      sql += ` WHERE s.organization_id = ?`;
       params.push(targetOrgId);
     }
 
