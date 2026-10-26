@@ -62,3 +62,29 @@ test('deployment and Studio contracts contain no fake or raw-card payment path',
   assert.ok(!studio.includes('api.qrserver.com'));
   assert.ok(!studio.includes('Modo Simulação'));
 });
+
+test('production checkout flag fails closed and releases only an allowlisted proposal', async () => {
+  const allowed = '00000000-0000-4000-8000-000000000001';
+  const denied = '00000000-0000-4000-8000-000000000002';
+  let enabled = true;
+  const dbPath = require.resolve('../src/db/index.ts');
+  require.cache[dbPath] = {
+    id: dbPath,
+    filename: dbPath,
+    loaded: true,
+    exports: {
+      query: async sql => ({ rows: sql.includes('FROM organizations') ? [{ plan: 'PRO' }] : [{
+        organization_id: 'global', feature_key: 'system.saas_billing_checkout', is_enabled: enabled ? 1 : 0,
+        environment: 'all', campus_id: null,
+        config_payload: JSON.stringify({ mode: 'allowlist', allowedProposalIds: [allowed] })
+      }] })
+    }
+  };
+  delete require.cache[require.resolve('../src/services/featureFlagService.ts')];
+  const { evaluateSaasCheckoutAccess } = require('../src/services/featureFlagService.ts');
+  assert.equal(await evaluateSaasCheckoutAccess(allowed), true);
+  assert.equal(await evaluateSaasCheckoutAccess(denied), false);
+  assert.equal(await evaluateSaasCheckoutAccess('invalid'), false);
+  enabled = false;
+  assert.equal(await evaluateSaasCheckoutAccess(allowed), false);
+});

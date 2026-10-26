@@ -7,7 +7,7 @@ import { query, apiResponse, getConnection } from '../db';
 import { AsaasService } from '../services/asaasService';
 import { requireAuth, enforceRole, enforceTenant } from '../services/authMiddleware';
 import { logSecurityEvent } from '../services/auditLogService';
-import { requireFeature } from '../services/featureFlagService';
+import { evaluateSaasCheckoutAccess } from '../services/featureFlagService';
 
 // 1. Criar Nova Proposta Comercial (POST /proposals) - Apenas SuperAdmin
 export const createProposal = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
@@ -236,6 +236,7 @@ export const getPublicProposal = async (event: APIGatewayProxyEvent): Promise<AP
     } catch {
       proposal.features_included = [];
     }
+    proposal.checkout_available = await evaluateSaasCheckoutAccess(proposal.id);
 
     return apiResponse(200, proposal);
   } catch (error: any) {
@@ -250,9 +251,6 @@ export const acceptProposal = async (event: APIGatewayProxyEvent): Promise<APIGa
   try {
     const limit = await checkRateLimit(event, { maxRequests: 10, windowSeconds: 60, identifierPrefix: 'accept-proposal' });
     if (!limit.allowed) return limit.errorResponse!;
-    if (!(await requireFeature(event, 'system.saas_billing_checkout'))) {
-      return apiResponse(503, { message: 'Checkout temporariamente indisponível para homologação segura.' });
-    }
     const token = event.pathParameters?.token || event.queryStringParameters?.token;
     const body = JSON.parse(event.body || '{}');
     const clientIp = (event.requestContext as any)?.http?.sourceIp || event.requestContext?.identity?.sourceIp || 'web_client';
@@ -272,6 +270,10 @@ export const acceptProposal = async (event: APIGatewayProxyEvent): Promise<APIGa
     }
 
     const proposal = rows[0];
+    if (!(await evaluateSaasCheckoutAccess(proposal.id))) {
+      await connection.rollback();
+      return apiResponse(503, { message: 'Checkout temporariamente indisponível para esta proposta.' });
+    }
     if (proposal.expires_at && new Date(proposal.expires_at) < new Date()) {
       await connection.rollback();
       return apiResponse(410, { message: 'Proposta expirada' });

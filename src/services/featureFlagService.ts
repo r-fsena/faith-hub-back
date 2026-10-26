@@ -34,6 +34,16 @@ export interface ResolvedFeatureFlags {
   }>;
 }
 
+export async function evaluateSaasCheckoutAccess(proposalId: string): Promise<boolean> {
+  if (!/^[0-9a-f-]{36}$/i.test(proposalId)) return false;
+  const evaluated = await evaluateTenantFlags('org_default', null, 'production');
+  if (!evaluated.flags['system.saas_billing_checkout']) return false;
+  const config = evaluated.configs['system.saas_billing_checkout'];
+  if (config?.mode === 'all') return true;
+  if (config?.mode !== 'allowlist' || !Array.isArray(config.allowedProposalIds)) return false;
+  return config.allowedProposalIds.includes(proposalId);
+}
+
 // Plan-based default permissions
 const PLAN_CONSTRAINTS: Record<string, { disabledPrefixes?: string[]; disabledKeys?: string[] }> = {
   STARTER: {

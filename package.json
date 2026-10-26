@@ -11,6 +11,7 @@
     "db:migrate:asaas:status": "node migrate_asaas_billing.js --status",
     "secrets:sync:asaas": "node scripts/sync-asaas-secret.cjs",
     "webhook:sync:asaas": "node scripts/sync-asaas-webhook.cjs",
+    "billing:pilot:asaas": "node scripts/set-asaas-production-pilot.cjs",
     "db:migrate:status": "node migrate_all.js --status",
     "db:sync": "npx ts-node src/db/syncCognito.ts",
     "test": "node --test tests/*.test.cjs",
