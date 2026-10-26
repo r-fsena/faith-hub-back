@@ -930,7 +930,7 @@ export const getMySchedules = async (event: APIGatewayProxyEvent): Promise<APIGa
         sri.confirmed_at,
         ss.id as schedule_id,
         ss.title as service_title,
-        ss.service_date,
+        DATE_FORMAT(ss.service_date, '%Y-%m-%d') as service_date,
         ss.service_time,
         ss.notes as schedule_notes,
         m.name as ministry_name,
