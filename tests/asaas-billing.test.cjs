@@ -37,7 +37,6 @@ test('hosted recurrence uses the sandbox endpoint and never sends card credentia
     billingTypes: ['CREDIT_CARD'],
     name: 'Faith-Hub PRO', description: 'Assinatura', value: 297,
     cycle: 'MONTHLY', nextDueDate: '2026-11-26',
-    customerData: { name: 'Igreja Teste', email: 'financeiro@example.org', cpfCnpj: '12.345.678/0001-90' },
     successUrl: 'https://studio.faithhubs.com/?proposta=token&retorno=sucesso',
     cancelUrl: 'https://studio.faithhubs.com/?proposta=token&retorno=cancelado',
     expiredUrl: 'https://studio.faithhubs.com/?proposta=token&retorno=expirado'
@@ -46,7 +45,7 @@ test('hosted recurrence uses the sandbox endpoint and never sends card credentia
   assert.equal(request.url, 'https://api-sandbox.asaas.com/v3/checkouts');
   assert.deepEqual(request.body.chargeTypes, ['RECURRENT']);
   assert.deepEqual(request.body.billingTypes, ['CREDIT_CARD']);
-  assert.equal(request.body.customerData.cpfCnpj, '12345678000190');
+  assert.equal(request.body.customerData, undefined);
   assert.equal(request.body.items[0].imageBase64, undefined);
   assert.equal(request.body.callback.cancelUrl.includes('cancelado'), true);
   assert.equal(request.body.callback.autoRedirect, undefined);
@@ -60,7 +59,6 @@ test('hosted recurrence rejects PIX and values below the provider minimum before
     externalReference: 'faithhub:proposal:00000000-0000-4000-8000-000000000001',
     name: 'Faith-Hub PRO', description: 'Assinatura', value: 5,
     cycle: 'MONTHLY', nextDueDate: '2026-11-26',
-    customerData: { name: 'Igreja Teste', email: 'financeiro@example.org', cpfCnpj: '12345678000190' },
     successUrl: 'https://studio.faithhubs.com/sucesso',
     cancelUrl: 'https://studio.faithhubs.com/cancelado',
     expiredUrl: 'https://studio.faithhubs.com/expirado'

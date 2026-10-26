@@ -325,12 +325,6 @@ export const acceptProposal = async (event: APIGatewayProxyEvent): Promise<APIGa
         proposal.billing_cycle === 'SEMIANNUAL' ? 'SEMIANNUALLY' :
         proposal.billing_cycle === 'QUARTERLY' ? 'QUARTERLY' : 'MONTHLY',
       nextDueDate,
-      customerData: {
-        name: proposal.contact_name,
-        email: proposal.contact_email,
-        cpfCnpj: proposal.cnpj_cpf,
-        phone: proposal.contact_phone || undefined
-      },
       successUrl: `https://studio.faithhubs.com/?proposta=${encodeURIComponent(token)}&retorno=asaas-sucesso`,
       cancelUrl: `https://studio.faithhubs.com/?proposta=${encodeURIComponent(token)}&retorno=asaas-cancelado`,
       expiredUrl: `https://studio.faithhubs.com/?proposta=${encodeURIComponent(token)}&retorno=asaas-expirado`

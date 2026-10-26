@@ -8,7 +8,6 @@ export interface HostedCheckoutInput {
   value: number;
   cycle: 'MONTHLY' | 'QUARTERLY' | 'SEMIANNUALLY' | 'YEARLY';
   nextDueDate: string;
-  customerData: { name: string; email: string; cpfCnpj: string; phone?: string };
   successUrl: string;
   cancelUrl: string;
   expiredUrl: string;
@@ -92,12 +91,6 @@ export class AsaasService {
           value: input.value
         }],
         subscription: { cycle: input.cycle, nextDueDate: input.nextDueDate },
-        customerData: {
-          name: input.customerData.name,
-          email: input.customerData.email,
-          cpfCnpj: input.customerData.cpfCnpj.replace(/\D/g, ''),
-          phone: input.customerData.phone?.replace(/\D/g, '') || undefined
-        },
         callback: {
           successUrl: input.successUrl,
           cancelUrl: input.cancelUrl,
