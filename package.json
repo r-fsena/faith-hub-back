@@ -7,6 +7,7 @@
     "start": "export $(grep -v '^#' .env | xargs) && serverless offline start",
     "deploy": "npm run typecheck && npm test && node deploy_aws.js",
     "db:migrate": "node migrate_all.js",
+    "db:migrate:status": "node migrate_all.js --status",
     "db:sync": "npx ts-node src/db/syncCognito.ts",
     "test": "node --test tests/*.test.cjs",
     "db:migrate:security": "node migrate_security_tenants.js",

@@ -1,16 +1,11 @@
-const mysql = require('mysql2/promise');
 require('dotenv').config();
+const crypto = require('crypto');
+const { createAdminConnection } = require('./scripts/db-admin.cjs');
 
 async function migrateAll() {
   console.log('🚀 Iniciando criação completa de todas as tabelas no RDS MySQL...');
 
-  const connection = await mysql.createConnection({
-    host: process.env.DB_HOST,
-    port: parseInt(process.env.DB_PORT || '3306'),
-    user: process.env.DB_USER,
-    password: process.env.DB_PASSWORD,
-    database: process.env.DB_NAME || 'faith-hub'
-  });
+  const connection = await createAdminConnection();
 
   const queries = [
     // 1. cell_groups
@@ -298,21 +293,52 @@ async function migrateAll() {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;`
   ];
 
-  for (let q of queries) {
-    try {
+  const migrationId = '20261026_001_legacy_schema_baseline';
+  const checksum = crypto.createHash('sha256').update(JSON.stringify(queries)).digest('hex');
+  let lockAcquired = false;
+  try {
+    const [lockRows] = await connection.query(`SELECT GET_LOCK('faith_hub_schema_migrations', 30) AS acquired`);
+    lockAcquired = Number(lockRows[0].acquired) === 1;
+    if (!lockAcquired) throw new Error('MIGRATION_LOCK_TIMEOUT');
+    await connection.query(`CREATE TABLE IF NOT EXISTS schema_migrations (
+      migration_id VARCHAR(150) PRIMARY KEY,
+      checksum CHAR(64) NOT NULL,
+      applied_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
+    const [applied] = await connection.query('SELECT migration_id, checksum, applied_at FROM schema_migrations WHERE migration_id = ?', [migrationId]);
+
+    if (process.argv.includes('--status')) {
+      console.log(JSON.stringify({ migrationId, state: applied.length ? 'APPLIED' : 'PENDING', checksumMatches: !applied.length || applied[0].checksum === checksum, appliedAt: applied[0]?.applied_at || null }));
+      return;
+    }
+    if (applied.length) {
+      if (applied[0].checksum !== checksum) throw new Error(`MIGRATION_CHECKSUM_MISMATCH:${migrationId}`);
+      console.log(`✅ Migração ${migrationId} já aplicada; nenhuma alteração necessária.`);
+      return;
+    }
+
+    for (const q of queries) {
       await connection.query(q);
       const firstLine = q.trim().split('\n')[0];
       console.log('✅ Executado:', firstLine);
-    } catch (err) {
-      console.error('❌ Erro na query:', err.message);
     }
+    await connection.query('INSERT INTO schema_migrations (migration_id, checksum) VALUES (?, ?)', [migrationId, checksum]);
+    const [auditTables] = await connection.query("SHOW TABLES LIKE 'security_audit_logs'");
+    if (auditTables.length) {
+      await connection.query(`INSERT INTO security_audit_logs
+        (id, organization_id, user_id, user_email, user_role, action, resource, resource_id, details, status)
+        VALUES (UUID(), ?, ?, ?, ?, ?, ?, ?, ?, ?)`, [
+        'org_default', null, 'system@faithhubs.com', 'SYSTEM', 'APPLY_DATABASE_MIGRATION',
+        'schema_migrations', migrationId, JSON.stringify({ checksum }), 'SUCCESS'
+      ]);
+    }
+
+    const [tables] = await connection.query('SHOW TABLES;');
+    console.log(JSON.stringify({ migrationId, state: 'APPLIED', tableCount: tables.length }));
+  } finally {
+    if (lockAcquired) await connection.query(`SELECT RELEASE_LOCK('faith_hub_schema_migrations')`);
+    await connection.end();
   }
-
-  const [tables] = await connection.query('SHOW TABLES;');
-  console.log('\n🎉 TODAS AS 17 TABELAS FORAM CRIADAS NO BANCO:');
-  console.log(tables.map(r => Object.values(r)[0]));
-
-  await connection.end();
 }
 
-migrateAll().catch(console.error);
+migrateAll().catch(error => { console.error(error.message); process.exitCode = 1; });
