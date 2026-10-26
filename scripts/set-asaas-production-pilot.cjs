@@ -14,17 +14,24 @@ async function main() {
     let proposalId = null;
     if (!disable) {
       proposalId = argument;
-      const [rows] = await connection.query(`SELECT id, status, cnpj_cpf, setup_fee, discount_type,
-        created_organization_id, asaas_checkout_id FROM saas_proposals WHERE id = ? LIMIT 1 FOR UPDATE`, [proposalId]);
+      const [rows] = await connection.query(`SELECT p.id, p.status, p.cnpj_cpf, p.setup_fee,
+        p.discount_type, p.monthly_amount, p.first_cycle_amount, p.created_organization_id,
+        p.asaas_checkout_id, EXISTS(SELECT 1 FROM members m WHERE m.email = p.contact_email) AS email_in_use
+        FROM saas_proposals p WHERE p.id = ? LIMIT 1 FOR UPDATE`, [proposalId]);
       if (!rows.length) throw new Error('PILOT_PROPOSAL_NOT_FOUND');
       const proposal = rows[0];
       if (proposal.status === 'PAID' || proposal.created_organization_id) throw new Error('PILOT_PROPOSAL_ALREADY_PROVISIONED');
       if (!proposal.cnpj_cpf) throw new Error('PILOT_PROPOSAL_DOCUMENT_REQUIRED');
+      if (proposal.email_in_use) throw new Error('PILOT_ADMIN_EMAIL_ALREADY_ASSIGNED');
       if (Number(proposal.setup_fee || 0) > 0) throw new Error('PILOT_PROPOSAL_SETUP_FEE_NOT_SUPPORTED');
       if (['FIRST_MONTH_DISCOUNT', 'RECURRING_MONTHS_DISCOUNT'].includes(proposal.discount_type)) {
         throw new Error('PILOT_PROPOSAL_DISCOUNT_NOT_SUPPORTED');
       }
       if (proposal.asaas_checkout_id) throw new Error('PILOT_PROPOSAL_ALREADY_HAS_CHECKOUT');
+      const recurringValue = proposal.discount_type === 'PERMANENT_DISCOUNT'
+        ? Number(proposal.first_cycle_amount)
+        : Number(proposal.monthly_amount);
+      if (!Number.isFinite(recurringValue) || recurringValue <= 0) throw new Error('PILOT_RECURRING_VALUE_INVALID');
     }
 
     const config = disable
