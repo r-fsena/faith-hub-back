@@ -1,4 +1,5 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
+import { createHash, randomBytes } from 'crypto';
 import { apiResponse, getConnection, query } from '../db';
 import { v4 as uuidv4 } from 'uuid';
 import { logSecurityEvent } from '../services/auditLogService';
@@ -17,6 +18,9 @@ const MOVEMENT_STATUSES = new Set(['APPROVED', 'REJECTED', 'CANCELED']);
 const REQUEST_TYPES = new Set(['LETTER_PRESENTATION', 'LETTER_TRANSFER', 'BAPTISM_CERTIFICATE', 'DECLARATION', 'OTHER']);
 const REQUEST_STATUSES = new Set(['UNDER_REVIEW', 'APPROVED', 'REJECTED', 'COMPLETED', 'CANCELED']);
 const DOCUMENT_TYPES = new Set(['PRESENTATION_LETTER', 'TRANSFER_LETTER', 'BAPTISM_CERTIFICATE', 'DECLARATION', 'OTHER']);
+const TEMPLATE_STATUSES = new Set(['DRAFT', 'PENDING_APPROVAL', 'PUBLISHED', 'REJECTED', 'ARCHIVED']);
+const TEMPLATE_ACTIONS = new Set(['SUBMIT', 'APPROVE', 'REJECT', 'ARCHIVE', 'RESTORE']);
+const STUDIO_URL = process.env.STUDIO_URL || 'https://studio.faithhubs.com';
 
 function parseBody(event: APIGatewayProxyEvent): any {
   try {
@@ -37,6 +41,14 @@ function memberIdFromProxy(proxy: string): string | null {
   return match?.[1] || null;
 }
 
+function templateIdFromProxy(proxy: string): string | null {
+  return proxy.match(/^templates\/([^/]+)(?:\/(?:status|history|duplicate|copy-campus))?$/)?.[1] || null;
+}
+
+function documentIdFromProxy(proxy: string): string | null {
+  return proxy.match(/^documents\/([^/]+)(?:\/(?:status|verification|file-checksum))?$/)?.[1] || null;
+}
+
 function sanitizeFields(value: unknown): Record<string, string> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
   return Object.fromEntries(Object.entries(value as Record<string, unknown>)
@@ -53,6 +65,68 @@ function renderTemplateValue(value: any, fields: Record<string, string>): any {
     return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, renderTemplateValue(item, fields)]));
   }
   return value;
+}
+
+function safeColor(value: unknown, fallback: string): string {
+  const color = String(value || '').trim();
+  return /^#[0-9a-f]{6}$/i.test(color) ? color.toLowerCase() : fallback;
+}
+
+function safeNumber(value: unknown, fallback: number, min: number, max: number): number {
+  const number = Number(value);
+  return Number.isFinite(number) ? Math.min(max, Math.max(min, number)) : fallback;
+}
+
+function safeImageUrl(value: unknown): string | null {
+  const url = safeSecretariatText(value, 1000);
+  if (!url) return null;
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === 'https:' ? parsed.toString() : null;
+  } catch {
+    return null;
+  }
+}
+
+function sanitizeTemplateSchema(schema: any, fallbackName: string): Record<string, any> {
+  const design = schema?.design && typeof schema.design === 'object' ? schema.design : {};
+  return {
+    title: safeSecretariatText(schema?.title, 250) || fallbackName,
+    subtitle: safeSecretariatText(schema?.subtitle, 500),
+    body: String(schema?.body || '').slice(0, 20000),
+    footer: safeSecretariatText(schema?.footer, 2000),
+    orientation: schema?.orientation === 'landscape' ? 'landscape' : 'portrait',
+    design: {
+      page_size: 'A4',
+      primary_color: safeColor(design.primary_color, '#0f766e'),
+      secondary_color: safeColor(design.secondary_color, '#d4af37'),
+      text_color: safeColor(design.text_color, '#1e293b'),
+      background_color: safeColor(design.background_color, '#ffffff'),
+      border_color: safeColor(design.border_color, '#0f766e'),
+      border_style: ['none', 'single', 'double', 'classic'].includes(design.border_style) ? design.border_style : 'single',
+      border_width: safeNumber(design.border_width, 2, 0, 8),
+      margin_mm: safeNumber(design.margin_mm, 20, 8, 40),
+      title_font_size: safeNumber(design.title_font_size, 26, 16, 48),
+      body_font_size: safeNumber(design.body_font_size, 13, 9, 22),
+      font_family: ['helvetica', 'times', 'courier'].includes(design.font_family) ? design.font_family : 'times',
+      text_align: ['left', 'center', 'justify'].includes(design.text_align) ? design.text_align : 'justify',
+      logo_url: safeImageUrl(design.logo_url),
+      watermark_url: safeImageUrl(design.watermark_url),
+      watermark_opacity: safeNumber(design.watermark_opacity, 0.08, 0, 0.3),
+      show_document_number: design.show_document_number !== false,
+      show_qr_code: design.show_qr_code !== false,
+      signature_layout: design.signature_layout === 'double' ? 'double' : 'single'
+    }
+  };
+}
+
+function verificationToken(organizationId: string): { token: string; hash: string; url: string } {
+  const token = `${organizationId}.${randomBytes(32).toString('base64url')}`;
+  return {
+    token,
+    hash: createHash('sha256').update(token).digest('hex'),
+    url: `${STUDIO_URL}/verificar-documento/${encodeURIComponent(token)}`
+  };
 }
 
 function errorResponse(error: any, context: string): APIGatewayProxyResult {
@@ -92,7 +166,7 @@ export const getReferenceData = async (event: APIGatewayProxyEvent): Promise<API
         ORDER BY m.name ASC LIMIT 500`, [scope.organizationId, ...memberCampus.params]),
       query(`SELECT id, name FROM campuses WHERE organization_id = ? ORDER BY name ASC`, [scope.organizationId]),
       query(`SELECT x.id, x.name, x.document_type, x.version, x.template_schema
-        FROM document_templates x WHERE x.organization_id = ? AND x.is_active = 1${sharedEntityClause}
+        FROM document_templates x WHERE x.organization_id = ? AND x.is_active = 1 AND x.status = 'PUBLISHED'${sharedEntityClause}
         ORDER BY x.document_type, x.name, x.version DESC`, [scope.organizationId, ...sharedEntityParams]),
       query(`SELECT x.id, x.name, x.title, x.campus_id
         FROM document_signatories x WHERE x.organization_id = ? AND x.is_active = 1${sharedEntityClause}
@@ -404,13 +478,18 @@ export const createBaptism = async (event: APIGatewayProxyEvent): Promise<APIGat
 
 export const listTemplates = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   try {
-    const scope = await authorizeSecretariat(event, 'secretariat.view', {}, 'secretariat.documents');
+    const scope = await authorizeSecretariat(event, 'secretariat.view', {}, 'secretariat.template_editor');
     if (isSecretariatResponse(scope)) return scope;
     const campusClause = scope.campusId ? ' AND (dt.campus_id IS NULL OR dt.campus_id = ?)' : '';
     const campusParams = scope.campusId ? [scope.campusId] : [];
-    const result = await query(`SELECT dt.* FROM document_templates dt
+    const result = await query(`SELECT dt.*, c.name AS campus_name,
+        creator.name AS created_by_name, approver.name AS approved_by_name
+      FROM document_templates dt
+      LEFT JOIN campuses c ON c.organization_id = dt.organization_id AND c.id = dt.campus_id
+      LEFT JOIN members creator ON creator.organization_id = dt.organization_id AND creator.id = dt.created_by
+      LEFT JOIN members approver ON approver.organization_id = dt.organization_id AND approver.id = dt.approved_by
       WHERE dt.organization_id = ?${campusClause}
-      ORDER BY dt.document_type, dt.name, dt.version DESC`, [scope.organizationId, ...campusParams]);
+      ORDER BY dt.updated_at DESC, dt.document_type, dt.name, dt.version DESC`, [scope.organizationId, ...campusParams]);
     return apiResponse(200, { data: result.rows.map((item: any) => ({ ...item, template_schema: parseStoredJson(item.template_schema) })) });
   } catch (error: any) {
     return errorResponse(error, 'Erro ao listar modelos:');
@@ -420,7 +499,7 @@ export const listTemplates = async (event: APIGatewayProxyEvent): Promise<APIGat
 export const createTemplate = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   try {
     const body = parseBody(event);
-    const scope = await authorizeSecretariat(event, 'secretariat.manage_templates', body, 'secretariat.documents');
+    const scope = await authorizeSecretariat(event, 'secretariat.manage_templates', body, 'secretariat.template_editor');
     if (isSecretariatResponse(scope)) return scope;
     const documentType = safeSecretariatText(body.document_type, 50)?.toUpperCase();
     const name = safeSecretariatText(body.name, 150);
@@ -428,29 +507,199 @@ export const createTemplate = async (event: APIGatewayProxyEvent): Promise<APIGa
     if (!documentType || !DOCUMENT_TYPES.has(documentType) || !name || !schema || typeof schema !== 'object' || typeof schema.body !== 'string') {
       return apiResponse(400, { error: 'Tipo, nome e conteúdo do modelo são obrigatórios.' });
     }
-    const versionResult = await query(`SELECT COALESCE(MAX(version), 0) + 1 AS next_version
-      FROM document_templates WHERE organization_id = ? AND document_type = ? AND name = ?`,
-    [scope.organizationId, documentType, name]);
-    const version = Number(versionResult.rows[0]?.next_version || 1);
     const id = uuidv4();
-    const templateSchema = {
-      title: safeSecretariatText(schema.title, 250) || name,
-      body: String(schema.body).slice(0, 20000),
-      footer: safeSecretariatText(schema.footer, 2000),
-      orientation: schema.orientation === 'landscape' ? 'landscape' : 'portrait'
-    };
+    const templateSchema = sanitizeTemplateSchema(schema, name);
     await query(`INSERT INTO document_templates (
-        id, organization_id, campus_id, document_type, name, version, template_schema, is_active, created_by, updated_by
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`, [
-      id, scope.organizationId, scope.campusId, documentType, name, version,
+        id, template_key, organization_id, campus_id, document_type, name, version,
+        template_schema, status, is_active, created_by, updated_by
+      ) VALUES (?, ?, ?, ?, ?, ?, 1, ?, 'DRAFT', 0, ?, ?)`, [
+      id, id, scope.organizationId, scope.campusId, documentType, name,
       JSON.stringify(templateSchema), scope.user.userId, scope.user.userId
     ]);
     await logSecurityEvent({ organizationId: scope.organizationId, campusId: scope.campusId, user: scope.user,
       action: 'CREATE_DOCUMENT_TEMPLATE', resource: 'document_templates', resourceId: id,
-      details: { document_type: documentType, name, version }, event });
-    return apiResponse(201, { message: 'Nova versão do modelo criada.', id, version });
+      details: { document_type: documentType, name, version: 1, status: 'DRAFT' }, event });
+    return apiResponse(201, { message: 'Modelo criado como rascunho.', id, version: 1, status: 'DRAFT' });
   } catch (error: any) {
     return errorResponse(error, 'Erro ao criar modelo:');
+  }
+};
+
+export const updateTemplate = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  try {
+    const body = parseBody(event);
+    const scope = await authorizeSecretariat(event, 'secretariat.manage_templates', body, 'secretariat.template_editor');
+    if (isSecretariatResponse(scope)) return scope;
+    const templateId = templateIdFromProxy(event.pathParameters?.proxy || '');
+    if (!templateId) return apiResponse(400, { error: 'Identificador do modelo inválido.' });
+    const sourceResult = await query(`SELECT * FROM document_templates
+      WHERE organization_id = ? AND id = ?${scope.campusId ? ' AND (campus_id IS NULL OR campus_id = ?)' : ''} LIMIT 1`,
+    [scope.organizationId, templateId, ...(scope.campusId ? [scope.campusId] : [])]);
+    const source = sourceResult.rows[0];
+    if (!source) return apiResponse(404, { error: 'Modelo não encontrado nesta organização ou unidade.' });
+    const documentType = safeSecretariatText(body.document_type, 50)?.toUpperCase() || source.document_type;
+    const name = safeSecretariatText(body.name, 150) || source.name;
+    if (!DOCUMENT_TYPES.has(documentType) || !body.template_schema || typeof body.template_schema.body !== 'string') {
+      return apiResponse(400, { error: 'Tipo, nome e conteúdo do modelo são obrigatórios.' });
+    }
+    const templateSchema = sanitizeTemplateSchema(body.template_schema, name);
+    let id = source.id;
+    let version = Number(source.version);
+    if (['DRAFT', 'REJECTED'].includes(String(source.status))) {
+      await query(`UPDATE document_templates SET document_type = ?, name = ?, template_schema = ?,
+          status = 'DRAFT', is_active = 0, updated_by = ?, updated_at = NOW()
+        WHERE organization_id = ? AND id = ?`,
+      [documentType, name, JSON.stringify(templateSchema), scope.user.userId, scope.organizationId, templateId]);
+    } else if (['PUBLISHED', 'ARCHIVED'].includes(String(source.status))) {
+      const versionResult = await query(`SELECT COALESCE(MAX(version), 0) + 1 AS next_version
+        FROM document_templates WHERE organization_id = ? AND template_key = ?`,
+      [scope.organizationId, source.template_key || source.id]);
+      version = Number(versionResult.rows[0]?.next_version || (Number(source.version) + 1));
+      id = uuidv4();
+      await query(`INSERT INTO document_templates (
+          id, template_key, organization_id, campus_id, document_type, name, version,
+          template_schema, status, base_template_id, is_active, created_by, updated_by
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'DRAFT', ?, 0, ?, ?)`, [
+        id, source.template_key || source.id, scope.organizationId, source.campus_id,
+        documentType, name, version, JSON.stringify(templateSchema), source.id,
+        scope.user.userId, scope.user.userId
+      ]);
+    } else {
+      return apiResponse(409, { error: 'O modelo está aguardando aprovação e não pode ser alterado.' });
+    }
+    await logSecurityEvent({ organizationId: scope.organizationId, campusId: source.campus_id, user: scope.user,
+      action: 'EDIT_DOCUMENT_TEMPLATE', resource: 'document_templates', resourceId: id,
+      details: { source_id: source.id, template_key: source.template_key || source.id, version, status: 'DRAFT' }, event });
+    return apiResponse(200, { message: source.id === id ? 'Rascunho atualizado.' : 'Nova versão criada como rascunho.', id, version, status: 'DRAFT' });
+  } catch (error: any) {
+    return errorResponse(error, 'Erro ao editar modelo:');
+  }
+};
+
+async function cloneTemplate(event: APIGatewayProxyEvent, copyToCampus: boolean): Promise<APIGatewayProxyResult> {
+  try {
+    const body = parseBody(event);
+    const scope = await authorizeSecretariat(event, 'secretariat.manage_templates', body, 'secretariat.template_editor');
+    if (isSecretariatResponse(scope)) return scope;
+    const templateId = templateIdFromProxy(event.pathParameters?.proxy || '');
+    if (!templateId) return apiResponse(400, { error: 'Identificador do modelo inválido.' });
+    const result = await query(`SELECT * FROM document_templates WHERE organization_id = ? AND id = ?${scope.campusId ? ' AND (campus_id IS NULL OR campus_id = ?)' : ''} LIMIT 1`,
+    [scope.organizationId, templateId, ...(scope.campusId ? [scope.campusId] : [])]);
+    const source = result.rows[0];
+    if (!source) return apiResponse(404, { error: 'Modelo não encontrado nesta organização.' });
+    let targetCampusId = scope.campusId;
+    let campusName = '';
+    if (copyToCampus) {
+      targetCampusId = safeSecretariatText(body.target_campus_id, 36);
+      if (!targetCampusId) return apiResponse(400, { error: 'Selecione a unidade de destino.' });
+      if (!scope.user.isSuperAdmin && !scope.user.campusIds.includes(targetCampusId)) {
+        return apiResponse(403, { error: 'CROSS_CAMPUS_FORBIDDEN', message: 'Acesso negado à unidade de destino.' });
+      }
+      const campus = await query(`SELECT id, name FROM campuses WHERE organization_id = ? AND id = ? LIMIT 1`, [scope.organizationId, targetCampusId]);
+      if (!campus.rows.length) return apiResponse(404, { error: 'Unidade de destino não encontrada nesta organização.' });
+      campusName = campus.rows[0].name;
+    }
+    const id = uuidv4();
+    const name = safeSecretariatText(body.name, 150) || `${source.name}${copyToCampus ? ` · ${campusName}` : ' (Cópia)'} · ${id.slice(0, 4).toUpperCase()}`;
+    await query(`INSERT INTO document_templates (
+        id, template_key, organization_id, campus_id, document_type, name, version,
+        template_schema, status, base_template_id, is_active, created_by, updated_by
+      ) VALUES (?, ?, ?, ?, ?, ?, 1, ?, 'DRAFT', ?, 0, ?, ?)`, [
+      id, id, scope.organizationId, targetCampusId, source.document_type, name,
+      JSON.stringify(parseStoredJson(source.template_schema)), source.id, scope.user.userId, scope.user.userId
+    ]);
+    await logSecurityEvent({ organizationId: scope.organizationId, campusId: targetCampusId, user: scope.user,
+      action: copyToCampus ? 'COPY_TEMPLATE_TO_CAMPUS' : 'DUPLICATE_DOCUMENT_TEMPLATE',
+      resource: 'document_templates', resourceId: id,
+      details: { source_id: source.id, target_campus_id: targetCampusId }, event });
+    return apiResponse(201, { message: copyToCampus ? 'Modelo copiado para a unidade como rascunho.' : 'Modelo duplicado como rascunho.', id, version: 1, status: 'DRAFT' });
+  } catch (error: any) {
+    return errorResponse(error, copyToCampus ? 'Erro ao copiar modelo para a unidade:' : 'Erro ao duplicar modelo:');
+  }
+}
+
+export const duplicateTemplate = (event: APIGatewayProxyEvent) => cloneTemplate(event, false);
+export const copyTemplateToCampus = (event: APIGatewayProxyEvent) => cloneTemplate(event, true);
+
+export const listTemplateHistory = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  try {
+    const scope = await authorizeSecretariat(event, 'secretariat.view', {}, 'secretariat.template_editor');
+    if (isSecretariatResponse(scope)) return scope;
+    const templateId = templateIdFromProxy(event.pathParameters?.proxy || '');
+    const source = await query(`SELECT template_key FROM document_templates WHERE organization_id = ? AND id = ?${scope.campusId ? ' AND (campus_id IS NULL OR campus_id = ?)' : ''} LIMIT 1`,
+    [scope.organizationId, templateId, ...(scope.campusId ? [scope.campusId] : [])]);
+    if (!source.rows.length) return apiResponse(404, { error: 'Modelo não encontrado nesta organização.' });
+    const history = await query(`SELECT dt.*, c.name AS campus_name, approver.name AS approved_by_name
+      FROM document_templates dt
+      LEFT JOIN campuses c ON c.organization_id = dt.organization_id AND c.id = dt.campus_id
+      LEFT JOIN members approver ON approver.organization_id = dt.organization_id AND approver.id = dt.approved_by
+      WHERE dt.organization_id = ? AND dt.template_key = ?${scope.campusId ? ' AND (dt.campus_id IS NULL OR dt.campus_id = ?)' : ''} ORDER BY dt.version DESC`,
+    [scope.organizationId, source.rows[0].template_key, ...(scope.campusId ? [scope.campusId] : [])]);
+    return apiResponse(200, { data: history.rows.map((item: any) => ({ ...item, template_schema: parseStoredJson(item.template_schema) })) });
+  } catch (error: any) {
+    return errorResponse(error, 'Erro ao carregar histórico do modelo:');
+  }
+};
+
+export const updateTemplateStatus = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  try {
+    const body = parseBody(event);
+    const action = safeSecretariatText(body.action, 30)?.toUpperCase();
+    if (!action || !TEMPLATE_ACTIONS.has(action)) return apiResponse(400, { error: 'Ação do modelo inválida.' });
+    const permission = ['APPROVE', 'REJECT', 'ARCHIVE', 'RESTORE'].includes(action) ? 'secretariat.approve' : 'secretariat.manage_templates';
+    const scope = await authorizeSecretariat(event, permission, body, 'secretariat.template_editor');
+    if (isSecretariatResponse(scope)) return scope;
+    const templateId = templateIdFromProxy(event.pathParameters?.proxy || '');
+    const sourceResult = await query(`SELECT * FROM document_templates WHERE organization_id = ? AND id = ?${scope.campusId ? ' AND (campus_id IS NULL OR campus_id = ?)' : ''} LIMIT 1`,
+    [scope.organizationId, templateId, ...(scope.campusId ? [scope.campusId] : [])]);
+    const source = sourceResult.rows[0];
+    if (!source) return apiResponse(404, { error: 'Modelo não encontrado nesta organização.' });
+    if (!TEMPLATE_STATUSES.has(String(source.status))) return apiResponse(409, { error: 'Situação atual do modelo é inválida.' });
+    const allowed: Record<string, string[]> = {
+      SUBMIT: ['DRAFT', 'REJECTED'], APPROVE: ['PENDING_APPROVAL'], REJECT: ['PENDING_APPROVAL'],
+      ARCHIVE: ['PUBLISHED'], RESTORE: ['ARCHIVED']
+    };
+    if (!allowed[action].includes(String(source.status))) return apiResponse(409, { error: 'Esta ação não é permitida para a situação atual do modelo.' });
+    const nextStatus = action === 'SUBMIT' ? 'PENDING_APPROVAL'
+      : action === 'REJECT' ? 'REJECTED'
+        : action === 'ARCHIVE' ? 'ARCHIVED' : 'PUBLISHED';
+    const connection = await getConnection();
+    try {
+      await connection.beginTransaction();
+      if (nextStatus === 'PUBLISHED') {
+        await connection.query(`UPDATE document_templates SET status = 'ARCHIVED', is_active = 0,
+            archived_by = ?, archived_at = NOW(), updated_at = NOW()
+          WHERE organization_id = ? AND template_key = ? AND status = 'PUBLISHED' AND id <> ?`,
+        [scope.user.userId, scope.organizationId, source.template_key || source.id, source.id]);
+      }
+      const auditColumns = action === 'SUBMIT'
+        ? `submitted_by = ?, submitted_at = NOW()`
+        : action === 'REJECT'
+          ? `approved_by = ?, approved_at = NOW()`
+          : action === 'ARCHIVE'
+            ? `archived_by = ?, archived_at = NOW()`
+            : `approved_by = ?, approved_at = NOW(), published_by = ?, published_at = NOW()`;
+      const actorParams = ['APPROVE', 'RESTORE'].includes(action)
+        ? [scope.user.userId, scope.user.userId]
+        : [scope.user.userId];
+      await connection.query(`UPDATE document_templates SET status = ?, is_active = ?, ${auditColumns}, updated_by = ?, updated_at = NOW()
+        WHERE organization_id = ? AND id = ?`, [
+        nextStatus, nextStatus === 'PUBLISHED' ? 1 : 0, ...actorParams,
+        scope.user.userId, scope.organizationId, source.id
+      ]);
+      await connection.commit();
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+    await logSecurityEvent({ organizationId: scope.organizationId, campusId: source.campus_id, user: scope.user,
+      action: `DOCUMENT_TEMPLATE_${action}`, resource: 'document_templates', resourceId: source.id,
+      details: { template_key: source.template_key, version: source.version, from: source.status, to: nextStatus }, event });
+    return apiResponse(200, { message: nextStatus === 'PUBLISHED' ? 'Modelo aprovado e publicado.' : 'Situação do modelo atualizada.', id: source.id, status: nextStatus });
+  } catch (error: any) {
+    return errorResponse(error, 'Erro ao atualizar situação do modelo:');
   }
 };
 
@@ -523,7 +772,7 @@ export const issueDocument = async (event: APIGatewayProxyEvent): Promise<APIGat
     const member = await getScopedMember(scope, memberId);
     if (!member) return apiResponse(404, { error: 'Membro não encontrado nesta organização ou unidade.' });
     const templateResult = await query(`SELECT * FROM document_templates
-      WHERE organization_id = ? AND id = ? AND is_active = 1${scope.campusId ? ' AND (campus_id IS NULL OR campus_id = ?)' : ''} LIMIT 1`,
+      WHERE organization_id = ? AND id = ? AND is_active = 1 AND status = 'PUBLISHED'${scope.campusId ? ' AND (campus_id IS NULL OR campus_id = ?)' : ''} LIMIT 1`,
     [scope.organizationId, templateId, ...(scope.campusId ? [scope.campusId] : [])]);
     const template = templateResult.rows[0];
     if (!template) return apiResponse(404, { error: 'Modelo não encontrado nesta organização.' });
@@ -547,23 +796,35 @@ export const issueDocument = async (event: APIGatewayProxyEvent): Promise<APIGat
       issue_date: new Date().toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' }),
       ...customFields
     };
-    const schema = parseStoredJson(template.template_schema);
-    const snapshot = { schema, rendered: renderTemplateValue(schema, values), values, signatory };
     const id = uuidv4();
     const prefix = String(template.document_type || 'DOC').split('_').map((part: string) => part[0]).join('').slice(0, 4);
     const documentNumber = `FH-${prefix}-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${id.slice(0, 6).toUpperCase()}`;
+    const schema = parseStoredJson(template.template_schema);
+    const snapshot: any = {
+      schema,
+      rendered: renderTemplateValue(schema, values),
+      values,
+      signatory,
+      metadata: { document_number: documentNumber, document_type: template.document_type, template_version: template.version }
+    };
+    const contentChecksum = createHash('sha256').update(JSON.stringify(snapshot)).digest('hex');
+    snapshot.metadata = { ...snapshot.metadata, content_checksum: contentChecksum };
+    const verification = verificationToken(scope.organizationId);
     const requestId = safeSecretariatText(body.request_id, 36);
     if (requestId) {
+      const requestCampus = phase2CampusSql('secretariat_requests', scope.campusId);
       const request = await query(`SELECT id FROM secretariat_requests
-        WHERE organization_id = ? AND id = ? AND member_id = ? LIMIT 1`, [scope.organizationId, requestId, memberId]);
+        WHERE organization_id = ? AND id = ? AND member_id = ?${requestCampus.clause} LIMIT 1`,
+      [scope.organizationId, requestId, memberId, ...requestCampus.params]);
       if (!request.rows.length) return apiResponse(404, { error: 'Solicitação vinculada não foi encontrada.' });
     }
     await query(`INSERT INTO issued_documents (
         id, organization_id, campus_id, member_id, request_id, template_id, document_type,
-        document_number, template_version, template_snapshot, status, issued_by, approved_by
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'VALID', ?, ?)`, [
+        document_number, template_version, template_snapshot, file_checksum, verification_token_hash,
+        status, issued_by, approved_by
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'VALID', ?, ?)`, [
       id, scope.organizationId, scope.campusId || member.campus_id, memberId, requestId, templateId,
-      template.document_type, documentNumber, template.version, JSON.stringify(snapshot),
+      template.document_type, documentNumber, template.version, JSON.stringify(snapshot), null, verification.hash,
       scope.user.userId, scope.user.userId
     ]);
     if (requestId) {
@@ -574,7 +835,11 @@ export const issueDocument = async (event: APIGatewayProxyEvent): Promise<APIGat
     await logSecurityEvent({ organizationId: scope.organizationId, campusId: member.campus_id, user: scope.user,
       action: 'ISSUE_SECRETARIAT_DOCUMENT', resource: 'issued_documents', resourceId: id,
       details: { member_id: memberId, document_type: template.document_type, document_number: documentNumber, template_version: template.version }, event });
-    return apiResponse(201, { message: 'Documento emitido com sucesso.', data: { id, document_number: documentNumber, template_snapshot: snapshot, status: 'VALID' } });
+    return apiResponse(201, { message: 'Documento emitido com sucesso.', data: {
+      id, document_number: documentNumber, document_type: template.document_type,
+      template_version: template.version, template_snapshot: snapshot, content_checksum: contentChecksum,
+      verification_url: verification.url, status: 'VALID'
+    } });
   } catch (error: any) {
     return errorResponse(error, 'Erro ao emitir documento:');
   }
@@ -585,7 +850,7 @@ export const revokeDocument = async (event: APIGatewayProxyEvent): Promise<APIGa
     const body = parseBody(event);
     const scope = await authorizeSecretariat(event, 'secretariat.approve', body, 'secretariat.documents');
     if (isSecretariatResponse(scope)) return scope;
-    const documentId = memberIdFromProxy(event.pathParameters?.proxy || '');
+    const documentId = documentIdFromProxy(event.pathParameters?.proxy || '');
     const reason = safeSecretariatText(body.reason, 2000);
     if (!documentId || !reason) return apiResponse(400, { error: 'Informe o motivo do cancelamento.' });
     const campus = phase2CampusSql('issued_documents', scope.campusId);
@@ -600,6 +865,50 @@ export const revokeDocument = async (event: APIGatewayProxyEvent): Promise<APIGa
     return apiResponse(200, { message: 'Documento cancelado com sucesso.', status: 'REVOKED' });
   } catch (error: any) {
     return errorResponse(error, 'Erro ao cancelar documento:');
+  }
+};
+
+export const rotateDocumentVerification = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  try {
+    const body = parseBody(event);
+    const scope = await authorizeSecretariat(event, 'secretariat.issue_documents', body, 'secretariat.public_verification');
+    if (isSecretariatResponse(scope)) return scope;
+    const documentId = documentIdFromProxy(event.pathParameters?.proxy || '');
+    if (!documentId) return apiResponse(400, { error: 'Identificador do documento inválido.' });
+    const campus = phase2CampusSql('issued_documents', scope.campusId);
+    const verification = verificationToken(scope.organizationId);
+    const result = await query(`UPDATE issued_documents SET verification_token_hash = ?, updated_at = NOW()
+      WHERE organization_id = ? AND id = ? AND status = 'VALID'${campus.clause}`,
+    [verification.hash, scope.organizationId, documentId, ...campus.params]);
+    if (!(result.rows as any)?.affectedRows) return apiResponse(404, { error: 'Documento válido não encontrado nesta organização ou unidade.' });
+    await logSecurityEvent({ organizationId: scope.organizationId, campusId: scope.campusId, user: scope.user,
+      action: 'ROTATE_DOCUMENT_VERIFICATION_TOKEN', resource: 'issued_documents', resourceId: documentId,
+      details: { public_verification: true }, event });
+    return apiResponse(200, { message: 'Código de verificação gerado.', verification_url: verification.url });
+  } catch (error: any) {
+    return errorResponse(error, 'Erro ao gerar código de verificação:');
+  }
+};
+
+export const updateDocumentFileChecksum = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  try {
+    const body = parseBody(event);
+    const scope = await authorizeSecretariat(event, 'secretariat.issue_documents', body, 'secretariat.document_pdf');
+    if (isSecretariatResponse(scope)) return scope;
+    const documentId = documentIdFromProxy(event.pathParameters?.proxy || '');
+    const checksum = String(body.file_checksum || '').trim().toLowerCase();
+    if (!documentId || !/^[0-9a-f]{64}$/.test(checksum)) return apiResponse(400, { error: 'Checksum do PDF inválido.' });
+    const campus = phase2CampusSql('issued_documents', scope.campusId);
+    const result = await query(`UPDATE issued_documents SET file_checksum = ?, updated_at = NOW()
+      WHERE organization_id = ? AND id = ?${campus.clause}`,
+    [checksum, scope.organizationId, documentId, ...campus.params]);
+    if (!(result.rows as any)?.affectedRows) return apiResponse(404, { error: 'Documento não encontrado nesta organização ou unidade.' });
+    await logSecurityEvent({ organizationId: scope.organizationId, campusId: scope.campusId, user: scope.user,
+      action: 'REGISTER_DOCUMENT_PDF_CHECKSUM', resource: 'issued_documents', resourceId: documentId,
+      details: { file_checksum: checksum }, event });
+    return apiResponse(200, { message: 'Integridade do PDF registrada.', file_checksum: checksum });
+  } catch (error: any) {
+    return errorResponse(error, 'Erro ao registrar integridade do PDF:');
   }
 };
 
@@ -619,10 +928,17 @@ export async function handleSecretariatPhase2(
   if (method === 'POST' && proxy === 'baptisms') return createBaptism(event);
   if (method === 'GET' && proxy === 'templates') return listTemplates(event);
   if (method === 'POST' && proxy === 'templates') return createTemplate(event);
+  if (method === 'PUT' && /^templates\/[^/]+$/.test(proxy)) return updateTemplate(event);
+  if (method === 'GET' && /^templates\/[^/]+\/history$/.test(proxy)) return listTemplateHistory(event);
+  if (method === 'POST' && /^templates\/[^/]+\/duplicate$/.test(proxy)) return duplicateTemplate(event);
+  if (method === 'POST' && /^templates\/[^/]+\/copy-campus$/.test(proxy)) return copyTemplateToCampus(event);
+  if (method === 'PATCH' && /^templates\/[^/]+\/status$/.test(proxy)) return updateTemplateStatus(event);
   if (method === 'GET' && proxy === 'signatories') return listSignatories(event);
   if (method === 'POST' && proxy === 'signatories') return createSignatory(event);
   if (method === 'GET' && proxy === 'documents') return listDocuments(event);
   if (method === 'POST' && proxy === 'documents') return issueDocument(event);
   if (method === 'PATCH' && /^documents\/[^/]+\/status$/.test(proxy)) return revokeDocument(event);
+  if (method === 'POST' && /^documents\/[^/]+\/verification$/.test(proxy)) return rotateDocumentVerification(event);
+  if (method === 'PATCH' && /^documents\/[^/]+\/file-checksum$/.test(proxy)) return updateDocumentFileChecksum(event);
   return null;
 }

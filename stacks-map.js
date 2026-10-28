@@ -8,8 +8,11 @@
 module.exports = (resource, logicalId) => {
   const isSecretariatResource =
     logicalId.startsWith('SecretariatHandler') ||
+    logicalId.startsWith('PublicDocumentVerification') ||
     logicalId === 'HttpApiIntegrationSecretariatHandler' ||
-    logicalId.startsWith('HttpApiRouteAnySecretariat');
+    logicalId === 'HttpApiIntegrationPublicDocumentVerification' ||
+    logicalId.startsWith('HttpApiRouteAnySecretariat') ||
+    logicalId.startsWith('HttpApiRouteGetPublicSecretariatDocuments');
 
   const isCorsPreflightResource =
     logicalId.startsWith('CorsPreflight') ||

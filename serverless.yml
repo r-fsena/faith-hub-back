@@ -231,6 +231,13 @@ functions:
           path: /secretariat/{proxy+}
           method: ANY
 
+  publicDocumentVerification:
+    handler: src/functions/publicDocumentVerification.verifyDocument
+    events:
+      - httpApi:
+          path: /public/secretariat/documents/{token}
+          method: get
+
 
   getPdvProducts:
     handler: src/functions/pdv_products.getProducts

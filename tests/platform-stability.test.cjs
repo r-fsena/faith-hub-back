@@ -96,3 +96,21 @@ test('new aggregate API resources stay outside the CloudFormation root limit', (
   assert.match(stackMap, /CorsPreflight/);
   assert.match(stackMap, /destination: 'ApiExtensions'/);
 });
+
+test('public Secretariat verification is explicitly rate-limited and feature-gated', () => {
+  const serverless = read('faith-hub-backend/serverless.yml');
+  const verification = read('faith-hub-backend/src/functions/publicDocumentVerification.ts');
+  const templateStudio = read('faith-hub-web/src/modules/SecretariatTemplateStudio.tsx');
+  const pdf = read('faith-hub-web/src/services/secretariatDocumentPdf.ts');
+  const block = serverless.split('\n  publicDocumentVerification:')[1].split(/\n  \w+:/)[0];
+  assert.match(block, /path: \/public\/secretariat\/documents\/\{token\}/);
+  assert.doesNotMatch(block, /authorizer:/);
+  assert.match(verification, /checkRateLimit\(/);
+  assert.match(verification, /secretariat\.public_verification/);
+  assert.match(verification, /d\.organization_id = \?/);
+  assert.match(templateStudio, /PENDING_APPROVAL/);
+  assert.match(templateStudio, /copy-campus/);
+  assert.match(pdf, /QRCode\.toDataURL/);
+  assert.match(pdf, /crypto\.subtle\.digest\('SHA-256'/);
+  assert.match(pdf, /application\/pdf/);
+});

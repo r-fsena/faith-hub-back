@@ -35,6 +35,7 @@ const gateway = require('../src/functions/pagarmeSettings.ts');
 const members = require('../src/functions/members.ts');
 const secretariat = require('../src/functions/secretariat.ts');
 const secretariatPhase2 = require('../src/functions/secretariatPhase2.ts');
+const publicDocumentVerification = require('../src/functions/publicDocumentVerification.ts');
 const { handleAsaasWebhook } = require('../src/functions/asaasWebhook.ts');
 const event = (body = {}, overrides = {}) => ({ headers: { Authorization: `Bearer ${token}`, 'x-organization-id': 'org-a' }, body: JSON.stringify(body), requestContext: { http: { sourceIp: '127.0.0.1' } }, queryStringParameters: {}, pathParameters: {}, ...overrides });
 const sign = async (payload = {}, options = {}) => new jose.SignJWT({ token_use: 'id', email: 'member@example.org', email_verified: true, ...payload }).setProtectedHeader({ alg: 'RS256', kid: 'test-key' }).setSubject('cognito-sub').setIssuer(options.issuer || issuer).setAudience(options.aud || 'test-client').setIssuedAt().setExpirationTime(options.exp || '5m').sign(privateKey);
@@ -285,7 +286,7 @@ test('Secretariat phase 2 creates tenant-scoped transfers and documents with aud
   member.campus_ids = JSON.stringify(['campus_sede']);
   const flags = [
     'secretariat.module_enabled', 'secretariat.member_registry', 'secretariat.transfers',
-    'secretariat.documents', 'secretariat.baptisms'
+    'secretariat.documents', 'secretariat.baptisms', 'secretariat.document_pdf', 'secretariat.public_verification'
   ].map(feature_key => ({ organization_id: 'org-a', feature_key, is_enabled: 1, environment: 'production' }));
   dbQuery = async sql => ({ rows:
     sql.includes('FROM members\n') ? [member] :
@@ -293,7 +294,8 @@ test('Secretariat phase 2 creates tenant-scoped transfers and documents with aud
     sql.includes('FROM tenant_feature_flags') ? flags :
     sql.includes('FROM members m') ? [{ ...member, registry_number: 'MEM-1', membership_status: 'ACTIVE' }] :
     sql.includes('FROM campuses') ? [{ id: 'campus-destino' }] :
-    sql.includes('FROM document_templates') ? [{ id: 'template-a', organization_id: 'org-a', document_type: 'PRESENTATION_LETTER', version: 1, is_active: 1, template_schema: JSON.stringify({ title: 'Carta', body: '{{member_name}}', footer: '{{organization_name}}' }) }] : []
+    sql.includes('FROM document_templates') ? [{ id: 'template-a', organization_id: 'org-a', document_type: 'PRESENTATION_LETTER', version: 1, is_active: 1, status: 'PUBLISHED', template_schema: JSON.stringify({ title: 'Carta', body: '{{member_name}}', footer: '{{organization_name}}' }) }] :
+    sql.includes('UPDATE issued_documents SET file_checksum') ? { affectedRows: 1 } : []
   });
 
   const movement = await secretariatPhase2.createMovement(event({
@@ -314,10 +316,74 @@ test('Secretariat phase 2 creates tenant-scoped transfers and documents with aud
   assert.ok(JSON.parse(documentInsert.params.find(value => typeof value === 'string' && value.includes('"rendered"'))).rendered.body.includes('Membro'));
   assert.ok(calls.filter(call => call.sql.includes('INSERT INTO security_audit_logs')).length >= 2);
 
+  const checksum = await secretariatPhase2.updateDocumentFileChecksum(event({
+    organization_id: 'org-a', file_checksum: 'a'.repeat(64)
+  }, { pathParameters: { proxy: 'documents/document-a/file-checksum' } }));
+  assert.equal(checksum.statusCode, 200);
+  const checksumWrite = calls.find(call => call.sql.includes('UPDATE issued_documents SET file_checksum'));
+  assert.deepEqual(checksumWrite.params.slice(0, 3), ['a'.repeat(64), 'org-a', 'document-a']);
+
   reset(); member.role = 'ADMIN';
   const denied = await secretariatPhase2.createMovement(event({ organization_id: 'org-b', member_id: 'member-a', movement_type: 'INTERNAL_TRANSFER' }));
   assert.equal(denied.statusCode, 403);
   assert.ok(!calls.some(call => call.sql.includes('INSERT INTO membership_movements')));
+});
+test('Secretariat template studio versions and publishes tenant-scoped drafts with audit logs', async () => {
+  reset();
+  member.role = 'ADMIN';
+  member.campus_ids = JSON.stringify(['campus_sede']);
+  const flags = ['secretariat.module_enabled', 'secretariat.documents', 'secretariat.template_editor']
+    .map(feature_key => ({ organization_id: 'org-a', feature_key, is_enabled: 1, environment: 'production' }));
+  const template = { id: 'template-draft', template_key: 'template-key', organization_id: 'org-a', campus_id: 'campus_sede', document_type: 'PRESENTATION_LETTER', name: 'Carta', version: 2, status: 'DRAFT', is_active: 0, template_schema: '{}' };
+  dbQuery = async sql => ({ rows:
+    sql.includes('FROM members\n') ? [member] :
+    sql.includes('FROM organizations') ? [{ id: 'org-a', name: 'Igreja Teste', plan: 'PRO', status: 'ACTIVE' }] :
+    sql.includes('FROM tenant_feature_flags') ? flags :
+    sql.includes('FROM document_templates') ? [template] : { affectedRows: 1 }
+  });
+
+  const created = await secretariatPhase2.createTemplate(event({ organization_id: 'org-a', document_type: 'PRESENTATION_LETTER', name: 'Carta oficial', template_schema: { title: 'Carta', body: '{{member_name}}', design: { primary_color: '#112233' } } }));
+  assert.equal(created.statusCode, 201);
+  const insert = calls.find(call => call.sql.includes('INSERT INTO document_templates'));
+  assert.ok(insert.params.includes('org-a'));
+  assert.ok(insert.sql.includes("'DRAFT'"));
+  assert.ok(calls.some(call => call.sql.includes('INSERT INTO security_audit_logs')));
+
+  const submitted = await secretariatPhase2.updateTemplateStatus(event({ organization_id: 'org-a', action: 'SUBMIT' }, { pathParameters: { proxy: 'templates/template-draft/status' } }));
+  assert.equal(submitted.statusCode, 200);
+  assert.equal(JSON.parse(submitted.body).status, 'PENDING_APPROVAL');
+
+  template.status = 'PENDING_APPROVAL';
+  const state = transaction(async () => ({ affectedRows: 1 }));
+  const approved = await secretariatPhase2.updateTemplateStatus(event({ organization_id: 'org-a', action: 'APPROVE' }, { pathParameters: { proxy: 'templates/template-draft/status' } }));
+  assert.equal(approved.statusCode, 200);
+  assert.equal(JSON.parse(approved.body).status, 'PUBLISHED');
+  assert.equal(state.commits, 1);
+  assert.ok(state.writes.every(write => write.params.includes('org-a')));
+
+  reset(); member.role = 'ADMIN';
+  const denied = await secretariatPhase2.createTemplate(event({ organization_id: 'org-b', document_type: 'DECLARATION', name: 'Inválido', template_schema: { body: 'x' } }));
+  assert.equal(denied.statusCode, 403);
+  assert.ok(!calls.some(call => call.sql.includes('INSERT INTO document_templates')));
+});
+test('Public document verification is rate-limited, feature-gated and organization scoped', async () => {
+  reset();
+  const rawToken = 'org-a.' + 'a'.repeat(43);
+  dbQuery = async (sql, params) => ({ rows:
+    sql.includes('SELECT plan, status FROM organizations') ? [{ plan: 'PRO', status: 'ACTIVE' }] :
+    sql.includes('FROM tenant_feature_flags') ? [
+      { organization_id: 'org-a', feature_key: 'secretariat.public_verification', is_enabled: 1, environment: 'production' }
+    ] :
+    sql.includes('FROM issued_documents d') ? [{ document_number: 'FH-DOC-1', document_type: 'DECLARATION', template_version: 1, status: 'VALID', issued_at: '2026-10-28T00:00:00Z', revoked_at: null, file_checksum: 'b'.repeat(64), organization_name: 'Igreja Teste' }] : []
+  });
+  const verified = await publicDocumentVerification.verifyDocument(event({}, { headers: {}, pathParameters: { token: rawToken } }));
+  assert.equal(verified.statusCode, 200);
+  assert.equal(JSON.parse(verified.body).valid, true);
+  const lookup = calls.find(call => call.sql.includes('FROM issued_documents d'));
+  assert.equal(lookup.params[0], 'org-a');
+  assert.equal(lookup.params.length, 2);
+  const invalid = await publicDocumentVerification.verifyDocument(event({}, { headers: {}, pathParameters: { token: 'invalid' } }));
+  assert.equal(invalid.statusCode, 404);
 });
 test('Private route declarations include the Cognito authorizer', () => {
   const config = fs.readFileSync(require('node:path').join(__dirname, '../serverless.yml'), 'utf8');

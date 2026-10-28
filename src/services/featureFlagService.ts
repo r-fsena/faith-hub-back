@@ -109,6 +109,8 @@ export async function evaluateTenantFlags(
     'secretariat.transfers': false,
     'secretariat.documents': false,
     'secretariat.baptisms': false,
+    'secretariat.template_editor': false,
+    'secretariat.document_pdf': false,
     'secretariat.public_verification': false
   };
   const configsMap: Record<string, any> = {};

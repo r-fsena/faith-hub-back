@@ -22,6 +22,8 @@
     "db:migrate:secretariat:phase2:status": "node migrate_secretariat_phase2.js --status",
     "db:migrate:secretariat:template-ids": "node migrate_secretariat_template_ids.js",
     "db:migrate:secretariat:template-ids:status": "node migrate_secretariat_template_ids.js --status",
+    "db:migrate:secretariat:template-studio": "node migrate_secretariat_template_studio.js",
+    "db:migrate:secretariat:template-studio:status": "node migrate_secretariat_template_studio.js --status",
     "secrets:sync:asaas": "node scripts/sync-asaas-secret.cjs",
     "webhook:sync:asaas": "node scripts/sync-asaas-webhook.cjs",
     "billing:pilot:asaas": "node scripts/set-asaas-production-pilot.cjs",
