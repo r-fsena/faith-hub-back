@@ -26,11 +26,15 @@ test('private Studio reads include Cognito authorization headers', () => {
   const financial = read('faith-hub-web/src/modules/FinancialTreasury.tsx');
   const cells = read('faith-hub-web/src/modules/CellGroups.tsx');
   const kids = read('faith-hub-web/src/modules/KidsMinistry.tsx');
+  const secretariat = read('faith-hub-web/src/modules/Secretariat.tsx');
 
   assert.match(financial, /financial\/transactions\?\$\{params\.toString\(\)\}`, \{ headers \}/);
   assert.match(financial, /financial\/summary\?\$\{params\.toString\(\)\}`, \{ headers \}/);
   assert.match(cells, /members\?organization_id=\$\{orgId\}\$\{campusParam\}`, \{ headers \}/);
   assert.match(kids, /kids\/rooms\?organization_id=.*\{ headers \}/);
+  assert.match(secretariat, /secretariat\/dashboard\?.*\{ headers \}/);
+  assert.match(secretariat, /secretariat\/records\?.*\{ headers \}/);
+  assert.match(secretariat, /useFeatureFlags\(\)/);
 });
 
 test('sensitive QR codes stay on-device and demo authentication is production-gated', () => {
@@ -73,7 +77,7 @@ test('production cutover remains configurable and the Asaas webhook can move saf
 test('authenticated aggregate routes expose unauthenticated CORS preflight only', () => {
   const serverless = read('faith-hub-backend/serverless.yml');
   const preflight = read('faith-hub-backend/src/functions/corsPreflight.ts');
-  for (const route of ['pastoral', 'ministries', 'volunteers', 'kids', 'financial', 'saas/invoices']) {
+  for (const route of ['pastoral', 'ministries', 'volunteers', 'kids', 'financial', 'saas/invoices', 'secretariat']) {
     const escaped = route.replace('/', '\\/');
     assert.match(serverless, new RegExp(`method: OPTIONS\\s+path: \\/${escaped}(?:\\/\\{proxy\\+\\})?`));
   }

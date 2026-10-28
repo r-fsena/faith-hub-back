@@ -101,7 +101,16 @@ export async function evaluateTenantFlags(
     [organizationId, environment, campusId || '']
   );
 
-  const flagsMap: Record<string, boolean> = { 'members.digital_card': false, 'financial.advanced_reports': false };
+  const flagsMap: Record<string, boolean> = {
+    'members.digital_card': false,
+    'financial.advanced_reports': false,
+    'secretariat.module_enabled': false,
+    'secretariat.member_registry': false,
+    'secretariat.transfers': false,
+    'secretariat.documents': false,
+    'secretariat.baptisms': false,
+    'secretariat.public_verification': false
+  };
   const configsMap: Record<string, any> = {};
   const catalogMap: Map<string, { category: string; description: string; hasOverride: boolean }> = new Map();
 

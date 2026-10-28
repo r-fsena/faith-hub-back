@@ -33,12 +33,13 @@ const financial = require('../src/functions/financial.ts');
 const kids = require('../src/functions/kids.ts');
 const gateway = require('../src/functions/pagarmeSettings.ts');
 const members = require('../src/functions/members.ts');
+const secretariat = require('../src/functions/secretariat.ts');
 const { handleAsaasWebhook } = require('../src/functions/asaasWebhook.ts');
 const event = (body = {}, overrides = {}) => ({ headers: { Authorization: `Bearer ${token}`, 'x-organization-id': 'org-a' }, body: JSON.stringify(body), requestContext: { http: { sourceIp: '127.0.0.1' } }, queryStringParameters: {}, pathParameters: {}, ...overrides });
 const sign = async (payload = {}, options = {}) => new jose.SignJWT({ token_use: 'id', email: 'member@example.org', email_verified: true, ...payload }).setProtectedHeader({ alg: 'RS256', kid: 'test-key' }).setSubject('cognito-sub').setIssuer(options.issuer || issuer).setAudience(options.aud || 'test-client').setIssuedAt().setExpirationTime(options.exp || '5m').sign(privateKey);
 function reset() {
   calls = [];
-  member = { id: 'member-a', email: 'member@example.org', name: 'Membro', role: 'MEMBER', status: 'ACTIVE', organization_id: 'org-a', campus_id: 'campus_sede' };
+  member = { id: 'member-a', email: 'member@example.org', name: 'Membro', role: 'MEMBER', status: 'ACTIVE', organization_id: 'org-a', campus_id: 'campus_sede', operational_permissions: '[]' };
   dbQuery = async sql => ({ rows: sql.includes('FROM members') ? [member] : [] });
 }
 function transaction(query) {
@@ -217,9 +218,69 @@ test('A leader cannot grant an admin role before Cognito side effects', async ()
   assert.equal(result.statusCode, 403);
   assert.ok(!calls.some(call => call.sql.includes('INSERT INTO members')));
 });
+test('Secretariat requires both an eligible role and delegated functional permission', async () => {
+  reset();
+  assert.equal((await secretariat.getDashboard(event({}, { pathParameters: { proxy: 'dashboard' } }))).statusCode, 403);
+
+  reset();
+  member.role = 'VOLUNTEER';
+  assert.equal((await secretariat.getDashboard(event({}, { pathParameters: { proxy: 'dashboard' } }))).statusCode, 403);
+
+  reset();
+  member.role = 'VOLUNTEER';
+  member.operational_permissions = JSON.stringify(['secretariat.view']);
+  dbQuery = async sql => ({ rows:
+    sql.includes('FROM members\n') && !sql.includes('COUNT(*)') ? [member] :
+    sql.includes('FROM organizations') ? [{ plan: 'PRO', status: 'ACTIVE' }] :
+    sql.includes('FROM tenant_feature_flags') ? [
+      { organization_id: 'org-a', feature_key: 'secretariat.module_enabled', is_enabled: 1, environment: 'production' },
+      { organization_id: 'org-a', feature_key: 'secretariat.member_registry', is_enabled: 1, environment: 'production' }
+    ] :
+    sql.includes('total_members') ? [{ total_members: 1, completed_records: 0, incomplete_records: 1 }] :
+    sql.includes('pending_requests') ? [{ pending_requests: 0 }] :
+    sql.includes('issued_documents') ? [{ issued_documents: 0 }] :
+    sql.includes('baptism_records') ? [{ baptism_records: 0 }] : []
+  });
+  const dashboard = await secretariat.getDashboard(event({}, { pathParameters: { proxy: 'dashboard' } }));
+  assert.equal(dashboard.statusCode, 200);
+});
+test('Secretariat record writes remain tenant scoped and audited', async () => {
+  reset();
+  member.role = 'ADMIN';
+  dbQuery = async sql => ({ rows:
+    sql.includes('FROM members\n') && !sql.includes('member_ecclesiastical_records') ? [member] :
+    sql.includes('FROM organizations') ? [{ plan: 'PRO', status: 'ACTIVE' }] :
+    sql.includes('FROM tenant_feature_flags') ? [
+      { organization_id: 'org-a', feature_key: 'secretariat.module_enabled', is_enabled: 1, environment: 'production' },
+      { organization_id: 'org-a', feature_key: 'secretariat.member_registry', is_enabled: 1, environment: 'production' }
+    ] :
+    sql.includes('FROM member_ecclesiastical_records') ? [{ id: 'record-a', organization_id: 'org-a', member_id: 'member-a' }] : []
+  });
+  const state = transaction(async sql => sql.includes('SELECT m.id, m.campus_id FROM members m')
+    ? [{ id: 'member-a', campus_id: 'campus_sede' }]
+    : { affectedRows: 1 });
+  const result = await secretariat.upsertRecord(event({
+    organization_id: 'org-a',
+    membership_status: 'ACTIVE',
+    admission_type: 'BAPTISM',
+    admission_date: '2026-10-27',
+    baptism_date: '2026-10-27',
+    registry_number: 'FH-0001'
+  }, { pathParameters: { proxy: 'members/member-a/record' } }));
+  assert.equal(result.statusCode, 200);
+  assert.equal(state.commits, 1);
+  assert.ok(state.writes.some(write => write.sql.includes('INSERT INTO member_ecclesiastical_records') && write.params.includes('org-a')));
+  assert.ok(state.writes.some(write => write.sql.includes('UPDATE members') && write.params.includes('org-a')));
+  assert.ok(calls.some(call => call.sql.includes('INSERT INTO security_audit_logs')));
+
+  reset();
+  member.role = 'ADMIN';
+  const denied = await secretariat.upsertRecord(event({ organization_id: 'org-b' }, { pathParameters: { proxy: 'members/member-a/record' } }));
+  assert.equal(denied.statusCode, 403);
+});
 test('Private route declarations include the Cognito authorizer', () => {
   const config = fs.readFileSync(require('node:path').join(__dirname, '../serverless.yml'), 'utf8');
-  for (const name of ['listMembers', 'updateMember', 'selfRegisterMember', 'getPdvOrders', 'myTickets', 'getTicketPass', 'scanTicket', 'getPagarmeSettings', 'kidsHandler', 'financialHandler']) {
+  for (const name of ['listMembers', 'updateMember', 'selfRegisterMember', 'secretariatHandler', 'getPdvOrders', 'myTickets', 'getTicketPass', 'scanTicket', 'getPagarmeSettings', 'kidsHandler', 'financialHandler']) {
     const block = config.split('\n  ' + name + ':')[1].split(/\n  \w+:/)[0];
     const events = block.split('- httpApi:').slice(1);
     assert.ok(events.length);

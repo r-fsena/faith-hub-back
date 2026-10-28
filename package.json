@@ -16,6 +16,8 @@
     "db:migrate:asaas": "node migrate_asaas_billing.js",
     "db:migrate:asaas:status": "node migrate_asaas_billing.js --status",
     "db:migrate:asaas:checkout-correlation": "node migrate_asaas_checkout_correlation.js",
+    "db:migrate:secretariat": "node migrate_secretariat_foundation.js",
+    "db:migrate:secretariat:status": "node migrate_secretariat_foundation.js --status",
     "secrets:sync:asaas": "node scripts/sync-asaas-secret.cjs",
     "webhook:sync:asaas": "node scripts/sync-asaas-webhook.cjs",
     "billing:pilot:asaas": "node scripts/set-asaas-production-pilot.cjs",

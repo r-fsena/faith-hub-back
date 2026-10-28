@@ -45,6 +45,14 @@ async function runFeatureFlagsMigration() {
       { key: 'members.spiritual_timeline', cat: 'Membros', desc: 'Registro de batismos, consagrações e marcos espirituais', def: 1 },
       { key: 'members.custom_fields', cat: 'Membros', desc: 'Criação de campos dinâmicos no perfil do membro', def: 0 },
 
+      // Secretaria Eclesiástica
+      { key: 'secretariat.module_enabled', cat: 'Secretaria', desc: 'Habilita o módulo de Secretaria Eclesiástica', def: 0 },
+      { key: 'secretariat.member_registry', cat: 'Secretaria', desc: 'Habilita prontuários e dados eclesiásticos dos membros', def: 0 },
+      { key: 'secretariat.transfers', cat: 'Secretaria', desc: 'Habilita movimentações e transferências de membros', def: 0 },
+      { key: 'secretariat.documents', cat: 'Secretaria', desc: 'Habilita cartas, declarações e documentos eclesiásticos', def: 0 },
+      { key: 'secretariat.baptisms', cat: 'Secretaria', desc: 'Habilita gestão de batismos e certificados', def: 0 },
+      { key: 'secretariat.public_verification', cat: 'Secretaria', desc: 'Habilita validação pública de documentos por QR Code', def: 0 },
+
       // Células & Redes
       { key: 'cell_groups.module_enabled', cat: 'Células', desc: 'Habilita o módulo de Células/Pequenos Grupos/GC', def: 1 },
       { key: 'cell_groups.public_map_locator', cat: 'Células', desc: 'Exibe busca de células por geolocalização e mapa no App/PWA', def: 1 },

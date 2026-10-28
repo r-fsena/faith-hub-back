@@ -223,6 +223,14 @@ functions:
           path: /members/batch-import
           method: post
 
+  secretariatHandler:
+    handler: src/functions/secretariat.secretariatHandler
+    events:
+      - httpApi:
+          authorizer: cognitoAuthorizer
+          path: /secretariat/{proxy+}
+          method: ANY
+
 
   getPdvProducts:
     handler: src/functions/pdv_products.getProducts
@@ -438,6 +446,9 @@ functions:
       - httpApi:
           method: OPTIONS
           path: /saas/invoices
+      - httpApi:
+          method: OPTIONS
+          path: /secretariat/{proxy+}
 
   ministriesHandler:
     handler: src/functions/ministries.ministriesHandler

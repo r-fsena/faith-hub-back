@@ -9,6 +9,7 @@ export interface AuthUser {
   role: string;
   organizationId: string;
   campusIds: string[];
+  operationalPermissions: string[];
   isSuperAdmin: boolean;
 }
 
@@ -27,7 +28,7 @@ export async function getAuthenticatedUser(event: APIGatewayProxyEvent): Promise
     // Identity bootstrap is the sole cross-tenant member lookup: only verified Cognito identity is used.
     // Do not filter inactive rows here, otherwise an inactive duplicate could resolve to another account.
     const { rows } = await query(
-      `SELECT id, name, email, role, status, organization_id, campus_id, campus_ids FROM members
+      `SELECT id, name, email, role, status, organization_id, campus_id, campus_ids, operational_permissions FROM members
        WHERE id = ? OR (? != '' AND LOWER(email) = ?) LIMIT 2`,
       [claims.sub, email, email]
     );
@@ -38,9 +39,17 @@ export async function getAuthenticatedUser(event: APIGatewayProxyEvent): Promise
     let campusIds: string[] = [];
     try { campusIds = typeof member.campus_ids === 'string' ? JSON.parse(member.campus_ids) : member.campus_ids; } catch {}
     if (!Array.isArray(campusIds) || !campusIds.length) campusIds = [member.campus_id || 'campus_sede'];
+    let operationalPermissions: string[] = [];
+    try {
+      operationalPermissions = typeof member.operational_permissions === 'string'
+        ? JSON.parse(member.operational_permissions)
+        : member.operational_permissions;
+    } catch {}
+    if (!Array.isArray(operationalPermissions)) operationalPermissions = [];
+    operationalPermissions = operationalPermissions.filter(permission => typeof permission === 'string');
     return {
       userId: member.id, email: member.email || email, name: member.name || 'Usuário', role,
-      organizationId: member.organization_id, campusIds, isSuperAdmin: role === 'SUPERADMIN'
+      organizationId: member.organization_id, campusIds, operationalPermissions, isSuperAdmin: role === 'SUPERADMIN'
     };
   } catch (error) {
     console.error('Error resolving authenticated user:', error);
@@ -124,6 +133,37 @@ export function enforceRole(
       errorResponse: apiResponse(403, {
         error: 'INSUFFICIENT_PERMISSIONS',
         message: 'Acesso negado: Seu nível de acesso não permite executar esta operação.'
+      })
+    };
+  }
+
+  return { allowed: true };
+}
+
+/**
+ * Enforces a functional permission without expanding the canonical role hierarchy.
+ * SUPERADMIN, PASTOR and ADMIN remain privileged; delegated operators must receive
+ * an explicit permission through members.operational_permissions.
+ */
+export function enforcePermission(
+  user: AuthUser,
+  requiredPermission: string,
+  privilegedRoles: string[] = ['SUPERADMIN', 'PASTOR', 'ADMIN']
+): { allowed: boolean; errorResponse?: APIGatewayProxyResult } {
+  if (user.isSuperAdmin || privilegedRoles.map(normalizeRole).includes(normalizeRole(user.role))) {
+    return { allowed: true };
+  }
+
+  const permissions = Array.isArray(user.operationalPermissions) ? user.operationalPermissions : [];
+  const domain = requiredPermission.split('.')[0];
+  const allowed = permissions.includes(requiredPermission) || permissions.includes(`${domain}.*`);
+  if (!allowed) {
+    console.warn(`[SECURITY ALERT] Permissão funcional negada! Usuário ${user.email} tentou acessar '${requiredPermission}'`);
+    return {
+      allowed: false,
+      errorResponse: apiResponse(403, {
+        error: 'FUNCTIONAL_PERMISSION_REQUIRED',
+        message: 'Acesso negado: esta função exige uma permissão operacional específica.'
       })
     };
   }
