@@ -84,3 +84,10 @@ test('authenticated aggregate routes expose unauthenticated CORS preflight only'
   assert.match(preflight, /statusCode:\s*204/);
   assert.doesNotMatch(preflight, /Access-Control-Allow-Origin/);
 });
+
+test('new aggregate API resources stay outside the CloudFormation root limit', () => {
+  const stackMap = read('faith-hub-backend/stacks-map.js');
+  assert.match(stackMap, /SecretariatHandler/);
+  assert.match(stackMap, /CorsPreflight/);
+  assert.match(stackMap, /destination: 'ApiExtensions'/);
+});
