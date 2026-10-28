@@ -30,6 +30,8 @@
     "db:migrate:studio-experience:status": "node migrate_studio_experience.js --status",
     "db:migrate:studio-navigation-v2": "node migrate_studio_navigation_v2.js",
     "db:migrate:studio-navigation-v2:status": "node migrate_studio_navigation_v2.js --status",
+    "db:migrate:studio-v2-default-tenant": "node migrate_studio_v2_default_tenant.js",
+    "db:migrate:studio-v2-default-tenant:status": "node migrate_studio_v2_default_tenant.js --status",
     "secrets:sync:asaas": "node scripts/sync-asaas-secret.cjs",
     "webhook:sync:asaas": "node scripts/sync-asaas-webhook.cjs",
     "billing:pilot:asaas": "node scripts/set-asaas-production-pilot.cjs",
