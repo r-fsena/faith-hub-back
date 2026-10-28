@@ -456,6 +456,9 @@ functions:
       - httpApi:
           method: OPTIONS
           path: /secretariat/{proxy+}
+      - httpApi:
+          method: OPTIONS
+          path: /studio/{proxy+}
 
   ministriesHandler:
     handler: src/functions/ministries.ministriesHandler
@@ -1013,6 +1016,30 @@ functions:
           authorizer: cognitoAuthorizer
           method: DELETE
           path: /feature-flags/tenant/{id}
+
+  getStudioPreferences:
+    handler: src/functions/studioExperience.getPreferences
+    events:
+      - httpApi:
+          authorizer: cognitoAuthorizer
+          method: GET
+          path: /studio/preferences
+
+  updateStudioPreferences:
+    handler: src/functions/studioExperience.updatePreferences
+    events:
+      - httpApi:
+          authorizer: cognitoAuthorizer
+          method: PUT
+          path: /studio/preferences
+
+  studioGlobalSearch:
+    handler: src/functions/studioExperience.globalSearch
+    events:
+      - httpApi:
+          authorizer: cognitoAuthorizer
+          method: GET
+          path: /studio/search
 
   listAuditLogs:
     handler: src/functions/auditLogs.listAuditLogs

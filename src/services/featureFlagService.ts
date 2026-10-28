@@ -111,7 +111,10 @@ export async function evaluateTenantFlags(
     'secretariat.baptisms': false,
     'secretariat.template_editor': false,
     'secretariat.document_pdf': false,
-    'secretariat.public_verification': false
+    'secretariat.public_verification': false,
+    'studio.guided_onboarding': false,
+    'studio.global_search': false,
+    'studio.personalized_navigation': false
   };
   const configsMap: Record<string, any> = {};
   const catalogMap: Map<string, { category: string; description: string; hasOverride: boolean }> = new Map();

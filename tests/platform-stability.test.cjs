@@ -82,7 +82,7 @@ test('production cutover remains configurable and the Asaas webhook can move saf
 test('authenticated aggregate routes expose unauthenticated CORS preflight only', () => {
   const serverless = read('faith-hub-backend/serverless.yml');
   const preflight = read('faith-hub-backend/src/functions/corsPreflight.ts');
-  for (const route of ['pastoral', 'ministries', 'volunteers', 'kids', 'financial', 'saas/invoices', 'secretariat']) {
+  for (const route of ['pastoral', 'ministries', 'volunteers', 'kids', 'financial', 'saas/invoices', 'secretariat', 'studio']) {
     const escaped = route.replace('/', '\\/');
     assert.match(serverless, new RegExp(`method: OPTIONS\\s+path: \\/${escaped}(?:\\/\\{proxy\\+\\})?`));
   }
@@ -93,8 +93,41 @@ test('authenticated aggregate routes expose unauthenticated CORS preflight only'
 test('new aggregate API resources stay outside the CloudFormation root limit', () => {
   const stackMap = read('faith-hub-backend/stacks-map.js');
   assert.match(stackMap, /SecretariatHandler/);
+  assert.match(stackMap, /StudioGlobalSearch/);
   assert.match(stackMap, /CorsPreflight/);
   assert.match(stackMap, /destination: 'ApiExtensions'/);
+});
+
+test('Studio phases 3 and 4 stay tenant-scoped, authorized and feature-gated', () => {
+  const serverless = read('faith-hub-backend/serverless.yml');
+  const handler = read('faith-hub-backend/src/functions/studioExperience.ts');
+  const service = read('faith-hub-web/src/services/studioExperience.ts');
+  const context = read('faith-hub-web/src/context/StudioExperienceContext.tsx');
+  const palette = read('faith-hub-web/src/components/StudioCommandPalette.tsx');
+  const onboarding = read('faith-hub-web/src/components/StudioOnboarding.tsx');
+
+  for (const functionName of ['getStudioPreferences', 'updateStudioPreferences', 'studioGlobalSearch']) {
+    const block = serverless.split(`\n  ${functionName}:`)[1].split(/\n  \w+:/)[0];
+    assert.match(block, /authorizer: cognitoAuthorizer/);
+    assert.match(block, /path: \/studio\//);
+  }
+  assert.match(handler, /requireAuth\(event\)/);
+  assert.match(handler, /enforceRole\(auth\.user, allowedRoles\)/);
+  assert.match(handler, /enforceTenant\(auth\.user, requestedOrg\)/);
+  assert.match(handler, /WHERE organization_id = \? AND user_id = \?/);
+  assert.match(handler, /m\.organization_id = \?/);
+  assert.match(handler, /d\.organization_id = \?/);
+  for (const flag of ['studio.guided_onboarding', 'studio.global_search', 'studio.personalized_navigation']) {
+    assert.match(handler, new RegExp(flag.replace('.', '\\.')));
+    assert.match(context, new RegExp(flag.replace('.', '\\.')));
+  }
+  assert.match(service, /getAuthHeaders\(\)/);
+  assert.match(palette, /event\.metaKey \|\| event\.ctrlKey/);
+  assert.match(palette, /searchStudio\(/);
+  assert.match(palette, /destination\.roles/);
+  assert.match(palette, /isFeatureEnabled\(destination\.featureFlag\)/);
+  assert.match(onboarding, /onboardingSteps/);
+  assert.match(onboarding, /setStepCompleted/);
 });
 
 test('public Secretariat verification is explicitly rate-limited and feature-gated', () => {

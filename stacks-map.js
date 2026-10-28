@@ -14,12 +14,23 @@ module.exports = (resource, logicalId) => {
     logicalId.startsWith('HttpApiRouteAnySecretariat') ||
     logicalId.startsWith('HttpApiRouteGetPublicSecretariatDocuments');
 
+  const isStudioExperienceResource =
+    logicalId.startsWith('GetStudioPreferences') ||
+    logicalId.startsWith('UpdateStudioPreferences') ||
+    logicalId.startsWith('StudioGlobalSearch') ||
+    logicalId === 'HttpApiIntegrationGetStudioPreferences' ||
+    logicalId === 'HttpApiIntegrationUpdateStudioPreferences' ||
+    logicalId === 'HttpApiIntegrationStudioGlobalSearch' ||
+    logicalId.startsWith('HttpApiRouteGetStudioPreferences') ||
+    logicalId.startsWith('HttpApiRoutePutStudioPreferences') ||
+    logicalId.startsWith('HttpApiRouteGetStudioSearch');
+
   const isCorsPreflightResource =
     logicalId.startsWith('CorsPreflight') ||
     logicalId === 'HttpApiIntegrationCorsPreflight' ||
-    /^HttpApiRouteOptions(Pastoral|Ministries|Volunteers|Kids|Financial|SaasInvoices|Secretariat)/.test(logicalId);
+    /^HttpApiRouteOptions(Pastoral|Ministries|Volunteers|Kids|Financial|SaasInvoices|Secretariat|Studio)/.test(logicalId);
 
-  if (isSecretariatResource || isCorsPreflightResource) {
+  if (isSecretariatResource || isStudioExperienceResource || isCorsPreflightResource) {
     return { destination: 'ApiExtensions' };
   }
 };
