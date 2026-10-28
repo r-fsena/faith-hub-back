@@ -114,7 +114,8 @@ export async function evaluateTenantFlags(
     'secretariat.public_verification': false,
     'studio.guided_onboarding': false,
     'studio.global_search': false,
-    'studio.personalized_navigation': false
+  'studio.personalized_navigation': false,
+  'studio.context_navigation_v2': false
   };
   const configsMap: Record<string, any> = {};
   const catalogMap: Map<string, { category: string; description: string; hasOverride: boolean }> = new Map();

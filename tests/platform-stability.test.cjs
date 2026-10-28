@@ -130,6 +130,28 @@ test('Studio phases 3 and 4 stay tenant-scoped, authorized and feature-gated', (
   assert.match(onboarding, /setStepCompleted/);
 });
 
+test('Studio V2 is opt-in, feature-gated and keeps contextual navigation accessible', () => {
+  const app = read('faith-hub-web/src/App.tsx');
+  const navigation = read('faith-hub-web/src/v2/StudioContextNavigationV2.tsx');
+  const migration = read('faith-hub-backend/migrate_studio_navigation_v2.js');
+  const defaults = read('faith-hub-backend/src/services/featureFlagService.ts');
+
+  assert.match(app, /get\('studio'\) === 'v2'/);
+  assert.match(app, /studioVersion === 'v2'/);
+  assert.match(app, /StudioContextNavigationV2/);
+  assert.match(app, /history\.pushState/);
+  assert.match(app, /addEventListener\('popstate'/);
+  assert.match(navigation, /studio\.context_navigation_v2/);
+  assert.match(navigation, /Voltar para/);
+  assert.match(navigation, /aria-current=/);
+  assert.match(navigation, /Navegar nesta área/);
+  assert.match(navigation, /Usar versão atual/);
+  assert.match(defaults, /'studio\.context_navigation_v2': false/);
+  assert.match(migration, /'global', NULL, 'all', \?, 0/);
+  assert.match(migration, /'org_default', NULL, 'production', \?, 1/);
+  assert.match(migration, /ENABLE_STUDIO_NAVIGATION_V2_PILOT/);
+});
+
 test('public Secretariat verification is explicitly rate-limited and feature-gated', () => {
   const serverless = read('faith-hub-backend/serverless.yml');
   const verification = read('faith-hub-backend/src/functions/publicDocumentVerification.ts');

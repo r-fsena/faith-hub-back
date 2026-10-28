@@ -28,6 +28,8 @@
     "db:migrate:secretariat:template-studio-flags:status": "node migrate_secretariat_template_studio_flags.js --status",
     "db:migrate:studio-experience": "node migrate_studio_experience.js",
     "db:migrate:studio-experience:status": "node migrate_studio_experience.js --status",
+    "db:migrate:studio-navigation-v2": "node migrate_studio_navigation_v2.js",
+    "db:migrate:studio-navigation-v2:status": "node migrate_studio_navigation_v2.js --status",
     "secrets:sync:asaas": "node scripts/sync-asaas-secret.cjs",
     "webhook:sync:asaas": "node scripts/sync-asaas-webhook.cjs",
     "billing:pilot:asaas": "node scripts/set-asaas-production-pilot.cjs",
