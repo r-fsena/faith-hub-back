@@ -14,7 +14,7 @@ const NAVIGATION_TABS = new Set([
   'secretariat_workspace', 'secretariat_overview', 'secretariat_records', 'secretariat_movements',
   'secretariat_documents', 'secretariat_baptisms', 'secretariat_templates',
   'content_workspace', 'eventos', 'transmissoes', 'devocionais', 'estudos', 'bible_config', 'oracoes',
-  'operations_workspace', 'pdv_produtos', 'pdv_pedidos',
+  'operations_workspace', 'pdv_produtos', 'pdv_estoque', 'pdv_pedidos',
   'finance_workspace', 'financial_treasury', 'financial_projects', 'pagarme_financeiro',
   'administration_workspace', 'campuses', 'church_branding', 'feature_flags', 'security_audit',
   'my_subscription', 'configuracoes'

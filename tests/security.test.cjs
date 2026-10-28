@@ -130,17 +130,21 @@ test('Ministry detail reads reject unrelated leaders and limit schedules to part
   assert.ok(scheduleList.params.includes('org-a'));
 });
 test('PDV recalculates prices and keeps payment pending despite manipulated client values', async () => {
-  reset(); dbQuery = async (sql) => ({ rows: sql.includes('FROM members') ? [member] : sql.includes('FROM pdv_products') ? [{ id: 'product-a', name: 'Livro', price: '19.90' }] : [] });
+  reset();
+  const state = transaction(async sql => sql.includes('FROM pdv_products') ? [{ id: 'product-a', name: 'Livro', price: '19.90', track_inventory: 0 }] : []);
   const result = await pdv.createOrder(event({ organization_id: 'org-a', user_name: 'Membro', payment_method: 'PIX', payment_status: 'PAID', total_price: 0.01, items_json: [{ id: 'product-a', qty: 2, price: 0.01 }] }));
   assert.equal(result.statusCode, 201); const body = JSON.parse(result.body);
   assert.equal(body.total_price, 39.8); assert.equal(body.payment_status, 'PENDING');
-  const insert = calls.find(call => call.sql.includes('INSERT INTO pdv_orders'));
+  const insert = state.writes.find(call => call.sql.includes('INSERT INTO pdv_orders'));
   assert.equal(insert.params[5], 'PENDING'); assert.equal(insert.params[9], 39.8);
 });
 test('PDV rejects card, negative quantities, foreign products and cross-tenant checkout', async () => {
   for (const [body, expected] of [[{ payment_method: 'CREDIT_CARD' }, 409], [{ items_json: [{ id: 'p', qty: -1 }] }, 400], [{ items_json: [{ id: 'other-tenant-product', qty: 1 }] }, 400], [{ organization_id: 'org-b' }, 403]]) {
-    reset(); const result = await pdv.createOrder(event({ organization_id: 'org-a', user_name: 'Membro', payment_method: 'PIX', items_json: [{ id: 'p', qty: 1 }], ...body }));
+    reset();
+    const state = transaction(async () => []);
+    const result = await pdv.createOrder(event({ organization_id: 'org-a', user_name: 'Membro', payment_method: 'PIX', items_json: [{ id: 'p', qty: 1 }], ...body }));
     assert.equal(result.statusCode, expected); assert.ok(!calls.some(call => call.sql.includes('INSERT INTO pdv_orders')));
+    assert.ok(!state.writes.some(call => call.sql.includes('INSERT INTO pdv_orders')));
   }
 });
 test('Orders require authentication and ordinary members cannot select another owner', async () => {
