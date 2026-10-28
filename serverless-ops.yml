@@ -137,6 +137,25 @@ resources:
         OKActions:
           - !Ref OperationsAlertsTopic
 
+    PdvInventoryReservationSchedule:
+      Type: AWS::Events::Rule
+      Properties:
+        Name: faith-hub-${param:targetStage}-pdv-inventory-reservations
+        Description: Libera reservas de estoque expiradas sem confirmação de pagamento.
+        ScheduleExpression: rate(5 minutes)
+        State: ENABLED
+        Targets:
+          - Arn: !Sub arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:faith-hub-backend-${param:targetStage}-pdvInventory
+            Id: PdvInventoryReservationTarget
+
+    PdvInventoryReservationSchedulePermission:
+      Type: AWS::Lambda::Permission
+      Properties:
+        Action: lambda:InvokeFunction
+        FunctionName: !Sub arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:faith-hub-backend-${param:targetStage}-pdvInventory
+        Principal: events.amazonaws.com
+        SourceArn: !GetAtt PdvInventoryReservationSchedule.Arn
+
   Outputs:
     OperationsAlertsTopicArn:
       Value: !Ref OperationsAlertsTopic

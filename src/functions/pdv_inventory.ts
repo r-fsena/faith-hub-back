@@ -290,3 +290,19 @@ export const expireReservations = async (): Promise<void> => {
     }
   }
 };
+
+// Uma única Lambda atende as rotas privadas e a expiração agendada, reduzindo
+// recursos de CloudFormation sem alterar o contrato público dos endpoints.
+export const inventoryHandler = async (event: APIGatewayProxyEvent | any): Promise<APIGatewayProxyResult | void> => {
+  if (event?.source === 'aws.events' || !event?.requestContext?.http) {
+    await expireReservations();
+    return;
+  }
+  const method = String(event.requestContext.http.method || event.httpMethod || '').toUpperCase();
+  const path = String(event.rawPath || event.path || '');
+  if (method === 'GET' && path.endsWith('/pdv/inventory')) return getInventory(event);
+  if (method === 'GET' && path.endsWith('/pdv/inventory/movements')) return getMovements(event);
+  if (method === 'POST' && path.endsWith('/pdv/inventory/movements')) return createMovement(event);
+  if (method === 'PUT' && /\/pdv\/inventory\/[^/]+\/settings$/.test(path)) return updateInventorySettings(event);
+  return apiResponse(404, { message: 'Rota de estoque não encontrada.' });
+};

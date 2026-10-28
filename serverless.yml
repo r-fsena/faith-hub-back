@@ -285,43 +285,26 @@ functions:
           path: /pdv/orders/{id}/status
           method: put
 
-  getPdvInventory:
-    handler: src/functions/pdv_inventory.getInventory
+  pdvInventory:
+    handler: src/functions/pdv_inventory.inventoryHandler
+    timeout: 60
     events:
       - httpApi:
           authorizer: cognitoAuthorizer
           path: /pdv/inventory
           method: get
-
-  getPdvInventoryMovements:
-    handler: src/functions/pdv_inventory.getMovements
-    events:
       - httpApi:
           authorizer: cognitoAuthorizer
           path: /pdv/inventory/movements
           method: get
-
-  createPdvInventoryMovement:
-    handler: src/functions/pdv_inventory.createMovement
-    events:
       - httpApi:
           authorizer: cognitoAuthorizer
           path: /pdv/inventory/movements
           method: post
-
-  updatePdvInventorySettings:
-    handler: src/functions/pdv_inventory.updateInventorySettings
-    events:
       - httpApi:
           authorizer: cognitoAuthorizer
           path: /pdv/inventory/{productId}/settings
           method: put
-
-  expirePdvInventoryReservations:
-    handler: src/functions/pdv_inventory.expireReservations
-    timeout: 60
-    events:
-      - schedule: rate(5 minutes)
 
   createOrUpdateBroadcast:
     handler: src/functions/broadcasts.createOrUpdateBroadcast
