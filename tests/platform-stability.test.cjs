@@ -161,6 +161,30 @@ test('Studio V2 is opt-in, feature-gated and keeps contextual navigation accessi
   assert.match(tenantDefaultMigration, /ENABLE_STUDIO_V2_DEFAULT_FOR_TENANT/);
 });
 
+test('Studio groups prayer care with people and separates ministries from schedules', () => {
+  const app = read('faith-hub-web/src/App.tsx');
+  const workspace = read('faith-hub-web/src/components/StudioWorkspace.tsx');
+  const palette = read('faith-hub-web/src/components/StudioCommandPalette.tsx');
+  const navigationV2 = read('faith-hub-web/src/v2/StudioContextNavigationV2.tsx');
+  const ministries = read('faith-hub-web/src/modules/MinistriesManagement.tsx');
+  const preferences = read('faith-hub-backend/src/functions/studioExperience.ts');
+
+  assert.match(app, /oracoes: \{ area: 'Pessoas', title: 'Orações & intercessão' \}/);
+  assert.match(app, /ministerios: \{ area: 'Equipes & Ministérios', title: 'Ministérios & voluntários' \}/);
+  assert.match(app, /escalas: \{ area: 'Equipes & Ministérios', title: 'Escalas' \}/);
+  assert.match(app, /activeTab === 'ministerios' \|\| activeTab === 'escalas'/);
+  assert.match(workspace, /tab: 'oracoes'.*Orações & intercessão/);
+  assert.match(workspace, /tab: 'ministerios'.*Ministérios & voluntários/);
+  assert.match(workspace, /tab: 'escalas'.*title: 'Escalas'/);
+  assert.match(palette, /tab: 'oracoes'.*area: 'Pessoas'/);
+  assert.match(palette, /tab: 'escalas'.*area: 'Equipes'/);
+  assert.match(navigationV2, /'celulas', 'oracoes'/);
+  assert.match(navigationV2, /'ministerios', 'escalas', 'kids_workspace'/);
+  assert.match(ministries, /initialSubTab\?: 'schedules' \| 'volunteers' \| 'roles'/);
+  assert.match(ministries, /onSectionChange\?\.\(nextTab === 'schedules' \? 'schedules' : 'ministries'\)/);
+  assert.match(preferences, /'ministries_workspace', 'ministerios', 'escalas'/);
+});
+
 test('public Secretariat verification is explicitly rate-limited and feature-gated', () => {
   const serverless = read('faith-hub-backend/serverless.yml');
   const verification = read('faith-hub-backend/src/functions/publicDocumentVerification.ts');
