@@ -180,9 +180,24 @@ test('Studio groups prayer care with people and separates ministries from schedu
   assert.match(palette, /tab: 'escalas'.*area: 'Equipes'/);
   assert.match(navigationV2, /'celulas', 'oracoes'/);
   assert.match(navigationV2, /'ministerios', 'escalas', 'kids_workspace'/);
+  assert.match(navigationV2, /destination\.tab === group\.rootTab \? ROOT_LABELS\[destination\.tab\] : destination\.label/);
   assert.match(ministries, /initialSubTab\?: 'schedules' \| 'volunteers' \| 'roles'/);
-  assert.match(ministries, /onSectionChange\?\.\(nextTab === 'schedules' \? 'schedules' : 'ministries'\)/);
+  assert.match(ministries, /scope=manage/);
+  assert.match(ministries, /initialSubTab !== 'schedules'.*Equipe de voluntários/s);
+  assert.match(ministries, /Funções do ministério/);
+  assert.doesNotMatch(ministries, /\{ id: 'schedules', label: `📅 Escalas/);
   assert.match(preferences, /'ministries_workspace', 'ministerios', 'escalas'/);
+});
+
+test('Ministry management is scoped to responsible leaders while tenant admins retain global access', () => {
+  const handler = read('faith-hub-backend/src/functions/ministries.ts');
+
+  assert.match(handler, /const GLOBAL_MINISTRY_ROLES = \['SUPERADMIN', 'PASTOR', 'ADMIN'\]/);
+  assert.match(handler, /const managementScope = event\.queryStringParameters\?\.scope === 'manage'/);
+  assert.match(handler, /managementScope && !\(user\.isSuperAdmin \|\| GLOBAL_MINISTRY_ROLES\.includes\(user\.role\)\)/);
+  assert.match(handler, /sql \+= ` AND m\.leader_id = \?`/);
+  assert.match(handler, /requireAuth\(event\)/);
+  assert.match(handler, /canUserViewMinistrySchedules/);
 });
 
 test('Studio overview routes do not render their operational modules underneath', () => {

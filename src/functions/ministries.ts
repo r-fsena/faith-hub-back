@@ -2,41 +2,60 @@ import { authorizeResource } from '../services/tenantResource';
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { v4 as uuidv4 } from 'uuid';
 import { query, apiResponse } from '../db';
-import { requireAuth, enforceRole, enforceTenant, getAuthenticatedUser } from '../services/authMiddleware';
+import { requireAuth, enforceRole, enforceTenant } from '../services/authMiddleware';
 import { logSecurityEvent } from '../services/auditLogService';
 
-const MINISTRY_ADMIN_ROLES = ['SUPERADMIN', 'PASTOR', 'ADMIN', 'LEADER'];
-const GLOBAL_MINISTRY_ROLES = ['SUPERADMIN', 'PASTOR', 'ADMIN', 'TREASURER'];
+const MINISTRY_ADMIN_ROLES = ['SUPERADMIN', 'PASTOR', 'ADMIN', 'TREASURER', 'LEADER'];
+const MINISTRY_VIEW_ROLES = ['SUPERADMIN', 'PASTOR', 'ADMIN', 'TREASURER', 'LEADER', 'VOLUNTEER', 'MEMBER'];
+const GLOBAL_MINISTRY_ROLES = ['SUPERADMIN', 'PASTOR', 'ADMIN'];
 
 /**
  * Checks if user has permission to manage a specific ministry:
- * - SuperAdmin, Pastor, Admin, Treasurer have global permission across all ministries
- * - Leader (LEADER) only has permission if they are the designated leader_id for this ministry
+ * - SuperAdmin, Pastor and Admin have global permission across all ministries
+ * - Other eligible roles only have permission if they are the designated leader_id
  */
 export function canUserManageMinistry(user: any, ministry: { leader_id?: string | null }): boolean {
   if (user.isSuperAdmin || GLOBAL_MINISTRY_ROLES.includes(user.role)) {
     return true;
   }
-  if (user.role === 'LEADER') {
-    return Boolean(
-      ministry.leader_id &&
-      (ministry.leader_id === user.userId || (user.email && ministry.leader_id.toLowerCase() === user.email.toLowerCase()))
-    );
-  }
-  return false;
+  return Boolean(
+    ministry.leader_id &&
+    (ministry.leader_id === user.userId || (user.email && ministry.leader_id.toLowerCase() === user.email.toLowerCase()))
+  );
+}
+
+async function canUserViewMinistrySchedules(
+  user: any,
+  ministry: { id: string; organization_id: string; leader_id?: string | null }
+): Promise<boolean> {
+  if (canUserManageMinistry(user, ministry)) return true;
+  const { rows } = await query(
+    `SELECT id FROM ministry_volunteers
+     WHERE organization_id = ? AND ministry_id = ? AND member_id = ?
+       AND status IN ('ACTIVE', 'TRAINING')
+     LIMIT 1`,
+    [ministry.organization_id, ministry.id, user.userId]
+  );
+  return rows.length > 0;
 }
 
 // GET /ministries -> Listar Ministérios com contadores de voluntários e funções
 export const listMinistries = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   try {
-    const user = await getAuthenticatedUser(event);
+    const auth = await requireAuth(event);
+    if ('errorResponse' in auth) return auth.errorResponse;
+    const roleCheck = enforceRole(auth.user, MINISTRY_VIEW_ROLES);
+    if (!roleCheck.allowed) return roleCheck.errorResponse!;
+
+    const user = auth.user;
     const requestedOrgId = event.queryStringParameters?.organization_id;
     const campusId = event.queryStringParameters?.campus_id;
     const statusParam = event.queryStringParameters?.status; // 'ACTIVE', 'INACTIVE' or 'all'
+    const managementScope = event.queryStringParameters?.scope === 'manage';
 
-    const tenantScope = user ? enforceTenant(user, requestedOrgId) : null;
-    if (tenantScope && !tenantScope.allowed) return tenantScope.errorResponse!;
-    const orgId = tenantScope?.effectiveOrgId || (requestedOrgId || 'org_default');
+    const tenantScope = enforceTenant(user, requestedOrgId);
+    if (!tenantScope.allowed) return tenantScope.errorResponse!;
+    const orgId = tenantScope.effectiveOrgId;
 
     let volunteerSelect = `
         NULL as my_volunteer_status,
@@ -45,27 +64,32 @@ export const listMinistries = async (event: APIGatewayProxyEvent): Promise<APIGa
     `;
     const params: any[] = [];
 
-    if (user?.userId) {
+    if (user.userId) {
       volunteerSelect = `
-        (SELECT mv.status FROM ministry_volunteers mv WHERE mv.ministry_id = m.id AND (mv.member_id = ? OR mv.member_id = (SELECT id FROM members WHERE email = ? LIMIT 1)) LIMIT 1) as my_volunteer_status,
-        (SELECT mv.roles_csv FROM ministry_volunteers mv WHERE mv.ministry_id = m.id AND (mv.member_id = ? OR mv.member_id = (SELECT id FROM members WHERE email = ? LIMIT 1)) LIMIT 1) as my_volunteer_roles,
-        (SELECT mv.joined_at FROM ministry_volunteers mv WHERE mv.ministry_id = m.id AND (mv.member_id = ? OR mv.member_id = (SELECT id FROM members WHERE email = ? LIMIT 1)) LIMIT 1) as my_volunteer_joined_at,
+        (SELECT mv.status FROM ministry_volunteers mv WHERE mv.organization_id = m.organization_id AND mv.ministry_id = m.id AND mv.member_id = ? LIMIT 1) as my_volunteer_status,
+        (SELECT mv.roles_csv FROM ministry_volunteers mv WHERE mv.organization_id = m.organization_id AND mv.ministry_id = m.id AND mv.member_id = ? LIMIT 1) as my_volunteer_roles,
+        (SELECT mv.joined_at FROM ministry_volunteers mv WHERE mv.organization_id = m.organization_id AND mv.ministry_id = m.id AND mv.member_id = ? LIMIT 1) as my_volunteer_joined_at,
       `;
-      params.push(user.userId, user.email || '', user.userId, user.email || '', user.userId, user.email || '');
+      params.push(user.userId, user.userId, user.userId);
     }
 
     let sql = `
       SELECT 
         m.*,
         ${volunteerSelect}
-        (SELECT COUNT(*) FROM ministry_roles WHERE ministry_id = m.id) as roles_count,
-        (SELECT COUNT(*) FROM ministry_volunteers WHERE ministry_id = m.id AND status = 'ACTIVE') as volunteers_count,
-        (SELECT COUNT(*) FROM service_schedules WHERE ministry_id = m.id AND service_date >= CURDATE()) as upcoming_schedules_count
+        (SELECT COUNT(*) FROM ministry_roles mr WHERE mr.ministry_id = m.id AND mr.organization_id = m.organization_id) as roles_count,
+        (SELECT COUNT(*) FROM ministry_volunteers mvc WHERE mvc.ministry_id = m.id AND mvc.organization_id = m.organization_id AND mvc.status = 'ACTIVE') as volunteers_count,
+        (SELECT COUNT(*) FROM service_schedules ssc WHERE ssc.ministry_id = m.id AND ssc.organization_id = m.organization_id AND ssc.service_date >= CURDATE()) as upcoming_schedules_count
       FROM ministries m
       WHERE m.organization_id = ?
     `;
 
     params.push(orgId);
+
+    if (managementScope && !(user.isSuperAdmin || GLOBAL_MINISTRY_ROLES.includes(user.role))) {
+      sql += ` AND m.leader_id = ?`;
+      params.push(user.userId);
+    }
 
     if (statusParam && statusParam !== 'all') {
       sql += ` AND m.status = ?`;
@@ -237,10 +261,30 @@ export const deleteMinistry = async (event: APIGatewayProxyEvent): Promise<APIGa
 // GET /ministries/{id}/roles -> Listar funções do ministério
 export const listMinistryRoles = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   try {
+    const auth = await requireAuth(event);
+    if ('errorResponse' in auth) return auth.errorResponse;
+    const roleCheck = enforceRole(auth.user, MINISTRY_ADMIN_ROLES);
+    if (!roleCheck.allowed) return roleCheck.errorResponse!;
+
     const ministryId = event.pathParameters?.id;
     if (!ministryId) return apiResponse(400, { error: 'ID do ministério ausente' });
 
-    const { rows } = await query(`SELECT * FROM ministry_roles WHERE ministry_id = ? ORDER BY name ASC`, [ministryId]);
+    const { rows: ministryRows } = await query(
+      `SELECT id, organization_id, leader_id FROM ministries WHERE id = ? LIMIT 1`,
+      [ministryId]
+    );
+    if (ministryRows.length === 0) return apiResponse(404, { error: 'Ministério não encontrado' });
+    const ministry = ministryRows[0];
+    const tenantCheck = enforceTenant(auth.user, ministry.organization_id);
+    if (!tenantCheck.allowed) return tenantCheck.errorResponse!;
+    if (!canUserManageMinistry(auth.user, ministry)) {
+      return apiResponse(403, { error: 'Acesso negado: funções disponíveis apenas para o responsável pelo ministério.' });
+    }
+
+    const { rows } = await query(
+      `SELECT * FROM ministry_roles WHERE ministry_id = ? AND organization_id = ? ORDER BY name ASC`,
+      [ministryId, tenantCheck.effectiveOrgId]
+    );
     return apiResponse(200, rows);
   } catch (err: any) {
     return apiResponse(500, { error: 'Erro ao listar funções do ministério' });
@@ -322,8 +366,25 @@ export const deleteMinistryRole = async (event: APIGatewayProxyEvent): Promise<A
 // GET /ministries/{id}/volunteers -> Listar bolsão de voluntários
 export const listMinistryVolunteers = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   try {
+    const auth = await requireAuth(event);
+    if ('errorResponse' in auth) return auth.errorResponse;
+    const roleCheck = enforceRole(auth.user, MINISTRY_ADMIN_ROLES);
+    if (!roleCheck.allowed) return roleCheck.errorResponse!;
+
     const ministryId = event.pathParameters?.id;
     if (!ministryId) return apiResponse(400, { error: 'ID do ministério ausente' });
+
+    const { rows: ministryRows } = await query(
+      `SELECT id, organization_id, leader_id FROM ministries WHERE id = ? LIMIT 1`,
+      [ministryId]
+    );
+    if (ministryRows.length === 0) return apiResponse(404, { error: 'Ministério não encontrado' });
+    const ministry = ministryRows[0];
+    const tenantCheck = enforceTenant(auth.user, ministry.organization_id);
+    if (!tenantCheck.allowed) return tenantCheck.errorResponse!;
+    if (!canUserManageMinistry(auth.user, ministry)) {
+      return apiResponse(403, { error: 'Acesso negado: voluntários disponíveis apenas para o responsável pelo ministério.' });
+    }
 
     const sql = `
       SELECT 
@@ -334,22 +395,24 @@ export const listMinistryVolunteers = async (event: APIGatewayProxyEvent): Promi
         (
           SELECT COUNT(*) 
           FROM service_roster_items sri 
-          INNER JOIN service_schedules ss ON sri.schedule_id = ss.id 
-          WHERE sri.member_id = mv.member_id AND ss.ministry_id = mv.ministry_id AND sri.status = 'ACCEPTED'
+          INNER JOIN service_schedules ss ON sri.schedule_id = ss.id AND ss.organization_id = sri.organization_id
+          WHERE sri.member_id = mv.member_id AND sri.organization_id = mv.organization_id
+            AND ss.ministry_id = mv.ministry_id AND sri.status = 'ACCEPTED'
         ) as total_served_count,
         (
           SELECT MAX(ss.service_date)
           FROM service_roster_items sri 
-          INNER JOIN service_schedules ss ON sri.schedule_id = ss.id 
-          WHERE sri.member_id = mv.member_id AND ss.ministry_id = mv.ministry_id AND sri.status = 'ACCEPTED'
+          INNER JOIN service_schedules ss ON sri.schedule_id = ss.id AND ss.organization_id = sri.organization_id
+          WHERE sri.member_id = mv.member_id AND sri.organization_id = mv.organization_id
+            AND ss.ministry_id = mv.ministry_id AND sri.status = 'ACCEPTED'
         ) as last_served_date
       FROM ministry_volunteers mv
-      INNER JOIN members m ON mv.member_id = m.id
-      WHERE mv.ministry_id = ?
+      INNER JOIN members m ON mv.member_id = m.id AND m.organization_id = mv.organization_id
+      WHERE mv.ministry_id = ? AND mv.organization_id = ?
       ORDER BY m.name ASC
     `;
 
-    const { rows } = await query(sql, [ministryId]);
+    const { rows } = await query(sql, [ministryId, tenantCheck.effectiveOrgId]);
     return apiResponse(200, rows);
   } catch (err: any) {
     console.error('Erro ao listar voluntários:', err);
@@ -609,14 +672,31 @@ export const batchVolunteers = async (event: APIGatewayProxyEvent): Promise<APIG
 // GET /ministries/{id}/schedules -> Listar escalas com voluntários alocados
 export const listSchedules = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   try {
+    const auth = await requireAuth(event);
+    if ('errorResponse' in auth) return auth.errorResponse;
+    const roleCheck = enforceRole(auth.user, MINISTRY_VIEW_ROLES);
+    if (!roleCheck.allowed) return roleCheck.errorResponse!;
+
     const ministryId = event.pathParameters?.id;
     if (!ministryId) return apiResponse(400, { error: 'ID do ministério ausente' });
+
+    const { rows: ministryRows } = await query(
+      `SELECT id, organization_id, leader_id FROM ministries WHERE id = ? LIMIT 1`,
+      [ministryId]
+    );
+    if (ministryRows.length === 0) return apiResponse(404, { error: 'Ministério não encontrado' });
+    const ministry = ministryRows[0];
+    const tenantCheck = enforceTenant(auth.user, ministry.organization_id);
+    if (!tenantCheck.allowed) return tenantCheck.errorResponse!;
+    if (!(await canUserViewMinistrySchedules(auth.user, ministry))) {
+      return apiResponse(403, { error: 'Acesso negado: escalas disponíveis apenas para responsáveis e voluntários deste ministério.' });
+    }
 
     const timeframe = event.queryStringParameters?.timeframe; // 'upcoming', 'past', 'all'
     const statusParam = event.queryStringParameters?.status; // 'DRAFT', 'PUBLISHED', 'COMPLETED', 'all'
 
-    let whereSql = `WHERE ss.ministry_id = ?`;
-    const params: any[] = [ministryId];
+    let whereSql = `WHERE ss.ministry_id = ? AND ss.organization_id = ?`;
+    const params: any[] = [ministryId, tenantCheck.effectiveOrgId];
 
     if (timeframe === 'upcoming') {
       whereSql += ` AND (ss.service_date >= CURDATE() AND ss.status != 'COMPLETED')`;
@@ -638,7 +718,7 @@ export const listSchedules = async (event: APIGatewayProxyEvent): Promise<APIGat
         COUNT(CASE WHEN sri.status = 'PENDING' THEN 1 END) as pending_count,
         COUNT(CASE WHEN sri.status = 'SWAP_REQUESTED' THEN 1 END) as swap_requested_count
       FROM service_schedules ss
-      LEFT JOIN service_roster_items sri ON ss.id = sri.schedule_id
+      LEFT JOIN service_roster_items sri ON ss.id = sri.schedule_id AND sri.organization_id = ss.organization_id
       ${whereSql}
       GROUP BY ss.id
       ORDER BY ss.service_date DESC, ss.service_time ASC
@@ -662,13 +742,13 @@ export const listSchedules = async (event: APIGatewayProxyEvent): Promise<APIGat
           sw.created_at as swap_created_at,
           sw_target_m.name as swap_target_member_name
         FROM service_roster_items sri
-        INNER JOIN ministry_roles mr ON sri.role_id = mr.id
-        INNER JOIN members m ON sri.member_id = m.id
+        INNER JOIN ministry_roles mr ON sri.role_id = mr.id AND mr.organization_id = sri.organization_id
+        INNER JOIN members m ON sri.member_id = m.id AND m.organization_id = sri.organization_id
         LEFT JOIN service_roster_swaps sw ON sw.roster_item_id = sri.id AND sw.status = 'PENDING'
         LEFT JOIN members sw_target_m ON sw.target_member_id = sw_target_m.id
-        WHERE sri.schedule_id IN (${scheduleIds})
+        WHERE sri.schedule_id IN (${scheduleIds}) AND sri.organization_id = ?
         ORDER BY mr.name ASC, m.name ASC
-      `);
+      `, [tenantCheck.effectiveOrgId]);
 
       const fullSchedules = schedules.map(sch => ({
         ...sch,

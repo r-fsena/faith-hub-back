@@ -36,6 +36,7 @@ const members = require('../src/functions/members.ts');
 const secretariat = require('../src/functions/secretariat.ts');
 const secretariatPhase2 = require('../src/functions/secretariatPhase2.ts');
 const publicDocumentVerification = require('../src/functions/publicDocumentVerification.ts');
+const ministries = require('../src/functions/ministries.ts');
 const { handleAsaasWebhook } = require('../src/functions/asaasWebhook.ts');
 const event = (body = {}, overrides = {}) => ({ headers: { Authorization: `Bearer ${token}`, 'x-organization-id': 'org-a' }, body: JSON.stringify(body), requestContext: { http: { sourceIp: '127.0.0.1' } }, queryStringParameters: {}, pathParameters: {}, ...overrides });
 const sign = async (payload = {}, options = {}) => new jose.SignJWT({ token_use: 'id', email: 'member@example.org', email_verified: true, ...payload }).setProtectedHeader({ alg: 'RS256', kid: 'test-key' }).setSubject('cognito-sub').setIssuer(options.issuer || issuer).setAudience(options.aud || 'test-client').setIssuedAt().setExpirationTime(options.exp || '5m').sign(privateKey);
@@ -72,6 +73,61 @@ test('Email and org_master membership do not grant master privileges; inactive i
   member.status = 'Inativo'; assert.equal(await auth.getAuthenticatedUser(event()), null);
   reset(); dbQuery = async () => ({ rows: [member, { ...member, id: 'duplicate' }] });
   assert.equal(await auth.getAuthenticatedUser(event()), null);
+});
+test('Studio ministry scope exposes all ministries only to tenant administrators', async () => {
+  reset();
+  assert.equal((await ministries.listMinistries(event({}, { headers: {} }))).statusCode, 401);
+
+  member.role = 'LEADER';
+  dbQuery = async sql => ({ rows: sql.includes('FROM members\n') ? [member] : [] });
+  const leaderResult = await ministries.listMinistries(event({}, { queryStringParameters: { organization_id: 'org-a', scope: 'manage' } }));
+  assert.equal(leaderResult.statusCode, 200);
+  const leaderList = calls.find(call => call.sql.includes('FROM ministries m'));
+  assert.match(leaderList.sql, /m\.leader_id = \?/);
+  assert.ok(leaderList.params.includes('member-a'));
+  assert.ok(leaderList.params.includes('org-a'));
+
+  reset();
+  member.role = 'ADMIN';
+  dbQuery = async sql => ({ rows: sql.includes('FROM members\n') ? [member] : [] });
+  const adminResult = await ministries.listMinistries(event({}, { queryStringParameters: { organization_id: 'org-a', scope: 'manage' } }));
+  assert.equal(adminResult.statusCode, 200);
+  const adminList = calls.find(call => call.sql.includes('FROM ministries m'));
+  assert.doesNotMatch(adminList.sql, /m\.leader_id = \?/);
+});
+test('Ministry detail reads reject unrelated leaders and limit schedules to participants', async () => {
+  reset();
+  member.role = 'LEADER';
+  dbQuery = async sql => ({ rows:
+    sql.includes('FROM members\n') ? [member] :
+    sql.includes('FROM ministries WHERE') ? [{ id: 'ministry-a', organization_id: 'org-a', leader_id: 'another-leader' }] : []
+  });
+  const deniedVolunteers = await ministries.listMinistryVolunteers(event({}, { pathParameters: { id: 'ministry-a' } }));
+  assert.equal(deniedVolunteers.statusCode, 403);
+  assert.ok(!calls.some(call => call.sql.includes('FROM ministry_volunteers mv')));
+
+  reset();
+  member.role = 'VOLUNTEER';
+  dbQuery = async sql => ({ rows:
+    sql.includes('FROM members\n') ? [member] :
+    sql.includes('FROM ministries WHERE') ? [{ id: 'ministry-a', organization_id: 'org-a', leader_id: 'another-leader' }] :
+    sql.includes('SELECT id FROM ministry_volunteers') ? [] : []
+  });
+  const deniedSchedules = await ministries.listSchedules(event({}, { pathParameters: { id: 'ministry-a' } }));
+  assert.equal(deniedSchedules.statusCode, 403);
+
+  reset();
+  member.role = 'VOLUNTEER';
+  dbQuery = async sql => ({ rows:
+    sql.includes('FROM members\n') ? [member] :
+    sql.includes('FROM ministries WHERE') ? [{ id: 'ministry-a', organization_id: 'org-a', leader_id: 'another-leader' }] :
+    sql.includes('SELECT id FROM ministry_volunteers') ? [{ id: 'volunteer-a' }] : []
+  });
+  const participantSchedules = await ministries.listSchedules(event({}, { pathParameters: { id: 'ministry-a' } }));
+  assert.equal(participantSchedules.statusCode, 200);
+  const scheduleList = calls.find(call => call.sql.includes('FROM service_schedules ss'));
+  assert.match(scheduleList.sql, /ss\.organization_id = \?/);
+  assert.ok(scheduleList.params.includes('org-a'));
 });
 test('PDV recalculates prices and keeps payment pending despite manipulated client values', async () => {
   reset(); dbQuery = async (sql) => ({ rows: sql.includes('FROM members') ? [member] : sql.includes('FROM pdv_products') ? [{ id: 'product-a', name: 'Livro', price: '19.90' }] : [] });
