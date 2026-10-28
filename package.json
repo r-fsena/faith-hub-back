@@ -6,7 +6,7 @@
   "scripts": {
     "start": "export $(grep -v '^#' .env | xargs) && serverless offline start",
     "deploy": "npm run typecheck && npm test && node deploy_aws.js",
-    "deploy:ops:live": "serverless deploy --config serverless-ops.yml --stage live",
+    "deploy:ops:live": "node deploy_aws.js deploy --config serverless-ops.yml --stage live",
     "package:prod": "serverless package --stage prod --package .serverless-prod",
     "ops:audit:rds": "node scripts/audit-rds-resilience.cjs",
     "ops:enforce:rds": "node scripts/enforce-rds-resilience.cjs --apply",
