@@ -185,6 +185,13 @@ test('Studio groups prayer care with people and separates ministries from schedu
   assert.match(preferences, /'ministries_workspace', 'ministerios', 'escalas'/);
 });
 
+test('Studio overview routes do not render their operational modules underneath', () => {
+  const app = read('faith-hub-web/src/App.tsx');
+
+  assert.match(app, /activeTab\.startsWith\('kids_'\) && activeTab !== 'kids_workspace'/);
+  assert.match(app, /activeTab\.startsWith\('secretariat_'\) && activeTab !== 'secretariat_workspace'/);
+});
+
 test('public Secretariat verification is explicitly rate-limited and feature-gated', () => {
   const serverless = read('faith-hub-backend/serverless.yml');
   const verification = read('faith-hub-backend/src/functions/publicDocumentVerification.ts');
