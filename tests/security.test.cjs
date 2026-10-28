@@ -34,6 +34,7 @@ const kids = require('../src/functions/kids.ts');
 const gateway = require('../src/functions/pagarmeSettings.ts');
 const members = require('../src/functions/members.ts');
 const secretariat = require('../src/functions/secretariat.ts');
+const secretariatPhase2 = require('../src/functions/secretariatPhase2.ts');
 const { handleAsaasWebhook } = require('../src/functions/asaasWebhook.ts');
 const event = (body = {}, overrides = {}) => ({ headers: { Authorization: `Bearer ${token}`, 'x-organization-id': 'org-a' }, body: JSON.stringify(body), requestContext: { http: { sourceIp: '127.0.0.1' } }, queryStringParameters: {}, pathParameters: {}, ...overrides });
 const sign = async (payload = {}, options = {}) => new jose.SignJWT({ token_use: 'id', email: 'member@example.org', email_verified: true, ...payload }).setProtectedHeader({ alg: 'RS256', kid: 'test-key' }).setSubject('cognito-sub').setIssuer(options.issuer || issuer).setAudience(options.aud || 'test-client').setIssuedAt().setExpirationTime(options.exp || '5m').sign(privateKey);
@@ -277,6 +278,46 @@ test('Secretariat record writes remain tenant scoped and audited', async () => {
   member.role = 'ADMIN';
   const denied = await secretariat.upsertRecord(event({ organization_id: 'org-b' }, { pathParameters: { proxy: 'members/member-a/record' } }));
   assert.equal(denied.statusCode, 403);
+});
+test('Secretariat phase 2 creates tenant-scoped transfers and documents with audit logs', async () => {
+  reset();
+  member.role = 'ADMIN';
+  member.campus_ids = JSON.stringify(['campus_sede']);
+  const flags = [
+    'secretariat.module_enabled', 'secretariat.member_registry', 'secretariat.transfers',
+    'secretariat.documents', 'secretariat.baptisms'
+  ].map(feature_key => ({ organization_id: 'org-a', feature_key, is_enabled: 1, environment: 'production' }));
+  dbQuery = async sql => ({ rows:
+    sql.includes('FROM members\n') ? [member] :
+    sql.includes('FROM organizations') ? [{ id: 'org-a', name: 'Igreja Teste', plan: 'PRO', status: 'ACTIVE' }] :
+    sql.includes('FROM tenant_feature_flags') ? flags :
+    sql.includes('FROM members m') ? [{ ...member, registry_number: 'MEM-1', membership_status: 'ACTIVE' }] :
+    sql.includes('FROM campuses') ? [{ id: 'campus-destino' }] :
+    sql.includes('FROM document_templates') ? [{ id: 'template-a', organization_id: 'org-a', document_type: 'PRESENTATION_LETTER', version: 1, is_active: 1, template_schema: JSON.stringify({ title: 'Carta', body: '{{member_name}}', footer: '{{organization_name}}' }) }] : []
+  });
+
+  const movement = await secretariatPhase2.createMovement(event({
+    organization_id: 'org-a', member_id: 'member-a', movement_type: 'INTERNAL_TRANSFER',
+    to_campus_id: 'campus-destino', effective_date: '2026-11-01', reason: 'Mudança de unidade'
+  }));
+  assert.equal(movement.statusCode, 201);
+  const movementInsert = calls.find(call => call.sql.includes('INSERT INTO membership_movements'));
+  assert.ok(movementInsert.params.includes('org-a'));
+  assert.ok(movementInsert.params.includes('member-a'));
+
+  const document = await secretariatPhase2.issueDocument(event({
+    organization_id: 'org-a', member_id: 'member-a', template_id: 'template-a'
+  }));
+  assert.equal(document.statusCode, 201);
+  const documentInsert = calls.find(call => call.sql.includes('INSERT INTO issued_documents'));
+  assert.ok(documentInsert.params.includes('org-a'));
+  assert.ok(JSON.parse(documentInsert.params.find(value => typeof value === 'string' && value.includes('"rendered"'))).rendered.body.includes('Membro'));
+  assert.ok(calls.filter(call => call.sql.includes('INSERT INTO security_audit_logs')).length >= 2);
+
+  reset(); member.role = 'ADMIN';
+  const denied = await secretariatPhase2.createMovement(event({ organization_id: 'org-b', member_id: 'member-a', movement_type: 'INTERNAL_TRANSFER' }));
+  assert.equal(denied.statusCode, 403);
+  assert.ok(!calls.some(call => call.sql.includes('INSERT INTO membership_movements')));
 });
 test('Private route declarations include the Cognito authorizer', () => {
   const config = fs.readFileSync(require('node:path').join(__dirname, '../serverless.yml'), 'utf8');

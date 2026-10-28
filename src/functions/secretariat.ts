@@ -1,95 +1,18 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { apiResponse, getConnection, query } from '../db';
 import { v4 as uuidv4 } from 'uuid';
-import { requireAuth, enforcePermission, enforceRole, enforceTenant, AuthUser } from '../services/authMiddleware';
 import { logSecurityEvent } from '../services/auditLogService';
-import { evaluateTenantFlags } from '../services/featureFlagService';
+import {
+  authorizeSecretariat,
+  isSecretariatResponse as isResponse,
+  safeSecretariatText as safeText,
+  safeSecretariatDate as safeDate,
+  secretariatCampusSql as campusSql
+} from '../services/secretariatAccess';
+import { handleSecretariatPhase2 } from './secretariatPhase2';
 
-const SECRETARIAT_ROLES = ['SUPERADMIN', 'PASTOR', 'ADMIN', 'TREASURER', 'LEADER', 'VOLUNTEER'];
 const MEMBERSHIP_STATUSES = new Set(['ACTIVE', 'PENDING', 'INACTIVE', 'TRANSFERRED', 'SUSPENDED']);
 const ADMISSION_TYPES = new Set(['BAPTISM', 'TRANSFER', 'CONFESSION', 'RESTORATION', 'OTHER']);
-
-interface SecretariatScope {
-  user: AuthUser;
-  organizationId: string;
-  campusId: string | null;
-}
-
-function requestedOrganization(event: APIGatewayProxyEvent, body: any = {}): string | undefined {
-  return event.queryStringParameters?.organization_id || event.headers?.['x-organization-id'] || body.organization_id;
-}
-
-function requestedCampus(event: APIGatewayProxyEvent, body: any = {}): string | null {
-  const value = event.queryStringParameters?.campus_id || event.headers?.['x-campus-id'] || body.campus_id;
-  return value && value !== 'all' ? value : null;
-}
-
-async function authorizeSecretariat(
-  event: APIGatewayProxyEvent,
-  permission: string,
-  body: any = {},
-  requiredFeature?: string
-): Promise<SecretariatScope | APIGatewayProxyResult> {
-  const auth = await requireAuth(event);
-  if ('errorResponse' in auth) return auth.errorResponse;
-
-  const roleCheck = enforceRole(auth.user, SECRETARIAT_ROLES);
-  if (!roleCheck.allowed) return roleCheck.errorResponse!;
-
-  const permissionCheck = enforcePermission(auth.user, permission);
-  if (!permissionCheck.allowed) return permissionCheck.errorResponse!;
-
-  const tenantCheck = enforceTenant(auth.user, requestedOrganization(event, body));
-  if (!tenantCheck.allowed) return tenantCheck.errorResponse!;
-
-  const campusId = requestedCampus(event, body);
-  const flags = await evaluateTenantFlags(tenantCheck.effectiveOrgId, campusId, 'production');
-  if (!flags.flags['secretariat.module_enabled']) {
-    return apiResponse(403, {
-      error: 'FEATURE_DISABLED',
-      message: 'O módulo de Secretaria não está habilitado para esta organização.'
-    });
-  }
-  if (requiredFeature && !flags.flags[requiredFeature]) {
-    return apiResponse(403, {
-      error: 'FEATURE_DISABLED',
-      message: 'O prontuário eclesiástico não está habilitado para esta organização.'
-    });
-  }
-
-  return {
-    user: auth.user,
-    organizationId: tenantCheck.effectiveOrgId,
-    campusId
-  };
-}
-
-function isResponse(value: SecretariatScope | APIGatewayProxyResult): value is APIGatewayProxyResult {
-  return 'statusCode' in value;
-}
-
-function safeText(value: unknown, maxLength: number): string | null {
-  if (value === undefined || value === null) return null;
-  const normalized = String(value).trim();
-  return normalized ? normalized.slice(0, maxLength) : null;
-}
-
-function safeDate(value: unknown): string | null {
-  if (value === undefined || value === null || value === '') return null;
-  const normalized = String(value).trim();
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(normalized) || Number.isNaN(Date.parse(`${normalized}T00:00:00Z`))) {
-    throw new Error('INVALID_DATE');
-  }
-  return normalized;
-}
-
-function campusSql(alias: string, campusId: string | null): { clause: string; params: string[] } {
-  if (!campusId) return { clause: '', params: [] };
-  return {
-    clause: ` AND (${alias}.campus_id = ? OR JSON_CONTAINS(${alias}.campus_ids, JSON_QUOTE(?)) OR JSON_CONTAINS(${alias}.campus_ids, '\"all\"'))`,
-    params: [campusId, campusId]
-  };
-}
 
 export const getDashboard = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   try {
@@ -318,6 +241,9 @@ export const secretariatHandler = async (event: APIGatewayProxyEvent): Promise<A
   if (method === 'GET' && proxy === 'records') return listRecords(event);
   if (method === 'GET' && /^members\/[^/]+\/record$/.test(proxy)) return getRecord(event);
   if (method === 'PUT' && /^members\/[^/]+\/record$/.test(proxy)) return upsertRecord(event);
+
+  const phase2Response = await handleSecretariatPhase2(event, method, proxy);
+  if (phase2Response) return phase2Response;
 
   return apiResponse(404, { error: 'Rota da Secretaria não encontrada.' });
 };

@@ -27,6 +27,7 @@ test('private Studio reads include Cognito authorization headers', () => {
   const cells = read('faith-hub-web/src/modules/CellGroups.tsx');
   const kids = read('faith-hub-web/src/modules/KidsMinistry.tsx');
   const secretariat = read('faith-hub-web/src/modules/Secretariat.tsx');
+  const secretariatPhase2 = read('faith-hub-web/src/modules/SecretariatPhase2.tsx');
 
   assert.match(financial, /financial\/transactions\?\$\{params\.toString\(\)\}`, \{ headers \}/);
   assert.match(financial, /financial\/summary\?\$\{params\.toString\(\)\}`, \{ headers \}/);
@@ -35,6 +36,10 @@ test('private Studio reads include Cognito authorization headers', () => {
   assert.match(secretariat, /secretariat\/dashboard\?.*\{ headers \}/);
   assert.match(secretariat, /secretariat\/records\?.*\{ headers \}/);
   assert.match(secretariat, /useFeatureFlags\(\)/);
+  assert.match(secretariatPhase2, /getAuthHeaders\(\)/);
+  for (const resource of ['movements', 'requests', 'documents', 'baptisms', 'templates', 'signatories']) {
+    assert.match(secretariatPhase2, new RegExp(`['\\\"]${resource}['\\\"]`));
+  }
 });
 
 test('sensitive QR codes stay on-device and demo authentication is production-gated', () => {
