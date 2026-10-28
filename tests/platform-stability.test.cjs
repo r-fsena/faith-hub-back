@@ -186,6 +186,12 @@ test('Studio groups prayer care with people and separates ministries from schedu
   assert.match(ministries, /initialSubTab !== 'schedules'.*Equipe de voluntários/s);
   assert.match(ministries, /Funções do ministério/);
   assert.doesNotMatch(ministries, /\{ id: 'schedules', label: `📅 Escalas/);
+  assert.match(ministries, /aria-label=\{`Editar \$\{min\.name\}`\}/);
+  assert.match(ministries, /aria-label=\{`\$\{isInactive \? 'Reativar' : 'Desativar'\} \$\{min\.name\}`\}/);
+  assert.match(ministries, /event\.stopPropagation\(\)/);
+  const selectedMinistryHeader = ministries.split('Header do Ministério Selecionado')[1].split('Gestão interna do ministério')[0];
+  assert.doesNotMatch(selectedMinistryHeader, /handleOpenEditMinistry/);
+  assert.doesNotMatch(selectedMinistryHeader, /handleToggleMinistryStatus/);
   assert.match(preferences, /'ministries_workspace', 'ministerios', 'escalas'/);
 });
 
