@@ -105,6 +105,7 @@ provider:
           Resource: !GetAtt SaasOperationsQueue.Arn
 
 plugins:
+  - ./infrastructure/serverless-domain-consolidation.cjs
   - serverless-plugin-split-stacks
   - serverless-esbuild
   - serverless-offline

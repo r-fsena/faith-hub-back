@@ -1,11 +1,24 @@
 /**
  * Keeps the root CloudFormation stack below AWS' 500-resource limit.
- *
- * These match only the CORS preflight and Secretariat resources introduced
- * after the currently deployed template. Existing functions are intentionally
- * left in place so this change cannot force their replacement.
+ * Existing resources are never force-migrated. New aggregate handlers are
+ * created directly inside domain stacks while the existing API routes retain
+ * their logical ids in the root stack for a safe, in-place cutover.
  */
 module.exports = (resource, logicalId) => {
+  const domainStacks = {
+    MembersApi: 'ApiMembers',
+    ContentApi: 'ApiContent',
+    CommunityApi: 'ApiCommunity',
+    TenantApi: 'ApiTenant',
+    SaasApi: 'ApiSaas'
+  };
+
+  for (const [prefix, destination] of Object.entries(domainStacks)) {
+    if (logicalId.startsWith(prefix) || logicalId === `HttpApiIntegration${prefix}`) {
+      return { destination };
+    }
+  }
+
   const isSecretariatResource =
     logicalId.startsWith('SecretariatHandler') ||
     logicalId.startsWith('PublicDocumentVerification') ||

@@ -25,7 +25,10 @@
 
 ## Implantação
 
-- `dev`: ambiente legado atual; não alterar a estratégia de nested stacks.
-- `prod`: usar a divisão por 20 grupos definida em `serverless.yml`.
+- `dev`: as rotas mantêm seus logical IDs na stack raiz e os novos handlers agregados ficam nas stacks `ApiMembers`, `ApiContent`, `ApiCommunity`, `ApiTenant` e `ApiSaas`.
+- Nunca usar `force: true` no `stacks-map.js`: recursos existentes não devem ser recriados para mudar de stack.
+- A consolidação de funções é executada antes do empacotamento por `infrastructure/serverless-domain-consolidation.cjs`; qualquer rota nova deve entrar no handler e no grupo do domínio correspondente.
+- Em uma migração de stack, publicar primeiro com `FAITH_HUB_PRESERVE_LEGACY_STACK=1` para gravar as políticas `Retain` dos grupos de logs; publicar novamente sem essa variável para efetivar a decomposição.
+- `prod`: manter a divisão por 20 grupos definida em `serverless.yml` até o cutover; validar o pacote para garantir que nenhuma função seja atribuída a dois grupos.
 - Validar o stack `prod`, webhook e smoke tests antes de apontar Studio/PWA para o novo endpoint.
 - Em falha, manter o endpoint anterior ativo e reverter os frontends; não remover o stack anterior durante a janela de validação.
