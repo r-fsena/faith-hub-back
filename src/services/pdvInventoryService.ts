@@ -17,6 +17,7 @@ type Balance = {
   id: string;
   on_hand_quantity: number | string;
   reserved_quantity: number | string;
+  minimum_stock: number | string;
   allow_negative: number;
 };
 
@@ -35,7 +36,7 @@ async function lockBalance(
     [uuidv4(), organizationId, campusId, productId]
   );
   const [rows] = await connection.query(
-    `SELECT id, on_hand_quantity, reserved_quantity, allow_negative
+    `SELECT id, on_hand_quantity, reserved_quantity, minimum_stock, allow_negative
        FROM pdv_inventory_balances
       WHERE organization_id = ? AND campus_id = ? AND product_id = ?
       FOR UPDATE`,
@@ -99,10 +100,16 @@ export async function reserveOrderInventory(
     const onHand = numberValue(balance.on_hand_quantity);
     const reserved = numberValue(balance.reserved_quantity);
     const available = onHand - reserved;
-    if (!balance.allow_negative && available < item.quantity) {
+    const minimumStock = numberValue(balance.minimum_stock);
+    const sellableQuantity = Math.max(0, available - minimumStock);
+    // Pedidos nunca podem consumir o estoque de segurança. A opção allow_negative
+    // continua válida para ajustes administrativos, mas não para vendas.
+    if (sellableQuantity < item.quantity) {
       throw new InventoryError(
         'INSUFFICIENT_STOCK',
-        `Estoque insuficiente para concluir o pedido. Disponível: ${available}.`
+        minimumStock > 0
+          ? `Estoque mínimo atingido. Disponível para venda: ${sellableQuantity}.`
+          : `Estoque insuficiente para concluir o pedido. Disponível: ${available}.`
       );
     }
     const nextReserved = reserved + item.quantity;

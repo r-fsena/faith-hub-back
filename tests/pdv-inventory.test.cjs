@@ -14,9 +14,9 @@ const {
   transitionOrderInventory
 } = require('../src/services/pdvInventoryService.ts');
 
-function inventoryConnection(initialOnHand = 10) {
+function inventoryConnection(initialOnHand = 10, minimumStock = 0) {
   const state = {
-    balance: { id: 'balance-a', on_hand_quantity: initialOnHand, reserved_quantity: 0, allow_negative: 0 },
+    balance: { id: 'balance-a', on_hand_quantity: initialOnHand, reserved_quantity: 0, minimum_stock: minimumStock, allow_negative: 0 },
     reservations: [],
     movements: []
   };
@@ -96,4 +96,26 @@ test('inventory refuses a reservation above the available tenant-campus balance'
   assert.equal(state.balance.on_hand_quantity, 1);
   assert.equal(state.balance.reserved_quantity, 0);
   assert.equal(state.reservations.length, 0);
+});
+
+test('inventory preserves the configured minimum stock during a sale reservation', async () => {
+  const { state, connection } = inventoryConnection(6, 5);
+
+  await reserveOrderInventory(connection, {
+    organizationId: 'org-a', campusId: 'campus-a', orderId: 'order-a', expiresAt: new Date(Date.now() + 60_000),
+    items: [{ productId: 'product-a', quantity: 1, trackInventory: true }]
+  });
+  assert.equal(state.balance.reserved_quantity, 1, 'the last sellable unit may be reserved');
+
+  await assert.rejects(
+    reserveOrderInventory(connection, {
+      organizationId: 'org-a', campusId: 'campus-a', orderId: 'order-b', expiresAt: new Date(Date.now() + 60_000),
+      items: [{ productId: 'product-a', quantity: 1, trackInventory: true }]
+    }),
+    error => error instanceof InventoryError
+      && error.code === 'INSUFFICIENT_STOCK'
+      && error.message.includes('Estoque mínimo atingido')
+  );
+  assert.equal(state.balance.reserved_quantity, 1);
+  assert.equal(state.reservations.length, 1);
 });

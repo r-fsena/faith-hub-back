@@ -61,7 +61,8 @@ export const getInventory = async (event: APIGatewayProxyEvent): Promise<APIGate
     }
     const { rows } = await query(
       `SELECT p.id AS product_id, p.name, p.category, p.sku, p.barcode, p.unit, p.status,
-              p.track_inventory, COALESCE(b.campus_id, p.campus_id, 'campus_sede') AS campus_id,
+              p.track_inventory, p.is_available_for_purchase,
+              COALESCE(b.campus_id, p.campus_id, 'campus_sede') AS campus_id,
               COALESCE(c.name, 'Unidade principal') AS campus_name,
               COALESCE(b.on_hand_quantity, 0) AS on_hand_quantity,
               COALESCE(b.reserved_quantity, 0) AS reserved_quantity,
@@ -82,14 +83,24 @@ export const getInventory = async (event: APIGatewayProxyEvent): Promise<APIGate
         ORDER BY FIELD(stock_status, 'OUT_OF_STOCK', 'LOW_STOCK', 'HEALTHY', 'NOT_TRACKED'), p.name, campus_name`,
       [...params.slice(1), params[0], ...trailingParams]
     );
-    const inventory = rows.map((row: any) => ({
-      ...row,
-      track_inventory: Boolean(row.track_inventory),
-      on_hand_quantity: Number(row.on_hand_quantity) || 0,
-      reserved_quantity: Number(row.reserved_quantity) || 0,
-      available_quantity: Number(row.available_quantity) || 0,
-      minimum_stock: Number(row.minimum_stock) || 0
-    }));
+    const inventory = rows.map((row: any) => {
+      const trackInventory = Number(row.track_inventory) === 1;
+      const isAvailableForPurchase = Number(row.is_available_for_purchase) === 1;
+      const availableQuantity = Number(row.available_quantity) || 0;
+      const minimumStock = Number(row.minimum_stock) || 0;
+      return {
+        ...row,
+        track_inventory: trackInventory,
+        is_available_for_purchase: isAvailableForPurchase,
+        purchase_available: row.status === 'ACTIVE'
+          && isAvailableForPurchase
+          && (!trackInventory || availableQuantity > minimumStock),
+        on_hand_quantity: Number(row.on_hand_quantity) || 0,
+        reserved_quantity: Number(row.reserved_quantity) || 0,
+        available_quantity: availableQuantity,
+        minimum_stock: minimumStock
+      };
+    });
     const tracked = inventory.filter((item: any) => item.track_inventory);
     return apiResponse(200, {
       summary: {

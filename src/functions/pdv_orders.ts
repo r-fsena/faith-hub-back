@@ -49,7 +49,7 @@ export const createOrder = async (event: APIGatewayProxyEvent): Promise<APIGatew
       }
       const [productRows] = await connection.query(
         `SELECT id, name, price, track_inventory FROM pdv_products
-          WHERE id = ? AND organization_id = ? AND status = 'ACTIVE'
+          WHERE id = ? AND organization_id = ? AND status = 'ACTIVE' AND is_available_for_purchase = 1
             AND (campus_id = ? OR campus_id IS NULL)
           FOR UPDATE`,
         [item.id, orgValue, campusValue]

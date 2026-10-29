@@ -76,16 +76,26 @@ export const getProducts = async (event: APIGatewayProxyEvent): Promise<APIGatew
       return [];
     };
 
-    const formatted = rows.map((r: any) => ({
-      ...r,
-      price: Number(r.price) || 0,
-      track_inventory: Boolean(r.track_inventory),
-      on_hand_quantity: Number(r.on_hand_quantity) || 0,
-      reserved_quantity: Number(r.reserved_quantity) || 0,
-      available_quantity: Number(r.available_quantity) || 0,
-      minimum_stock: Number(r.minimum_stock) || 0,
-      image_urls: parseImages(r.image_urls)
-    }));
+    const formatted = rows.map((r: any) => {
+      const trackInventory = Number(r.track_inventory) === 1;
+      const isAvailableForPurchase = Number(r.is_available_for_purchase) === 1;
+      const availableQuantity = Number(r.available_quantity) || 0;
+      const minimumStock = Number(r.minimum_stock) || 0;
+      return {
+        ...r,
+        price: Number(r.price) || 0,
+        track_inventory: trackInventory,
+        is_available_for_purchase: isAvailableForPurchase,
+        purchase_available: r.status === 'ACTIVE'
+          && isAvailableForPurchase
+          && (!trackInventory || availableQuantity > minimumStock),
+        on_hand_quantity: Number(r.on_hand_quantity) || 0,
+        reserved_quantity: Number(r.reserved_quantity) || 0,
+        available_quantity: availableQuantity,
+        minimum_stock: minimumStock,
+        image_urls: parseImages(r.image_urls)
+      };
+    });
 
     return apiResponse(200, formatted);
   } catch (error: any) {
@@ -126,6 +136,9 @@ export const createOrUpdateProduct = async (event: APIGatewayProxyEvent): Promis
     const sku = String(body.sku || '').trim() || null;
     const barcode = String(body.barcode || '').trim() || null;
     const unit = String(body.unit || 'UN').trim().toUpperCase().slice(0, 20) || 'UN';
+    const availabilityValue = body.is_available_for_purchase === undefined
+      ? null
+      : (body.is_available_for_purchase ? 1 : 0);
     const qValues = [
       body.name,
       body.description || null,
@@ -135,16 +148,19 @@ export const createOrUpdateProduct = async (event: APIGatewayProxyEvent): Promis
       barcode,
       unit,
       body.track_inventory ? 1 : 0,
+      availabilityValue,
       body.image_urls ? JSON.stringify(body.image_urls) : '[]',
       body.status || 'DRAFT'
     ];
 
     if (isUpdate) {
-      const uQ = `UPDATE pdv_products SET name=?, description=?, price=?, category=?, sku=?, barcode=?, unit=?, track_inventory=?, image_urls=?, status=?, campus_id=? WHERE id=? AND organization_id=?`;
+      const uQ = `UPDATE pdv_products SET name=?, description=?, price=?, category=?, sku=?, barcode=?, unit=?, track_inventory=?, is_available_for_purchase=COALESCE(?, is_available_for_purchase), image_urls=?, status=?, campus_id=? WHERE id=? AND organization_id=?`;
       await query(uQ, [...qValues, campusValue, id, orgValue]);
     } else {
-      const iQ = `INSERT INTO pdv_products (name, description, price, category, sku, barcode, unit, track_inventory, image_urls, status, organization_id, campus_id, id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
-      await query(iQ, [...qValues, orgValue, campusValue, id]);
+      const iQ = `INSERT INTO pdv_products (name, description, price, category, sku, barcode, unit, track_inventory, is_available_for_purchase, image_urls, status, organization_id, campus_id, id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+      const insertValues = [...qValues];
+      insertValues[8] = availabilityValue ?? 1;
+      await query(iQ, [...insertValues, orgValue, campusValue, id]);
     }
 
     await logSecurityEvent({
@@ -153,7 +169,15 @@ export const createOrUpdateProduct = async (event: APIGatewayProxyEvent): Promis
       action: isUpdate ? 'UPDATE_PDV_PRODUCT' : 'CREATE_PDV_PRODUCT',
       resource: 'pdv_products',
       resourceId: id,
-      details: { name: body.name, price: body.price, sku, barcode, unit, track_inventory: Boolean(body.track_inventory) },
+      details: {
+        name: body.name,
+        price: body.price,
+        sku,
+        barcode,
+        unit,
+        track_inventory: Boolean(body.track_inventory),
+        is_available_for_purchase: availabilityValue === null ? 'UNCHANGED' : Boolean(availabilityValue)
+      },
       event
     });
 
