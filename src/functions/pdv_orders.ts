@@ -276,6 +276,7 @@ export const updateOrderStatus = async (event: APIGatewayProxyEvent): Promise<AP
     const isCanceling = (status === 'CANCELADO' && existing[0].status !== 'CANCELADO')
       || (payment_status === 'CANCELED' && existing[0].payment_status !== 'CANCELED');
     if (isConfirmingPayment) {
+      updateFields.push('paid_at = COALESCE(paid_at, NOW())');
       stockTransition = await transitionOrderInventory(connection, {
         organizationId: tenantCheck.effectiveOrgId,
         orderId: id,

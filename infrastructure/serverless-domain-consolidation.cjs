@@ -12,7 +12,7 @@ const DOMAIN_GROUPS = Object.freeze({
     handler: 'src/functions/pdvApi.pdvApiHandler',
     sources: [
       'getPdvProducts', 'createPdvProduct', 'deletePdvProduct', 'createPdvOrder',
-      'getPdvOrders', 'updatePdvOrderStatus', 'pdvInventory'
+      'getPdvOrders', 'updatePdvOrderStatus', 'getPdvAnalytics', 'pdvInventory'
     ]
   },
   contentApi: {

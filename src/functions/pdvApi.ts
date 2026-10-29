@@ -2,6 +2,7 @@ import type { Callback, Context } from 'aws-lambda';
 import * as products from './pdv_products';
 import * as orders from './pdv_orders';
 import * as inventory from './pdv_inventory';
+import * as analytics from './pdv_analytics';
 import { createDomainApiHandler, DomainRouteMap } from './domainApiRouter';
 
 export const pdvApiRoutes: DomainRouteMap = {
@@ -14,7 +15,8 @@ export const pdvApiRoutes: DomainRouteMap = {
   'GET /PDV/INVENTORY': inventory.getInventory,
   'GET /PDV/INVENTORY/MOVEMENTS': inventory.getMovements,
   'POST /PDV/INVENTORY/MOVEMENTS': inventory.createMovement,
-  'PUT /PDV/INVENTORY/{PRODUCTID}/SETTINGS': inventory.updateInventorySettings
+  'PUT /PDV/INVENTORY/{PRODUCTID}/SETTINGS': inventory.updateInventorySettings,
+  'GET /PDV/ANALYTICS': analytics.getPdvAnalytics
 };
 
 const httpHandler = createDomainApiHandler(pdvApiRoutes);

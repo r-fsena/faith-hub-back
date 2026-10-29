@@ -2,6 +2,7 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const ts = require('typescript');
+const path = require('node:path');
 
 require.extensions['.ts'] = (module, filename) => module._compile(ts.transpileModule(
   fs.readFileSync(filename, 'utf8'),
@@ -118,4 +119,19 @@ test('inventory preserves the configured minimum stock during a sale reservation
   );
   assert.equal(state.balance.reserved_quantity, 1);
   assert.equal(state.reservations.length, 1);
+});
+
+test('operations analytics are tenant-scoped, paid-only and exposed by the consolidated PDV route', () => {
+  const root = path.resolve(__dirname, '..');
+  const analytics = fs.readFileSync(path.join(root, 'src/functions/pdv_analytics.ts'), 'utf8');
+  const pdvApi = fs.readFileSync(path.join(root, 'src/functions/pdvApi.ts'), 'utf8');
+  const serverless = fs.readFileSync(path.join(root, 'serverless.yml'), 'utf8');
+
+  assert.match(analytics, /requireAuth\(event\)/);
+  assert.match(analytics, /enforceTenant\(auth\.user, event\.queryStringParameters\?\.organization_id\)/);
+  assert.match(analytics, /o\.payment_status = 'PAID'/);
+  assert.match(analytics, /o\.status <> 'CANCELADO'/);
+  assert.match(analytics, /rangeDays > 366/);
+  assert.match(pdvApi, /'GET \/PDV\/ANALYTICS': analytics\.getPdvAnalytics/);
+  assert.match(serverless, /path: \/pdv\/analytics/);
 });

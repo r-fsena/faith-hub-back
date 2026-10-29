@@ -38,6 +38,8 @@
     "db:migrate:pdv-inventory:flags:status": "node migrate_pdv_inventory_flag_fix.js --status",
     "db:migrate:pdv-product-availability": "node migrate_pdv_product_availability.js",
     "db:migrate:pdv-product-availability:status": "node migrate_pdv_product_availability.js --status",
+    "db:migrate:pdv-sales-analytics": "node migrate_pdv_sales_analytics.js",
+    "db:migrate:pdv-sales-analytics:status": "node migrate_pdv_sales_analytics.js --status",
     "secrets:sync:asaas": "node scripts/sync-asaas-secret.cjs",
     "webhook:sync:asaas": "node scripts/sync-asaas-webhook.cjs",
     "billing:pilot:asaas": "node scripts/set-asaas-production-pilot.cjs",

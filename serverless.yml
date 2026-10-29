@@ -286,6 +286,14 @@ functions:
           path: /pdv/orders/{id}/status
           method: put
 
+  getPdvAnalytics:
+    handler: src/functions/pdv_analytics.getPdvAnalytics
+    events:
+      - httpApi:
+          authorizer: cognitoAuthorizer
+          path: /pdv/analytics
+          method: get
+
   pdvInventory:
     handler: src/functions/pdv_inventory.inventoryHandler
     timeout: 60
