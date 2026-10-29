@@ -128,7 +128,7 @@ export const getContentAnalytics = async (event: APIGatewayProxyEvent): Promise<
       COUNT(DISTINCT COALESCE(user_id, session_hash)) AS engaged_users,
       SUM(event_type = 'OPENED') AS opens,
       SUM(event_type = 'STARTED' OR event_type = 'STREAM_STARTED') AS starts,
-      SUM(event_type = 'COMPLETED') AS completions,
+      SUM(event_type = 'COMPLETED' AND content_type <> 'STUDY_CHAPTER') AS completions,
       SUM(event_type = 'NOTE_CREATED') AS notes
       FROM content_engagement_events WHERE organization_id = ? AND ${dateFilter}${campusFilter}`, params);
     const byModule = await query(`SELECT content_type, COUNT(*) AS interactions,
@@ -168,7 +168,8 @@ export const getContentAnalytics = async (event: APIGatewayProxyEvent): Promise<
       COUNT(DISTINCT n.id) AS notes
       FROM devotionals d LEFT JOIN devotional_notes n ON n.devotional_id = d.id
         AND n.created_at >= ? AND n.created_at < DATE_ADD(?, INTERVAL 1 DAY)
-      WHERE d.organization_id = ? AND d.status = 'PUBLISHED'${scopedCampus ? ' AND (d.campus_id = ? OR d.campus_id IS NULL)' : ''}`, [period.startDate, period.endDate, ...contentParams]);
+      WHERE d.organization_id = ? AND d.status = 'PUBLISHED'
+        AND d.available_date >= ? AND d.available_date < DATE_ADD(?, INTERVAL 1 DAY)${scopedCampus ? ' AND (d.campus_id = ? OR d.campus_id IS NULL)' : ''}`, [period.startDate, period.endDate, organizationId, period.startDate, period.endDate, ...(scopedCampus ? [scopedCampus] : [])]);
     const studyStats = await query(`SELECT COUNT(DISTINCT b.id) AS active_series, COUNT(DISTINCT c.id) AS chapters,
       COUNT(DISTINCT sc.user_id) AS participants, COUNT(DISTINCT sc.id) AS completed_chapters
       FROM study_books b LEFT JOIN study_chapters c ON c.book_id = b.id AND c.status = 'ACTIVE'
