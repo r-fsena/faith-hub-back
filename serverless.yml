@@ -769,6 +769,21 @@ functions:
           method: POST
           path: /devotionals/notes
 
+  trackContentEngagement:
+    handler: src/functions/contentAnalytics.trackContentEngagement
+    events:
+      - httpApi:
+          method: POST
+          path: /content/engagement
+
+  getContentAnalytics:
+    handler: src/functions/contentAnalytics.getContentAnalytics
+    events:
+      - httpApi:
+          authorizer: cognitoAuthorizer
+          method: GET
+          path: /content/analytics
+
   getChurchSettings:
     handler: src/functions/churchSettings.getSettings
     events:

@@ -25,7 +25,8 @@ const DOMAIN_GROUPS = Object.freeze({
       'getUploadUrl', 'getPartilhas', 'createPartilha', 'togglePartilha', 'deletePartilha',
       'getDevotionals', 'getTodayDevotional', 'createOrUpdateDevotional', 'deleteDevotional',
       'saveUserNote', 'getPrayers', 'createPrayer', 'prayForRequest', 'deletePrayer',
-      'respondPrayerPastoral', 'submitTestimony', 'updatePrayerStatus'
+      'respondPrayerPastoral', 'submitTestimony', 'updatePrayerStatus',
+      'trackContentEngagement', 'getContentAnalytics'
     ]
   },
   communityApi: {

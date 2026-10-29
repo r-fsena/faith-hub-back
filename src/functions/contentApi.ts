@@ -5,6 +5,7 @@ import * as uploads from './uploads';
 import * as partilhas from './partilhas';
 import * as devotionals from './devotionals';
 import * as prayers from './prayers';
+import * as contentAnalytics from './contentAnalytics';
 import { createDomainApiHandler, DomainRouteMap } from './domainApiRouter';
 
 export const contentApiRoutes: DomainRouteMap = {
@@ -42,7 +43,9 @@ export const contentApiRoutes: DomainRouteMap = {
   'DELETE /PRAYERS/{ID}': prayers.deletePrayer,
   'POST /PRAYERS/{ID}/RESPOND': prayers.respondPrayerPastoral,
   'POST /PRAYERS/{ID}/TESTIMONY': prayers.submitTestimony,
-  'PATCH /PRAYERS/{ID}/STATUS': prayers.updatePrayerStatus
+  'PATCH /PRAYERS/{ID}/STATUS': prayers.updatePrayerStatus,
+  'POST /CONTENT/ENGAGEMENT': contentAnalytics.trackContentEngagement,
+  'GET /CONTENT/ANALYTICS': contentAnalytics.getContentAnalytics
 };
 
 export const contentApiHandler = createDomainApiHandler(contentApiRoutes);
