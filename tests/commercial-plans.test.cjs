@@ -59,7 +59,9 @@ function transaction(proposal) {
       if (sql.includes('FROM saas_subscriptions')) return [scenario.verified ? [{ id: proposal.asaas_subscription_id }] : []];
       if (sql.includes('FROM saas_plans')) return [[scenario.plan]];
       if (sql.includes('FROM organizations')) return [sql.includes('WHERE slug') ? [] : sql.includes('FOR UPDATE') ? [scenario.organization] : []];
-      if (sql.includes('FROM members')) return [[]];
+      if (sql.includes('FROM saas_acquisitions')) return [scenario.acquisition ? [scenario.acquisition] : []];
+      if (sql.includes('FROM campuses')) return [[{ id: 'campus-trial' }]];
+      if (sql.includes('FROM members')) return [scenario.owner ? [scenario.owner] : []];
       throw new Error('Unexpected transaction query: ' + sql);
     }
   }; return state;
@@ -71,7 +73,7 @@ test('commercial prices, shared capacities and assisted trial match the approved
     ['Conectar', 99, 300, 1], ['Cuidar', 249, 700, 1], ['Gestão', 399, 1500, 5], ['Enterprise', null, null, null]
   ]);
   assert.ok(catalog.plans.every(p => p.yearly_price === null));
-  assert.deepEqual([catalog.trial.plan_id, catalog.trial.max_members, catalog.trial.max_campuses, catalog.trial.duration_days, catalog.trial.card_required, catalog.trial.automatic_charge], ['CUIDAR', 300, 1, 14, false, false]);
+  assert.deepEqual([catalog.trial.plan_id, catalog.trial.max_members, catalog.trial.max_campuses, catalog.trial.duration_days, catalog.trial.card_required, catalog.trial.automatic_charge], ['CONECTAR', 300, 1, 14, false, false]);
 });
 test('all four tiers precisely separate common features, care and management', async () => {
   for (const id of ['CONECTAR', 'CUIDAR', 'GESTAO', 'ENTERPRISE_2026']) {
@@ -213,4 +215,26 @@ test('feature override identifiers fit the real production schema and keep tenan
   assert.equal(writes[0].params[0], writes[1].params[0]);
   assert.notEqual(writes[0].params[0], writes[2].params[0]);
   assert.notEqual(writes[0].params[0], writes[3].params[0]);
+});
+
+test('trial expiry and pending start disable contracted modules but preserve activation flags', async () => {
+  for (const patch of [{trial_pending_start:1},{trial_expires_at:'2020-01-01T00:00:00Z'}]) {
+    usePlan('CONECTAR'); Object.assign(scenario.organization,patch);
+    scenario.flags=[{organization_id:'global',feature_key:'system.saas_public_onboarding',is_enabled:1}];
+    const evaluated=await evaluateTenantFlags('org-a');
+    assert.equal(evaluated.flags['members.module_enabled'],false);
+    assert.equal(evaluated.flags['system.saas_public_onboarding'],true);
+  }
+});
+test('verified trial conversion keeps tenant and seeds newly purchased modules at its sede', async () => {
+  const contract=usePlan('GESTAO');
+  scenario.acquisition={id:'acq',mode:'TRIAL',organization_id:'org-a',owner_sub:'owner'};
+  scenario.owner={id:'owner'};
+  const proposal={id:'proposal-a',plan_tier:'GESTAO',plan_contract:JSON.stringify(contract),asaas_subscription_id:'sub-paid',contact_email:'owner@example.org'};
+  const state=transaction(proposal);
+  const result=await ProvisioningService.provisionFromProposal(proposal.id);
+  assert.equal(result.organization_id,'org-a');assert.equal(state.commits,1);
+  assert.equal(state.writes.some(c=>c.sql.includes('INSERT INTO organizations')),false);
+  assert.equal(state.writes.some(c=>c.sql.includes('trial_pending_start = 0')),true);
+  assert.equal(scenario.seeds[0][0],'org-a');assert.equal(scenario.seeds[0][1],'campus-trial');
 });

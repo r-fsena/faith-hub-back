@@ -332,6 +332,9 @@ export const acceptProposal = async (event: APIGatewayProxyEvent): Promise<APIGa
     }
     const daysAhead = isFirstFree ? 30 : 0;
     const nextDueDate = new Date(Date.now() + daysAhead * 86400000).toISOString().slice(0, 10);
+    const callbackBase = proposal.created_by === 'Public journey'
+      ? 'https://faithhubs.com/ativacao?'
+      : `https://studio.faithhubs.com/?proposta=${encodeURIComponent(token)}&`;
     const checkout = await AsaasService.createHostedRecurringCheckout({
       externalReference,
       billingTypes: ['CREDIT_CARD'],
@@ -342,9 +345,9 @@ export const acceptProposal = async (event: APIGatewayProxyEvent): Promise<APIGa
         proposal.billing_cycle === 'SEMIANNUAL' ? 'SEMIANNUALLY' :
         proposal.billing_cycle === 'QUARTERLY' ? 'QUARTERLY' : 'MONTHLY',
       nextDueDate,
-      successUrl: `https://studio.faithhubs.com/?proposta=${encodeURIComponent(token)}&retorno=asaas-sucesso`,
-      cancelUrl: `https://studio.faithhubs.com/?proposta=${encodeURIComponent(token)}&retorno=asaas-cancelado`,
-      expiredUrl: `https://studio.faithhubs.com/?proposta=${encodeURIComponent(token)}&retorno=asaas-expirado`
+      successUrl: `${callbackBase}retorno=asaas-sucesso`,
+      cancelUrl: `${callbackBase}retorno=asaas-cancelado`,
+      expiredUrl: `${callbackBase}retorno=asaas-expirado`
     });
 
     await connection.query(`UPDATE saas_proposals

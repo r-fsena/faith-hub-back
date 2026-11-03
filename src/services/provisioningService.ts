@@ -47,6 +47,35 @@ export class ProvisioningService {
       const contract = readPlanContract(proposal.plan_contract, proposal.plan_tier);
       if (!LEGACY_PLAN_IDS.has(proposal.plan_tier) && !contract) throw new Error('PLAN_CONTRACT_REQUIRED');
 
+      // Public owners already verified their identity before checkout.
+      const [acquisitionRows] = await connection.query(
+        'SELECT * FROM saas_acquisitions WHERE proposal_id = ? AND owner_email = ? LIMIT 1 FOR UPDATE',
+        [proposal.id, proposal.contact_email]
+      ) as any;
+      const acquisition = acquisitionRows[0];
+      if (acquisition?.organization_id) {
+        const [organizations] = await connection.query('SELECT id FROM organizations WHERE id = ? FOR UPDATE', [acquisition.organization_id]) as any;
+        if (!organizations.length || acquisition.mode !== 'TRIAL' || !contract) throw new Error('TRIAL_CONVERSION_SCOPE_INVALID');
+        const [owners] = await connection.query('SELECT id FROM members WHERE id = ? AND organization_id = ? FOR UPDATE', [acquisition.owner_sub, acquisition.organization_id]) as any;
+        if (!owners.length) throw new Error('TRIAL_OWNER_NOT_FOUND');
+        const orgId = acquisition.organization_id;
+        await connection.query('UPDATE organizations SET plan = ?, status = ?, trial_started_at = NULL, trial_expires_at = NULL, trial_pending_start = 0 WHERE id = ?', [contract.plan_id, 'ACTIVE', orgId]);
+        await initializePlanEntitlements(orgId, contract, (sql,params)=>connection.query(sql,params));
+        if (contract.entitlements['ministries.module_enabled']) {
+          const [campuses] = await connection.query('SELECT id FROM campuses WHERE organization_id = ? AND is_headquarters = 1 LIMIT 1', [orgId]) as any;
+          if (!campuses.length) throw new Error('TRIAL_HEADQUARTERS_NOT_FOUND');
+          await seedDefaultMinistries(orgId, campuses[0].id, (sql,params)=>connection.query(sql,params), true);
+        }
+        await connection.query("UPDATE saas_subscriptions SET organization_id = ?, status = 'ACTIVE', updated_at = NOW() WHERE id = ? AND proposal_id = ?", [orgId, proposal.asaas_subscription_id, proposal.id]);
+        await connection.query('UPDATE saas_invoices SET organization_id = ? WHERE subscription_id = ? AND organization_id IS NULL', [orgId, proposal.asaas_subscription_id]);
+        await connection.query("UPDATE saas_proposals SET status = 'PAID', billing_status = 'PAID', created_organization_id = ?, updated_at = NOW() WHERE id = ?", [orgId, proposal.id]);
+        await connection.query("UPDATE saas_acquisitions SET status = 'ACTIVE', trial_expires_at = NULL WHERE id = ? AND organization_id = ?", [acquisition.id, orgId]);
+        await connection.query(`INSERT INTO security_audit_logs (id,organization_id,user_email,user_role,action,resource,resource_id,details,status)
+          VALUES (?,?,'system@faithhubs.com','SYSTEM','CONVERT_TRIAL_TO_PAID','organizations',?,?,'SUCCESS')`, [uuidv4(),orgId,orgId,JSON.stringify({proposal:proposal.id,plan:contract.plan_id})]);
+        await connection.commit();
+        return {success:true,organization_id:orgId,studio_url:'https://studio.faithhubs.com',church_name:proposal.church_name};
+      }
+
       const digest = crypto.createHash('sha256').update(proposal.id).digest('hex').slice(0, 16);
       const orgId = `org_${digest}`;
       const campusId = `campus_${digest}`;
@@ -66,8 +95,8 @@ export class ProvisioningService {
         throw new Error('ADMIN_EMAIL_ALREADY_ASSIGNED_TO_ANOTHER_TENANT');
       }
 
-      let cognitoUserId = memberRows[0]?.id || uuidv4();
-      if (!memberRows.length && USER_POOL_ID) {
+      let cognitoUserId = memberRows[0]?.id || acquisition?.owner_sub || uuidv4();
+      if (!memberRows.length && USER_POOL_ID && !acquisition) {
         const userAttributes: Array<{ Name: string; Value: string }> = [
           { Name: 'email', Value: proposal.contact_email },
           { Name: 'name', Value: proposal.contact_name },
@@ -123,7 +152,7 @@ export class ProvisioningService {
         (id, name, email, role, status, phone, organization_id, campus_id, campus_ids)
         VALUES (?, ?, ?, 'ADMIN', 'ACTIVE', ?, ?, ?, ?)`, [
         cognitoUserId, proposal.contact_name, proposal.contact_email, proposal.contact_phone || null,
-        orgId, campusId, JSON.stringify([campusId])
+        orgId, campusId, JSON.stringify(acquisition ? ['all'] : [campusId])
       ]);
       await connection.query(`UPDATE saas_subscriptions SET organization_id = ?, status = 'ACTIVE',
         updated_at = NOW() WHERE id = ? AND proposal_id = ?`, [
@@ -146,6 +175,9 @@ export class ProvisioningService {
         uuidv4(), orgId, orgId, JSON.stringify({ proposalId, subscriptionId: proposal.asaas_subscription_id,
           plan: proposal.plan_tier, contract_version: contract?.version, max_members: contract?.max_members, max_campuses: contract?.max_campuses })
       ]);
+      if (acquisition) {
+        await connection.query("UPDATE saas_acquisitions SET organization_id = ?, status = 'ACTIVE', last_error = NULL WHERE id = ? AND owner_sub = ?", [orgId,acquisition.id,acquisition.owner_sub]);
+      }
       await connection.commit();
 
       return {

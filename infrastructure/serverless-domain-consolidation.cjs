@@ -51,7 +51,7 @@ const DOMAIN_GROUPS = Object.freeze({
   saasApi: {
     handler: 'src/functions/saasApi.saasApiHandler',
     sources: [
-      'createProposal', 'listProposals', 'getPublicProposal', 'acceptProposal',
+      'publicJourney', 'createProposal', 'listProposals', 'getPublicProposal', 'acceptProposal',
       'listSaasSubscriptions', 'handleAsaasWebhook', 'listSaasPlans',
       'createOrUpdateSaasPlan', 'deleteSaasPlan'
     ]

@@ -1,6 +1,6 @@
 require('dotenv').config();
 const crypto = require('crypto');
-const catalog = require('./src/config/commercialPlans.json');
+const catalog = require('./migrations/commercialPlans.20261102.json');
 const { createAdminConnection } = require('./scripts/db-admin.cjs');
 
 const migrationId = '20261102_001_commercial_plans';

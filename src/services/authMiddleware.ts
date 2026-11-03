@@ -11,6 +11,8 @@ export interface AuthUser {
   campusIds: string[];
   operationalPermissions: string[];
   isSuperAdmin: boolean;
+  trialExpiresAt?: string | null;
+  trialPendingStart?: boolean;
 }
 
 export function normalizeRole(role: string): string {
@@ -28,7 +30,9 @@ export async function getAuthenticatedUser(event: APIGatewayProxyEvent): Promise
     // Identity bootstrap is the sole cross-tenant member lookup: only verified Cognito identity is used.
     // Do not filter inactive rows here, otherwise an inactive duplicate could resolve to another account.
     const { rows } = await query(
-      `SELECT id, name, email, role, status, organization_id, campus_id, campus_ids, operational_permissions FROM members
+      `SELECT id, name, email, role, status, organization_id, campus_id, campus_ids, operational_permissions,
+       (SELECT trial_expires_at FROM organizations WHERE id = members.organization_id) AS trial_expires_at,
+       (SELECT trial_pending_start FROM organizations WHERE id = members.organization_id) AS trial_pending_start FROM members
        WHERE id = ? OR (? != '' AND LOWER(email) = ?) LIMIT 2`,
       [claims.sub, email, email]
     );
@@ -49,7 +53,7 @@ export async function getAuthenticatedUser(event: APIGatewayProxyEvent): Promise
     operationalPermissions = operationalPermissions.filter(permission => typeof permission === 'string');
     return {
       userId: member.id, email: member.email || email, name: member.name || 'Usuário', role,
-      organizationId: member.organization_id, campusIds, operationalPermissions, isSuperAdmin: role === 'SUPERADMIN'
+      organizationId: member.organization_id, campusIds, operationalPermissions, isSuperAdmin: role === 'SUPERADMIN', trialExpiresAt: member.trial_expires_at ? new Date(member.trial_expires_at).toISOString() : null, trialPendingStart: !!Number(member.trial_pending_start)
     };
   } catch (error) {
     console.error('Error resolving authenticated user:', error);
@@ -72,10 +76,15 @@ export async function requireAuth(
       })
     };
   }
+  const path = (event as any).rawPath || event.path || '';
+  const expired = user.trialExpiresAt && new Date(user.trialExpiresAt).getTime() <= Date.now();
+  if (!user.isSuperAdmin && (expired || user.trialPendingStart) && !/\/members\/me$|\/public\/journey\/|\/saas\/invoices|\/studio\/preferences/.test(path)) {
+    return { errorResponse: apiResponse(402, { error: user.trialPendingStart ? 'TRIAL_NOT_STARTED' : 'TRIAL_EXPIRED', message: user.trialPendingStart ? 'Confirme o início do teste no Studio.' : 'Seu teste de 14 dias terminou. Contrate um plano para continuar.' }) };
+  }
   let body: any = {};
   try { body = JSON.parse(event.body || '{}'); } catch {}
   const requestedCampus = event.headers?.['x-campus-id'] || event.queryStringParameters?.campus_id || body.campus_id;
-  if (!user.isSuperAdmin && requestedCampus && requestedCampus !== 'all' && !user.campusIds.includes(requestedCampus)) {
+  if (!user.isSuperAdmin && requestedCampus && requestedCampus !== 'all' && !user.campusIds.includes('all') && !user.campusIds.includes(requestedCampus)) {
     return { errorResponse: apiResponse(403, { error: 'CROSS_CAMPUS_FORBIDDEN', message: 'Acesso negado a esta unidade' }) };
   }
   return { user };

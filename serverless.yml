@@ -153,6 +153,14 @@ resources:
           maxReceiveCount: 5
 
 functions:
+  publicJourney:
+    handler: src/functions/publicJourney.publicJourneyHandler
+    timeout: 28
+    events:
+      - httpApi:
+          path: /public/journey/{proxy+}
+          method: ANY
+
   inviteMember:
     handler: src/functions/members.invite
     events:

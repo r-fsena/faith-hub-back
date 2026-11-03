@@ -592,7 +592,7 @@ async function cloneTemplate(event: APIGatewayProxyEvent, copyToCampus: boolean)
     if (copyToCampus) {
       targetCampusId = safeSecretariatText(body.target_campus_id, 36);
       if (!targetCampusId) return apiResponse(400, { error: 'Selecione a unidade de destino.' });
-      if (!scope.user.isSuperAdmin && !scope.user.campusIds.includes(targetCampusId)) {
+      if (!scope.user.isSuperAdmin && !scope.user.campusIds.includes('all') && !scope.user.campusIds.includes(targetCampusId)) {
         return apiResponse(403, { error: 'CROSS_CAMPUS_FORBIDDEN', message: 'Acesso negado à unidade de destino.' });
       }
       const campus = await query(`SELECT id, name FROM campuses WHERE organization_id = ? AND id = ? LIMIT 1`, [scope.organizationId, targetCampusId]);

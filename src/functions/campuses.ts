@@ -88,6 +88,11 @@ export const createOrUpdateCampus = async (event: APIGatewayProxyEvent): Promise
     if (!tenantCheck.allowed) return tenantCheck.errorResponse!;
     const orgId = tenantCheck.effectiveOrgId;
 
+    if (id) {
+      const { rows: owned } = await query('SELECT id FROM campuses WHERE id = ? AND organization_id = ? LIMIT 1', [id, orgId]);
+      if (!owned.length) return apiResponse(404, { error: 'Unidade não encontrada nesta organização.' });
+      if (!auth.user.isSuperAdmin && !auth.user.campusIds.includes('all') && !auth.user.campusIds.includes(id)) return apiResponse(403, { error: 'Sem acesso a esta unidade.' });
+    }
     const campusId = id || uuidv4();
     if (!id) {
       const planAccess = await enforcePlanAccess(event, 'system.multicampus_enabled');

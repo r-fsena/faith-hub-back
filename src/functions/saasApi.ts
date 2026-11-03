@@ -1,9 +1,11 @@
 import * as proposals from './proposals';
 import * as asaas from './asaasWebhook';
 import * as plans from './saasPlans';
+import { publicJourneyHandler } from './publicJourney';
 import { createDomainApiHandler, DomainRouteMap } from './domainApiRouter';
 
 export const saasApiRoutes: DomainRouteMap = {
+  'ANY /PUBLIC/JOURNEY/{PROXY+}': publicJourneyHandler,
   'POST /PROPOSALS': proposals.createProposal,
   'GET /PROPOSALS': proposals.listProposals,
   'GET /PROPOSALS/PUBLIC/{TOKEN}': proposals.getPublicProposal,

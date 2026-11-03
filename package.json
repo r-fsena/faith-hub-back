@@ -51,7 +51,9 @@
     "db:migrate:commercial-plans": "node migrate_commercial_plans.js",
     "db:migrate:commercial-plans:status": "node migrate_commercial_plans.js --status",
     "db:migrate:commercial-plans:check": "node migrate_commercial_plans.js --check",
-    "db:migrate:commercial-plans:schema": "node migrate_commercial_plans.js --schema-only"
+    "db:migrate:commercial-plans:schema": "node migrate_commercial_plans.js --schema-only",
+    "db:migrate:public-journey": "node migrate_public_journey.js",
+    "db:migrate:public-journey:status": "node migrate_public_journey.js --status"
   },
   "dependencies": {
     "@aws-sdk/client-cognito-identity-provider": "^3.0.0",

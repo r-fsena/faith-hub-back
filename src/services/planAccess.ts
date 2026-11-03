@@ -24,7 +24,7 @@ export async function enforcePlanAccess(event: APIGatewayProxyEvent, feature: st
     if (tenant && !tenant.allowed) return tenant.errorResponse!;
     const orgId = tenant?.effectiveOrgId || organizations[0] || 'org_default';
     const campusId = campuses[0] && campuses[0] !== 'all' ? campuses[0] : null;
-    if (user && !user.isSuperAdmin && campusId && !user.campusIds.includes(campusId)) {
+    if (user && !user.isSuperAdmin && campusId && !user.campusIds.includes('all') && !user.campusIds.includes(campusId)) {
       return apiResponse(403, { error: 'CROSS_CAMPUS_FORBIDDEN' });
     }
     const evaluated = await evaluateTenantFlags(orgId, campusId, 'production');

@@ -20,7 +20,7 @@ export async function authorizeResource(event: APIGatewayProxyEvent, table: stri
     : `SELECT * FROM ${table} WHERE id = ? AND organization_id = ? LIMIT 1`;
   const { rows } = await query(sql, [id, tenant.effectiveOrgId]);
   if (!rows.length) return { errorResponse: apiResponse(404, { message: 'Recurso não encontrado nesta organização' }) };
-  if (!auth.user.isSuperAdmin && rows[0].campus_id && !auth.user.campusIds.includes(rows[0].campus_id)) {
+  if (!auth.user.isSuperAdmin && rows[0].campus_id && !auth.user.campusIds.includes('all') && !auth.user.campusIds.includes(rows[0].campus_id)) {
     return { errorResponse: apiResponse(403, { message: 'Acesso negado a esta unidade' }) };
   }
   return { user: auth.user, organizationId: tenant.effectiveOrgId, record: rows[0] };

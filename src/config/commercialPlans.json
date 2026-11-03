@@ -10,7 +10,7 @@
     "ENTERPRISE"
   ],
   "trial": {
-    "plan_id": "CUIDAR",
+    "plan_id": "CONECTAR",
     "duration_days": 14,
     "max_members": 300,
     "max_campuses": 1,

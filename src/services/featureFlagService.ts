@@ -41,6 +41,10 @@ export interface ResolvedFeatureFlags {
 export async function evaluateSaasCheckoutAccess(proposalId: string): Promise<boolean> {
   if (!/^[0-9a-f-]{36}$/i.test(proposalId)) return false;
   const evaluated = await evaluateTenantFlags('org_default', null, 'production');
+  if (evaluated.flags['system.saas_public_journey'] && evaluated.flags['system.saas_public_checkout']) {
+    const { rows } = await query("SELECT id FROM saas_acquisitions WHERE proposal_id = ? AND status = 'CHECKOUT_PENDING' AND plan_id IN ('CONECTAR','CUIDAR','GESTAO') LIMIT 1", [proposalId]);
+    if (rows.length) return true;
+  }
   if (!evaluated.flags['system.saas_billing_checkout']) return false;
   const config = evaluated.configs['system.saas_billing_checkout'];
   if (config?.mode === 'all') return true;
@@ -76,6 +80,7 @@ export async function evaluateTenantFlags(
   // 1. Fetch organization details (e.g. Plan)
   let orgPlan = '';
   let contract = null;
+  let trialExpired = false;
   {
     const { rows: orgRows } = await query(
       `SELECT * FROM organizations WHERE id = ? OR slug = ? ORDER BY CASE WHEN id = ? THEN 0 ELSE 1 END LIMIT 1`,
@@ -84,6 +89,7 @@ export async function evaluateTenantFlags(
     if (!orgRows.length) throw new Error('ORGANIZATION_NOT_FOUND');
     const organization = orgRows[0];
     organizationId = organization.id || organizationId;
+    trialExpired = !!Number(organization.trial_pending_start) || (!!organization.trial_expires_at && new Date(organization.trial_expires_at).getTime() <= Date.now());
     orgPlan = String(organization.plan || '').toUpperCase();
     contract = readPlanContract(organization.plan_contract, orgPlan);
     if (!contract && (COMMERCIAL_PLAN_IDS.has(orgPlan) || !LEGACY_PLAN_IDS.has(orgPlan))) {
@@ -112,6 +118,9 @@ export async function evaluateTenantFlags(
   );
 
   let flagsMap: Record<string, boolean> = {
+    'system.saas_public_journey': false,
+    'system.saas_public_checkout': false,
+    'system.saas_public_onboarding': false,
     'members.digital_card': false,
     'system.saas_member_import_invitations': false,
     'financial.advanced_reports': false,
@@ -189,6 +198,10 @@ export async function evaluateTenantFlags(
     for (const key of ENTITLEMENT_KEYS) {
       if (!catalogMap.has(key)) catalogMap.set(key, { category: 'Plano contratado', description: key, hasOverride: false });
     }
+  }
+
+  if (trialExpired) {
+    for (const key of ENTITLEMENT_KEYS) if (key !== 'system.saas_subscription_portal' && key !== 'system.plan_entitlements') flagsMap[key] = false;
   }
 
   // Build catalog array for admin UI
