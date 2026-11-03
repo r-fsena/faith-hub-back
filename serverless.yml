@@ -80,6 +80,7 @@ provider:
           Action:
             - cognito-idp:AdminCreateUser
             - cognito-idp:AdminGetUser
+            - cognito-idp:AdminDeleteUser
             - cognito-idp:AdminDisableUser
             - cognito-idp:AdminEnableUser
             - cognito-idp:AdminResetUserPassword
@@ -217,6 +218,7 @@ functions:
           method: post
 
   batchImportMembers:
+    timeout: 28
     handler: src/functions/members.batchImport
     events:
       - httpApi:

@@ -113,6 +113,7 @@ export async function evaluateTenantFlags(
 
   let flagsMap: Record<string, boolean> = {
     'members.digital_card': false,
+    'system.saas_member_import_invitations': false,
     'financial.advanced_reports': false,
     'secretariat.module_enabled': false,
     'secretariat.member_registry': false,
