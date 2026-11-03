@@ -387,3 +387,9 @@ test('Master endpoints reject non-Master and unauthenticated sessions',async()=>
  assert.equal((await publicJourneyHandler(event('/admin','GET'))).statusCode,403);
  state.claims=null;assert.equal((await publicJourneyHandler(event('/admin','GET'))).statusCode,401);
 });
+
+test('browser CORS preflight is public and does not require an owner token',async()=>{
+ state.claims=null;
+ const result=await publicJourneyHandler(event('/requests','OPTIONS'));
+ assert.equal(result.statusCode,204);assert.equal(state.calls.length,0);
+});

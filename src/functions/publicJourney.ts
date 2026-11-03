@@ -10,6 +10,7 @@ import { checkRateLimit } from "../services/rateLimiter";
 import { logSecurityEvent } from "../services/auditLogService";
 import { parseJson } from "../services/planCatalog";
 import { acceptProposal } from "./proposals";
+import { corsPreflight } from "./corsPreflight";
 import {
   startTrial,
   approveTrial,
@@ -71,6 +72,7 @@ export async function publicJourneyHandler(event: APIGatewayProxyEvent) {
   try {
     const method =
       (event as any).requestContext?.http?.method || event.httpMethod;
+    if (method === "OPTIONS") return corsPreflight();
     const path = ((event as any).rawPath || event.path || "").replace(
       /\/+$/,
       "",
