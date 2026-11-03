@@ -3,6 +3,8 @@ import { CognitoIdentityProviderClient, AdminCreateUserCommand, AdminGetUserComm
 import { v4 as uuidv4 } from 'uuid';
 import { getConnection } from '../db';
 import { seedDefaultMinistries } from './ministrySeedService';
+import { LEGACY_PLAN_IDS, readPlanContract } from './planCatalog';
+import { initializePlanEntitlements } from './planProvisioning';
 
 const USER_POOL_ID = process.env.USER_POOL_ID || '';
 const cognitoClient = new CognitoIdentityProviderClient({ region: process.env.AWS_REGION || 'us-east-2' });
@@ -41,6 +43,9 @@ export class ProvisioningService {
         [proposal.asaas_subscription_id, proposal.id]
       ) as any;
       if (!verifiedRows.length) throw new Error('VERIFIED_ASAAS_SUBSCRIPTION_REQUIRED');
+
+      const contract = readPlanContract(proposal.plan_contract, proposal.plan_tier);
+      if (!LEGACY_PLAN_IDS.has(proposal.plan_tier) && !contract) throw new Error('PLAN_CONTRACT_REQUIRED');
 
       const digest = crypto.createHash('sha256').update(proposal.id).digest('hex').slice(0, 16);
       const orgId = `org_${digest}`;
@@ -130,12 +135,16 @@ export class ProvisioningService {
         created_organization_id = ?, updated_at = NOW() WHERE id = ?`, [orgId, proposal.id]);
 
       const executor = async (sql: string, params?: any[]) => connection.query(sql, params);
-      await seedDefaultMinistries(orgId, campusId, executor, true);
+      if (contract) await initializePlanEntitlements(orgId, contract, executor);
+      if (!contract || contract.entitlements['ministries.module_enabled']) {
+        await seedDefaultMinistries(orgId, campusId, executor, true);
+      }
       await connection.query(`INSERT INTO security_audit_logs
         (id, organization_id, user_id, user_email, user_role, action, resource, resource_id, details, status)
         VALUES (?, ?, NULL, 'system@faithhubs.com', 'SYSTEM', 'PROVISION_SAAS_TENANT',
           'organizations', ?, ?, 'SUCCESS')`, [
-        uuidv4(), orgId, orgId, JSON.stringify({ proposalId, subscriptionId: proposal.asaas_subscription_id })
+        uuidv4(), orgId, orgId, JSON.stringify({ proposalId, subscriptionId: proposal.asaas_subscription_id,
+          plan: proposal.plan_tier, contract_version: contract?.version, max_members: contract?.max_members, max_campuses: contract?.max_campuses })
       ]);
       await connection.commit();
 

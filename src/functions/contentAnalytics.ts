@@ -63,6 +63,8 @@ export const trackContentEngagement = async (event: APIGatewayProxyEvent): Promi
     const flags = await evaluateTenantFlags(organizationId, body.campus_id || null, 'production');
     if (!flags.flags['content.analytics_dashboard']) return apiResponse(403, { error: 'FEATURE_DISABLED', message: 'A inteligência de conteúdo não está habilitada.' });
 
+    if (flags.contract_version && contentType === 'EVENT' && !flags.flags['events.module_enabled']) return apiResponse(403, { error: 'PLAN_FEATURE_NOT_INCLUDED' });
+
     const ownedContent = await contentExists(organizationId, contentType, contentId);
     if (!ownedContent.exists) return apiResponse(404, { message: 'Conteúdo não encontrado nesta organização.' });
     const requestedCampus = body.campus_id && body.campus_id !== 'all' ? String(body.campus_id) : null;
@@ -116,7 +118,8 @@ export const getContentAnalytics = async (event: APIGatewayProxyEvent): Promise<
     const flags = await evaluateTenantFlags(organizationId, scopedCampus, 'production');
     if (!flags.flags['content.analytics_dashboard']) return apiResponse(403, { error: 'FEATURE_DISABLED', message: 'A inteligência de conteúdo não está habilitada.' });
 
-    const dateFilter = `occurred_at >= ? AND occurred_at < DATE_ADD(?, INTERVAL 1 DAY)`;
+    const eventsIncluded = !flags.contract_version || Boolean(flags.flags['events.module_enabled']);
+    const dateFilter = `occurred_at >= ? AND occurred_at < DATE_ADD(?, INTERVAL 1 DAY)${eventsIncluded ? '' : " AND content_type <> 'EVENT'"}`;
     const campusFilter = scopedCampus ? ' AND campus_id = ?' : '';
     const params = [organizationId, period.startDate, period.endDate, ...(scopedCampus ? [scopedCampus] : [])];
     const contentCampus = scopedCampus ? ' AND (campus_id = ? OR campus_id IS NULL)' : '';
@@ -146,23 +149,23 @@ export const getContentAnalytics = async (event: APIGatewayProxyEvent): Promise<
       FROM content_engagement_events WHERE organization_id = ? AND ${dateFilter}${campusFilter}
       GROUP BY activity_date ORDER BY activity_date`, params);
     const published = await query(`SELECT
-      (SELECT COUNT(*) FROM events WHERE organization_id = ? AND status = 'PUBLISHED'${contentCampus}) AS events,
+      (SELECT COUNT(*) FROM events WHERE organization_id = ? AND ${eventsIncluded ? '1 = 1' : '1 = 0'} AND status = 'PUBLISHED'${contentCampus}) AS events,
       (SELECT COUNT(*) FROM broadcasts WHERE organization_id = ? AND is_available = 1${contentCampus}) AS broadcasts,
       (SELECT COUNT(*) FROM devotionals WHERE organization_id = ? AND status = 'PUBLISHED'${contentCampus}) AS devotionals,
       (SELECT COUNT(*) FROM study_books WHERE organization_id = ? AND status = 'ACTIVE'${contentCampus}) AS studies`, [
       ...contentParams, ...contentParams, ...contentParams, ...contentParams
     ]);
-    const eventStats = await query(`SELECT COUNT(DISTINCT e.id) AS published,
+    const eventStats = eventsIncluded ? await query(`SELECT COUNT(DISTINCT e.id) AS published,
       COUNT(DISTINCT CASE WHEN e.start_date >= NOW() THEN e.id END) AS upcoming,
       COUNT(DISTINCT CASE WHEN t.status IN ('PAID','USED') THEN t.id END) AS registrations,
       COUNT(DISTINCT CASE WHEN t.status = 'USED' THEN t.id END) AS checkins,
       COALESCE(SUM(CASE WHEN t.status IN ('PAID','USED') THEN t.price_paid ELSE 0 END), 0) AS revenue
       FROM events e LEFT JOIN event_tickets t ON t.event_id = e.id AND t.organization_id = e.organization_id
         AND t.created_at >= ? AND t.created_at < DATE_ADD(?, INTERVAL 1 DAY)
-      WHERE e.organization_id = ? AND e.status = 'PUBLISHED'${contentCampus}`, [period.startDate, period.endDate, ...contentParams]);
-    const eventCapacity = await query(`SELECT COALESCE(SUM(l.total_capacity), 0) AS capacity
+      WHERE e.organization_id = ? AND e.status = 'PUBLISHED'${contentCampus}`, [period.startDate, period.endDate, ...contentParams]) : { rows: [] };
+    const eventCapacity = eventsIncluded ? await query(`SELECT COALESCE(SUM(l.total_capacity), 0) AS capacity
       FROM event_lots l INNER JOIN events e ON e.id = l.event_id
-      WHERE e.organization_id = ? AND e.status = 'PUBLISHED'${scopedCampus ? ' AND (e.campus_id = ? OR e.campus_id IS NULL)' : ''}`, contentParams);
+      WHERE e.organization_id = ? AND e.status = 'PUBLISHED'${scopedCampus ? ' AND (e.campus_id = ? OR e.campus_id IS NULL)' : ''}`, contentParams) : { rows: [] };
     const devotionalStats = await query(`SELECT COUNT(DISTINCT d.id) AS published,
       COUNT(DISTINCT d.available_date) AS calendar_days,
       COUNT(DISTINCT n.id) AS notes

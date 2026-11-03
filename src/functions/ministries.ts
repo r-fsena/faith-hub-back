@@ -1,3 +1,4 @@
+import { enforcePlanAccess } from '../services/planAccess';
 import { authorizeResource } from '../services/tenantResource';
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { v4 as uuidv4 } from 'uuid';
@@ -41,6 +42,8 @@ async function canUserViewMinistrySchedules(
 
 // GET /ministries -> Listar Ministérios com contadores de voluntários e funções
 export const listMinistries = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  const planAccess = await enforcePlanAccess(event, 'ministries.module_enabled');
+  if (planAccess) return planAccess;
   try {
     const auth = await requireAuth(event);
     if ('errorResponse' in auth) return auth.errorResponse;
@@ -113,6 +116,8 @@ export const listMinistries = async (event: APIGatewayProxyEvent): Promise<APIGa
 
 // POST /ministries -> Criar ou Atualizar Ministério
 export const createOrUpdateMinistry = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  const planAccess = await enforcePlanAccess(event, 'ministries.module_enabled');
+  if (planAccess) return planAccess;
   try {
     const auth = await requireAuth(event);
     if ('errorResponse' in auth) return auth.errorResponse;
@@ -224,6 +229,8 @@ export const createOrUpdateMinistry = async (event: APIGatewayProxyEvent): Promi
 
 // DELETE /ministries/{id}
 export const deleteMinistry = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  const planAccess = await enforcePlanAccess(event, 'ministries.module_enabled');
+  if (planAccess) return planAccess;
   try {
     const auth = await requireAuth(event);
     if ('errorResponse' in auth) return auth.errorResponse;
@@ -260,6 +267,8 @@ export const deleteMinistry = async (event: APIGatewayProxyEvent): Promise<APIGa
 
 // GET /ministries/{id}/roles -> Listar funções do ministério
 export const listMinistryRoles = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  const planAccess = await enforcePlanAccess(event, 'ministries.module_enabled');
+  if (planAccess) return planAccess;
   try {
     const auth = await requireAuth(event);
     if ('errorResponse' in auth) return auth.errorResponse;
@@ -293,6 +302,8 @@ export const listMinistryRoles = async (event: APIGatewayProxyEvent): Promise<AP
 
 // POST /ministries/{id}/roles -> Criar função no ministério
 export const createMinistryRole = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  const planAccess = await enforcePlanAccess(event, 'ministries.module_enabled');
+  if (planAccess) return planAccess;
   try {
     const auth = await requireAuth(event);
     if ('errorResponse' in auth) return auth.errorResponse;
@@ -331,6 +342,8 @@ export const createMinistryRole = async (event: APIGatewayProxyEvent): Promise<A
 
 // DELETE /ministries/{id}/roles/{roleId}
 export const deleteMinistryRole = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  const planAccess = await enforcePlanAccess(event, 'ministries.module_enabled');
+  if (planAccess) return planAccess;
   try {
     const auth = await requireAuth(event);
     if ('errorResponse' in auth) return auth.errorResponse;
@@ -365,6 +378,8 @@ export const deleteMinistryRole = async (event: APIGatewayProxyEvent): Promise<A
 
 // GET /ministries/{id}/volunteers -> Listar bolsão de voluntários
 export const listMinistryVolunteers = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  const planAccess = await enforcePlanAccess(event, 'ministries.module_enabled');
+  if (planAccess) return planAccess;
   try {
     const auth = await requireAuth(event);
     if ('errorResponse' in auth) return auth.errorResponse;
@@ -422,6 +437,8 @@ export const listMinistryVolunteers = async (event: APIGatewayProxyEvent): Promi
 
 // POST /ministries/{id}/volunteers -> Adicionar ou Atualizar Voluntário no Bolsão
 export const addVolunteer = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  const planAccess = await enforcePlanAccess(event, 'ministries.module_enabled');
+  if (planAccess) return planAccess;
   try {
     const auth = await requireAuth(event);
     if ('errorResponse' in auth) return auth.errorResponse;
@@ -510,6 +527,8 @@ export const addVolunteer = async (event: APIGatewayProxyEvent): Promise<APIGate
 
 // PUT / PATCH /ministries/{id}/volunteers/{volunteerId} -> Atualizar Voluntário (Aprovar, Funções, Status)
 export const updateVolunteer = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  const planAccess = await enforcePlanAccess(event, 'ministries.module_enabled');
+  if (planAccess) return planAccess;
   try {
     const auth = await requireAuth(event);
     if ('errorResponse' in auth) return auth.errorResponse;
@@ -574,6 +593,8 @@ export const updateVolunteer = async (event: APIGatewayProxyEvent): Promise<APIG
 
 // DELETE /ministries/{id}/volunteers/{volunteerId}
 export const removeVolunteer = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  const planAccess = await enforcePlanAccess(event, 'ministries.module_enabled');
+  if (planAccess) return planAccess;
   try {
     const auth = await requireAuth(event);
     if ('errorResponse' in auth) return auth.errorResponse;
@@ -608,6 +629,8 @@ export const removeVolunteer = async (event: APIGatewayProxyEvent): Promise<APIG
 
 // POST / PATCH /ministries/{id}/volunteers/batch -> Ações em massa (Aprovar, Pausar, Funções, Excluir)
 export const batchVolunteers = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  const planAccess = await enforcePlanAccess(event, 'ministries.module_enabled');
+  if (planAccess) return planAccess;
   try {
     const auth = await requireAuth(event);
     if ('errorResponse' in auth) return auth.errorResponse;
@@ -671,6 +694,8 @@ export const batchVolunteers = async (event: APIGatewayProxyEvent): Promise<APIG
 
 // GET /ministries/{id}/schedules -> Listar escalas com voluntários alocados
 export const listSchedules = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  const planAccess = await enforcePlanAccess(event, 'ministries.module_enabled');
+  if (planAccess) return planAccess;
   try {
     const auth = await requireAuth(event);
     if ('errorResponse' in auth) return auth.errorResponse;
@@ -767,6 +792,8 @@ export const listSchedules = async (event: APIGatewayProxyEvent): Promise<APIGat
 
 // POST /ministries/{id}/schedules -> Criar ou Atualizar Escala de Culto com Voluntários
 export const createOrUpdateSchedule = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  const planAccess = await enforcePlanAccess(event, 'ministries.module_enabled');
+  if (planAccess) return planAccess;
   try {
     const auth = await requireAuth(event);
     if ('errorResponse' in auth) return auth.errorResponse;
@@ -874,6 +901,8 @@ export const createOrUpdateSchedule = async (event: APIGatewayProxyEvent): Promi
 
 // POST /ministries/{id}/schedules/batch -> Criar múltiplas escalas em lote (Gerador do Mês)
 export const createBatchSchedules = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  const planAccess = await enforcePlanAccess(event, 'ministries.module_enabled');
+  if (planAccess) return planAccess;
   try {
     const auth = await requireAuth(event);
     if ('errorResponse' in auth) return auth.errorResponse;
@@ -975,6 +1004,8 @@ export const createBatchSchedules = async (event: APIGatewayProxyEvent): Promise
 
 // DELETE /ministries/{id}/schedules/{scheduleId}
 export const deleteSchedule = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  const planAccess = await enforcePlanAccess(event, 'ministries.module_enabled');
+  if (planAccess) return planAccess;
   try {
     const auth = await requireAuth(event);
     if ('errorResponse' in auth) return auth.errorResponse;
@@ -1012,6 +1043,8 @@ export const deleteSchedule = async (event: APIGatewayProxyEvent): Promise<APIGa
 
 // GET /volunteers/my-schedules -> Escalas do membro autenticado (PWA / Mobile)
 export const getMySchedules = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  const planAccess = await enforcePlanAccess(event, 'volunteers.module_enabled');
+  if (planAccess) return planAccess;
   try {
     const auth = await requireAuth(event);
     if ('errorResponse' in auth) return auth.errorResponse;
@@ -1053,6 +1086,8 @@ export const getMySchedules = async (event: APIGatewayProxyEvent): Promise<APIGa
 
 // POST /volunteers/schedules/{rosterItemId}/respond -> Aceitar ou Recusar Escala
 export const respondRosterItem = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  const planAccess = await enforcePlanAccess(event, 'volunteers.module_enabled');
+  if (planAccess) return planAccess;
   try {
     const auth = await requireAuth(event);
     if ('errorResponse' in auth) return auth.errorResponse;
@@ -1089,6 +1124,8 @@ export const respondRosterItem = async (event: APIGatewayProxyEvent): Promise<AP
 
 // GET /volunteers/blockouts
 export const getMyBlockouts = async (event: any): Promise<APIGatewayProxyResult> => {
+  const planAccess = await enforcePlanAccess(event, 'volunteers.module_enabled');
+  if (planAccess) return planAccess;
   try {
     const auth = await requireAuth(event);
     if ('errorResponse' in auth) return auth.errorResponse;
@@ -1114,6 +1151,8 @@ export const getMyBlockouts = async (event: any): Promise<APIGatewayProxyResult>
 
 // POST /volunteers/blockouts
 export const createBlockout = async (event: any): Promise<APIGatewayProxyResult> => {
+  const planAccess = await enforcePlanAccess(event, 'volunteers.module_enabled');
+  if (planAccess) return planAccess;
   try {
     const auth = await requireAuth(event);
     if ('errorResponse' in auth) return auth.errorResponse;
@@ -1158,6 +1197,8 @@ export const createBlockout = async (event: any): Promise<APIGatewayProxyResult>
 
 // DELETE /volunteers/blockouts/{id}
 export const deleteBlockout = async (event: any): Promise<APIGatewayProxyResult> => {
+  const planAccess = await enforcePlanAccess(event, 'volunteers.module_enabled');
+  if (planAccess) return planAccess;
   try {
     const auth = await requireAuth(event);
     if ('errorResponse' in auth) return auth.errorResponse;
@@ -1181,6 +1222,8 @@ export const deleteBlockout = async (event: any): Promise<APIGatewayProxyResult>
 
 // GET /ministries/conflicts?date=YYYY-MM-DD (ou start_date=...&end_date=...)&schedule_id=...
 export const getScheduleConflicts = async (event: any): Promise<APIGatewayProxyResult> => {
+  const planAccess = await enforcePlanAccess(event, 'ministries.module_enabled');
+  if (planAccess) return planAccess;
   try {
     const auth = await requireAuth(event);
     if ('errorResponse' in auth) return auth.errorResponse;
@@ -1245,6 +1288,8 @@ export const getScheduleConflicts = async (event: any): Promise<APIGatewayProxyR
 
 // GET /volunteers/schedules/eligible-peers?schedule_id=...&role_id=...
 export const getEligiblePeersForSwap = async (event: any): Promise<APIGatewayProxyResult> => {
+  const planAccess = await enforcePlanAccess(event, 'ministries.module_enabled');
+  if (planAccess) return planAccess;
   try {
     const auth = await requireAuth(event);
     if ('errorResponse' in auth) return auth.errorResponse;
@@ -1291,6 +1336,8 @@ export const getEligiblePeersForSwap = async (event: any): Promise<APIGatewayPro
 
 // POST /volunteers/schedules/roster/{rosterItemId}/swap
 export const requestRosterSwap = async (event: any): Promise<APIGatewayProxyResult> => {
+  const planAccess = await enforcePlanAccess(event, 'volunteers.module_enabled');
+  if (planAccess) return planAccess;
   try {
     const auth = await requireAuth(event);
     if ('errorResponse' in auth) return auth.errorResponse;
@@ -1371,6 +1418,8 @@ export const requestRosterSwap = async (event: any): Promise<APIGatewayProxyResu
 
 // GET /volunteers/swaps/pending
 export const getMyPendingSwaps = async (event: any): Promise<APIGatewayProxyResult> => {
+  const planAccess = await enforcePlanAccess(event, 'ministries.module_enabled');
+  if (planAccess) return planAccess;
   try {
     const auth = await requireAuth(event);
     if ('errorResponse' in auth) return auth.errorResponse;
@@ -1444,6 +1493,8 @@ export const getMyPendingSwaps = async (event: any): Promise<APIGatewayProxyResu
 
 // POST /volunteers/swaps/{swapId}/respond
 export const respondToSwap = async (event: any): Promise<APIGatewayProxyResult> => {
+  const planAccess = await enforcePlanAccess(event, 'ministries.module_enabled');
+  if (planAccess) return planAccess;
   try {
     const auth = await requireAuth(event);
     if ('errorResponse' in auth) return auth.errorResponse;
@@ -1537,6 +1588,8 @@ export const respondToSwap = async (event: any): Promise<APIGatewayProxyResult> 
 
 // POST /volunteers/swaps/{swapId}/cancel ou POST /volunteers/swaps/cancel
 export const cancelRosterSwap = async (event: any): Promise<APIGatewayProxyResult> => {
+  const planAccess = await enforcePlanAccess(event, 'volunteers.module_enabled');
+  if (planAccess) return planAccess;
   try {
     const auth = await requireAuth(event);
     if ('errorResponse' in auth) return auth.errorResponse;
@@ -1625,6 +1678,8 @@ export const cancelRosterSwap = async (event: any): Promise<APIGatewayProxyResul
 
 // POST /ministries/{id}/schedules/{scheduleId}/roster/{rosterItemId}/resolve-swap
 export const resolveRosterSwapByLeader = async (event: any): Promise<APIGatewayProxyResult> => {
+  const planAccess = await enforcePlanAccess(event, 'ministries.module_enabled');
+  if (planAccess) return planAccess;
   try {
     const auth = await requireAuth(event);
     if ('errorResponse' in auth) return auth.errorResponse;
@@ -1702,6 +1757,8 @@ export const resolveRosterSwapByLeader = async (event: any): Promise<APIGatewayP
 
 // POST /ministries/schedules/{scheduleId}/remind-volunteers
 export const sendScheduleReminders = async (event: any): Promise<APIGatewayProxyResult> => {
+  const planAccess = await enforcePlanAccess(event, 'ministries.module_enabled');
+  if (planAccess) return planAccess;
   try {
     const auth = await requireAuth(event);
     if ('errorResponse' in auth) return auth.errorResponse;

@@ -1,3 +1,4 @@
+import { enforcePlanAccess } from '../services/planAccess';
 import { authorizeResource } from '../services/tenantResource';
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { query, apiResponse } from '../db';
@@ -26,6 +27,8 @@ const DEFAULT_ROOMS = [
 // 1. GET & POST /kids/rooms
 // ==========================================
 export const getRooms = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  const planAccess = await enforcePlanAccess(event, 'kids.module_enabled');
+  if (planAccess) return planAccess;
   try {
     const auth = await requireAuth(event);
     if ('errorResponse' in auth) return auth.errorResponse;
@@ -69,6 +72,8 @@ export const getRooms = async (event: APIGatewayProxyEvent): Promise<APIGatewayP
 };
 
 export const saveRoom = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  const planAccess = await enforcePlanAccess(event, 'kids.module_enabled');
+  if (planAccess) return planAccess;
   try {
     const auth = await requireAuth(event);
     if ('errorResponse' in auth) return auth.errorResponse;
@@ -132,6 +137,8 @@ export const saveRoom = async (event: APIGatewayProxyEvent): Promise<APIGatewayP
 // 2. GET /kids/families (Lista Famílias / Membros com filhos para Totem ou Gestão)
 // ==========================================
 export const getFamilies = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  const planAccess = await enforcePlanAccess(event, 'kids.module_enabled');
+  if (planAccess) return planAccess;
   try {
     const auth = await requireAuth(event);
     if ('errorResponse' in auth) return auth.errorResponse;
@@ -218,6 +225,8 @@ export const getFamilies = async (event: APIGatewayProxyEvent): Promise<APIGatew
 // 3. GET & POST /kids/children - PROTEGIDO
 // ==========================================
 export const getChildren = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  const planAccess = await enforcePlanAccess(event, 'kids.module_enabled');
+  if (planAccess) return planAccess;
   try {
     const auth = await requireAuth(event);
     if ('errorResponse' in auth) return auth.errorResponse;
@@ -268,6 +277,8 @@ export const getChildren = async (event: APIGatewayProxyEvent): Promise<APIGatew
 };
 
 export const saveChild = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  const planAccess = await enforcePlanAccess(event, 'kids.module_enabled');
+  if (planAccess) return planAccess;
   try {
     const auth = await requireAuth(event);
     if ('errorResponse' in auth) return auth.errorResponse;
@@ -388,6 +399,8 @@ export const saveChild = async (event: APIGatewayProxyEvent): Promise<APIGateway
 // 4. GET /kids/checkins & POST /kids/checkin
 // ==========================================
 export const getCheckins = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  const planAccess = await enforcePlanAccess(event, 'kids.module_enabled');
+  if (planAccess) return planAccess;
   try {
     const auth = await requireAuth(event);
     if ('errorResponse' in auth) return auth.errorResponse;
@@ -470,6 +483,8 @@ export const getCheckins = async (event: APIGatewayProxyEvent): Promise<APIGatew
 };
 
 export const doCheckin = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  const planAccess = await enforcePlanAccess(event, 'kids.module_enabled');
+  if (planAccess) return planAccess;
   try {
     const auth = await requireAuth(event);
     if ('errorResponse' in auth) return auth.errorResponse;
@@ -626,6 +641,8 @@ export const doCheckin = async (event: APIGatewayProxyEvent): Promise<APIGateway
 // 5. POST /kids/call-parent & POST /kids/resolve-call
 // ==========================================
 export const callParent = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  const planAccess = await enforcePlanAccess(event, 'kids.module_enabled');
+  if (planAccess) return planAccess;
   try {
     const auth = await requireAuth(event);
     if ('errorResponse' in auth) return auth.errorResponse;
@@ -671,6 +688,8 @@ export const callParent = async (event: APIGatewayProxyEvent): Promise<APIGatewa
 };
 
 export const resolveCall = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  const planAccess = await enforcePlanAccess(event, 'kids.module_enabled');
+  if (planAccess) return planAccess;
   try {
     const auth = await requireAuth(event);
     if ('errorResponse' in auth) return auth.errorResponse;
@@ -717,6 +736,8 @@ export const resolveCall = async (event: APIGatewayProxyEvent): Promise<APIGatew
 // 6. POST /kids/checkout
 // ==========================================
 export const doCheckout = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  const planAccess = await enforcePlanAccess(event, 'kids.module_enabled');
+  if (planAccess) return planAccess;
   try {
     const auth = await requireAuth(event);
     if ('errorResponse' in auth) return auth.errorResponse;
@@ -800,6 +821,8 @@ export const doCheckout = async (event: APIGatewayProxyEvent): Promise<APIGatewa
 // 7. GET /kids/parent-status (Para o PWA dos Pais)
 // ==========================================
 export const getParentStatus = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  const planAccess = await enforcePlanAccess(event, 'kids.module_enabled');
+  if (planAccess) return planAccess;
   const auth = await requireAuth(event);
   if ('errorResponse' in auth) return auth.errorResponse;
   const tenantCheck = enforceTenant(auth.user, event.queryStringParameters?.organization_id);

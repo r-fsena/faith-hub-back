@@ -1,3 +1,4 @@
+import { enforcePlanAccess } from '../services/planAccess';
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { v4 as uuidv4 } from 'uuid';
 import { query, apiResponse } from '../db';
@@ -9,6 +10,8 @@ const PASTORAL_ROLES = ['SUPERADMIN', 'PASTOR', 'ADMIN', 'LEADER'];
 
 // GET /pastoral/absenteeism-radar -> Radar de Ausências e Evasão
 export const getAbsenteeismRadar = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  const planAccess = await enforcePlanAccess(event, 'pastoral.module_enabled');
+  if (planAccess) return planAccess;
   try {
     const auth = await requireAuth(event);
     if ('errorResponse' in auth) return auth.errorResponse;
@@ -189,6 +192,8 @@ export const getAbsenteeismRadar = async (event: APIGatewayProxyEvent): Promise<
 
 // POST /pastoral/care-logs -> Registrar contato ou acompanhamento pastoral
 export const createCareLog = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  const planAccess = await enforcePlanAccess(event, 'pastoral.module_enabled');
+  if (planAccess) return planAccess;
   try {
     const auth = await requireAuth(event);
     if ('errorResponse' in auth) return auth.errorResponse;
@@ -261,6 +266,8 @@ export const createCareLog = async (event: APIGatewayProxyEvent): Promise<APIGat
 
 // GET /pastoral/care-logs/{memberId} -> Histórico de contatos com o membro
 export const getMemberCareLogs = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  const planAccess = await enforcePlanAccess(event, 'pastoral.module_enabled');
+  if (planAccess) return planAccess;
   try {
     const auth = await requireAuth(event);
     if ('errorResponse' in auth) return auth.errorResponse;
@@ -297,6 +304,8 @@ export const getMemberCareLogs = async (event: APIGatewayProxyEvent): Promise<AP
 
 // GET /pastoral/visitors -> Listar visitantes com status, dias e célula vinculada
 export const listVisitors = async (event: any): Promise<APIGatewayProxyResult> => {
+  const planAccess = await enforcePlanAccess(event, 'visitors.module_enabled');
+  if (planAccess) return planAccess;
   try {
     const auth = await requireAuth(event);
     if ('errorResponse' in auth) return auth.errorResponse;
@@ -370,6 +379,8 @@ export const listVisitors = async (event: any): Promise<APIGatewayProxyResult> =
 
 // POST /pastoral/visitors -> Cadastrar novo visitante (Recepção e QR Code Público)
 export const registerVisitor = async (event: any): Promise<APIGatewayProxyResult> => {
+  const planAccess = await enforcePlanAccess(event, 'visitors.module_enabled');
+  if (planAccess) return planAccess;
   try {
     const body = JSON.parse(event.body || '{}');
     const { name, phone, email, neighborhood, origin_channel = 'SUNDAY_SERVICE', campus_id, notes, organization_id } = body;
@@ -450,6 +461,8 @@ export const registerVisitor = async (event: any): Promise<APIGatewayProxyResult
 
 // PUT /pastoral/visitors/{id}/stage -> Mover visitante no Funil Kanban
 export const updateVisitorStage = async (event: any): Promise<APIGatewayProxyResult> => {
+  const planAccess = await enforcePlanAccess(event, 'visitors.module_enabled');
+  if (planAccess) return planAccess;
   try {
     const auth = await requireAuth(event);
     if ('errorResponse' in auth) return auth.errorResponse;
@@ -489,6 +502,8 @@ export const updateVisitorStage = async (event: any): Promise<APIGatewayProxyRes
 
 // PUT /pastoral/visitors/{id}/refer-cell -> Encaminhar visitante para uma célula
 export const referVisitorToCell = async (event: any): Promise<APIGatewayProxyResult> => {
+  const planAccess = await enforcePlanAccess(event, 'visitors.module_enabled');
+  if (planAccess) return planAccess;
   try {
     const auth = await requireAuth(event);
     if ('errorResponse' in auth) return auth.errorResponse;
@@ -543,6 +558,8 @@ export const referVisitorToCell = async (event: any): Promise<APIGatewayProxyRes
 
 // DELETE /pastoral/visitors/{id} -> Arquivar ou excluir visitante
 export const deleteVisitor = async (event: any): Promise<APIGatewayProxyResult> => {
+  const planAccess = await enforcePlanAccess(event, 'visitors.module_enabled');
+  if (planAccess) return planAccess;
   try {
     const auth = await requireAuth(event);
     if ('errorResponse' in auth) return auth.errorResponse;
@@ -574,6 +591,8 @@ export const deleteVisitor = async (event: any): Promise<APIGatewayProxyResult> 
 
 // GET /pastoral/executive-report -> Métricas de retenção e rankings
 export const getExecutiveReport = async (event: any): Promise<APIGatewayProxyResult> => {
+  const planAccess = await enforcePlanAccess(event, 'pastoral.module_enabled');
+  if (planAccess) return planAccess;
   try {
     const auth = await requireAuth(event);
     if ('errorResponse' in auth) return auth.errorResponse;
@@ -654,6 +673,8 @@ export const getExecutiveReport = async (event: any): Promise<APIGatewayProxyRes
 
 // GET /pastoral/members/{id}/timeline -> Prontuário 360º pastoral do membro
 export const getMemberTimeline360 = async (event: any): Promise<APIGatewayProxyResult> => {
+  const planAccess = await enforcePlanAccess(event, 'pastoral.module_enabled');
+  if (planAccess) return planAccess;
   try {
     const auth = await requireAuth(event);
     if ('errorResponse' in auth) return auth.errorResponse;
@@ -727,6 +748,8 @@ export const getMemberTimeline360 = async (event: any): Promise<APIGatewayProxyR
 
 // GET /pastoral/pending-cell-reports -> Células sem chamada de presença nos últimos 7 dias
 export const getPendingCellReports = async (event: any): Promise<APIGatewayProxyResult> => {
+  const planAccess = await enforcePlanAccess(event, 'pastoral.module_enabled');
+  if (planAccess) return planAccess;
   try {
     const auth = await requireAuth(event);
     if ('errorResponse' in auth) return auth.errorResponse;
@@ -791,6 +814,8 @@ export const getPendingCellReports = async (event: any): Promise<APIGatewayProxy
 
 // POST /pastoral/remind-cell-leaders -> Gera lembretes WhatsApp para líderes pendentes
 export const remindCellLeaders = async (event: any): Promise<APIGatewayProxyResult> => {
+  const planAccess = await enforcePlanAccess(event, 'pastoral.module_enabled');
+  if (planAccess) return planAccess;
   try {
     const auth = await requireAuth(event);
     if ('errorResponse' in auth) return auth.errorResponse;

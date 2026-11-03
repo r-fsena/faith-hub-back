@@ -8,6 +8,7 @@ import { AsaasService } from '../services/asaasService';
 import { requireAuth, enforceRole, enforceTenant } from '../services/authMiddleware';
 import { logSecurityEvent } from '../services/auditLogService';
 import { evaluateSaasCheckoutAccess } from '../services/featureFlagService';
+import { buildPlanContract, LEGACY_PLAN_IDS, parseJson, readPlanContract } from '../services/planCatalog';
 
 // 1. Criar Nova Proposta Comercial (POST /proposals) - Apenas SuperAdmin
 export const createProposal = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
@@ -40,16 +41,28 @@ export const createProposal = async (event: APIGatewayProxyEvent): Promise<APIGa
       notes_commercial
     } = body;
 
-    if (!church_name || !contact_name || !contact_email || !monthly_amount) {
+    if (!church_name || !contact_name || !contact_email) {
       return apiResponse(400, { message: 'Campos obrigatórios faltando (church_name, contact_name, contact_email, monthly_amount)' });
     }
+
+    const tenant = enforceTenant(auth.user, event.headers?.['x-organization-id']);
+    if (!tenant.allowed) return tenant.errorResponse!;
+    const planId = String(plan_tier || 'CONECTAR').toUpperCase();
+    const { rows: plans } = await query("SELECT * FROM saas_plans WHERE id = ? AND status = 'ACTIVE'", [planId]);
+    const plan = plans[0];
+    const contract = buildPlanContract(plan, {
+      monthly_amount: monthly_amount === '' ? undefined : monthly_amount,
+      max_members: body.max_members === '' ? undefined : body.max_members,
+      max_campuses: body.max_campuses === '' ? undefined : body.max_campuses,
+      billing_cycle: billing_cycle || 'MONTHLY'
+    });
 
     const id = uuidv4();
     const token = crypto.randomBytes(24).toString('hex');
     const daysValid = Number(expires_days) || 15;
     const expiresAt = new Date(Date.now() + daysValid * 24 * 60 * 60 * 1000);
 
-    const baseAmount = Number(monthly_amount);
+    const baseAmount = contract.monthly_price;
     const discType = discount_type || 'NONE';
     const discVal = Number(discount_value || 0);
     const discMonths = Number(discount_duration_months || 0);
@@ -63,27 +76,16 @@ export const createProposal = async (event: APIGatewayProxyEvent): Promise<APIGa
       firstCycleAmount = Math.max(0, baseAmount - discVal);
     }
 
-    const defaultFeatures = [
-      'Aplicativo PWA Mobile Whitelabel Personalizado',
-      'Portal Administrativo Web Studio Multi-usuário',
-      'Módulo Completo de Células & Redes (com Painel do Líder)',
-      'Bíblia Sagrada Offline Integrada',
-      'Cantina & Loja com PDV Mobile e Pagamentos PIX',
-      'Central de Transmissões e Cultos ao Vivo',
-      'Emissão de Ingressos com Scanner QR Code para Eventos',
-      'Hospedagem e Infraestrutura Serverless na AWS inclusa',
-      'Suporte Técnico Dedicado'
-    ];
-
-    const featuresJson = JSON.stringify(Array.isArray(features_included) ? features_included : defaultFeatures);
+    // Descriptions are presentational; executable entitlements come exclusively from the saved plan.
+    const featuresJson = JSON.stringify(contract.features);
 
     const q = `
       INSERT INTO saas_proposals (
         id, token, church_name, cnpj_cpf, contact_name, contact_email, contact_phone,
         plan_tier, billing_cycle, monthly_amount, setup_fee, suggested_slug,
         status, features_included, notes, expires_at, asaas_customer_id, created_by,
-        discount_type, discount_value, discount_duration_months, first_cycle_amount, notes_commercial
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'SENT', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        discount_type, discount_value, discount_duration_months, first_cycle_amount, notes_commercial, plan_contract
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'SENT', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
     await query(q, [
@@ -94,7 +96,7 @@ export const createProposal = async (event: APIGatewayProxyEvent): Promise<APIGa
       contact_name,
       contact_email,
       contact_phone || null,
-      plan_tier || 'PRO',
+      planId,
       billing_cycle || 'MONTHLY',
       baseAmount,
       Number(setup_fee || 0),
@@ -108,8 +110,13 @@ export const createProposal = async (event: APIGatewayProxyEvent): Promise<APIGa
       discVal,
       discMonths,
       firstCycleAmount,
-      notes_commercial || null
+      notes_commercial || null,
+      JSON.stringify(contract)
     ]);
+
+    await logSecurityEvent({ organizationId: tenant.effectiveOrgId, user: auth.user,
+      action: 'CREATE_SAAS_PROPOSAL', resource: 'saas_proposals', resourceId: id,
+      details: { planId, amount: baseAmount, max_members: contract.max_members, max_campuses: contract.max_campuses }, event });
 
     const proposalUrl = `https://studio.faithhubs.com/?proposta=${token}`;
 
@@ -122,7 +129,8 @@ export const createProposal = async (event: APIGatewayProxyEvent): Promise<APIGa
         contact_name,
         contact_email,
         contact_phone,
-        plan_tier: plan_tier || 'PRO',
+        plan_tier: planId,
+        plan_contract: contract,
         billing_cycle: billing_cycle || 'MONTHLY',
         monthly_amount: baseAmount,
         discount_type: discType,
@@ -137,6 +145,9 @@ export const createProposal = async (event: APIGatewayProxyEvent): Promise<APIGa
       }
     });
   } catch (error: any) {
+    if (/CONTRACT|PLAN_|BILLING_CYCLE|MULTICAMPUS/.test(error.message) || error instanceof SyntaxError) {
+      return apiResponse(400, { message: error.message });
+    }
     console.error('Erro ao criar proposta:', error);
     return apiResponse(500, { message: 'Erro ao gerar proposta comercial', error: error.message });
   }
@@ -217,13 +228,14 @@ export const getPublicProposal = async (event: APIGatewayProxyEvent): Promise<AP
       plan_tier, billing_cycle, monthly_amount, setup_fee, status, features_included,
       notes, expires_at, accepted_at, created_organization_id, asaas_checkout_url,
       discount_type, discount_value, discount_duration_months, first_cycle_amount,
-      notes_commercial, billing_status
+      notes_commercial, billing_status, plan_contract
       FROM saas_proposals WHERE token = ? LIMIT 1`, [token]);
     if (rows.length === 0) {
       return apiResponse(404, { message: 'Proposta comercial não encontrada ou expirada' });
     }
 
     const proposal = rows[0];
+    proposal.plan_contract = parseJson(proposal.plan_contract, null);
 
     // Se o status era SENT, marca como VIEWED (Pastor abriu a proposta!)
     if (proposal.status === 'SENT') {
@@ -270,6 +282,11 @@ export const acceptProposal = async (event: APIGatewayProxyEvent): Promise<APIGa
     }
 
     const proposal = rows[0];
+    const contract = readPlanContract(proposal.plan_contract, proposal.plan_tier);
+    if (!LEGACY_PLAN_IDS.has(proposal.plan_tier) && !contract) {
+      await connection.rollback();
+      return apiResponse(409, { message: 'A proposta precisa definir os módulos e as capacidades contratadas.' });
+    }
     if (!(await evaluateSaasCheckoutAccess(proposal.id))) {
       await connection.rollback();
       return apiResponse(503, { message: 'Checkout temporariamente indisponível para esta proposta.' });
@@ -395,6 +412,7 @@ export const listSubscriptions = async (event: APIGatewayProxyEvent): Promise<AP
         s.organization_id,
         COALESCE(s.church_name, o.name) as church_name,
         o.plan as org_plan,
+        o.plan_contract,
         COALESCE(p.name, o.plan, 'Pro') as plan_name,
         p.description as plan_description,
         p.badge_text as plan_badge,
@@ -419,7 +437,11 @@ export const listSubscriptions = async (event: APIGatewayProxyEvent): Promise<AP
     sql += ` ORDER BY s.created_at DESC`;
 
     const { rows } = await query(sql, params);
-    return apiResponse(200, rows);
+    return apiResponse(200, rows.map(row => {
+      const contract = readPlanContract(row.plan_contract, row.org_plan);
+      return contract ? { ...row, plan_contract: contract, plan_name: contract.name,
+        plan_features: contract.features, max_members: contract.max_members, max_campuses: contract.max_campuses } : row;
+    }));
   } catch (error: any) {
     console.error('Erro ao listar assinaturas:', error);
     return apiResponse(500, { message: 'Erro ao buscar assinaturas', error: error.message });

@@ -1,6 +1,7 @@
 import { APIGatewayProxyEvent } from 'aws-lambda';
 import { query } from '../db';
-import { v4 as uuidv4 } from 'uuid';
+import { createHash } from 'crypto';
+import { applyContractEntitlements, COMMERCIAL_PLAN_IDS, ENTITLEMENT_KEYS, LEGACY_PLAN_IDS, readPlanContract } from './planCatalog';
 
 export type EnvironmentScope = 'all' | 'development' | 'staging' | 'production';
 
@@ -24,12 +25,15 @@ export interface ResolvedFeatureFlags {
   plan: string;
   flags: Record<string, boolean>;
   configs: Record<string, any>;
+  contract_version?: string;
+  limits?: { active_members: number; campuses: number; enforcement: 'advisory' };
   catalog: Array<{
     key: string;
     category: string;
     description: string;
     enabled: boolean;
     hasOverride: boolean;
+    contracted?: boolean;
     config?: any;
   }>;
 }
@@ -70,17 +74,21 @@ export async function evaluateTenantFlags(
   environment: EnvironmentScope = 'production'
 ): Promise<ResolvedFeatureFlags> {
   // 1. Fetch organization details (e.g. Plan)
-  let orgPlan = 'PRO';
-  try {
+  let orgPlan = '';
+  let contract = null;
+  {
     const { rows: orgRows } = await query(
-      `SELECT plan, status FROM organizations WHERE id = ? LIMIT 1`,
-      [organizationId]
+      `SELECT * FROM organizations WHERE id = ? OR slug = ? ORDER BY CASE WHEN id = ? THEN 0 ELSE 1 END LIMIT 1`,
+      [organizationId, organizationId, organizationId]
     );
-    if (orgRows.length > 0 && orgRows[0].plan) {
-      orgPlan = orgRows[0].plan.toUpperCase();
+    if (!orgRows.length) throw new Error('ORGANIZATION_NOT_FOUND');
+    const organization = orgRows[0];
+    organizationId = organization.id || organizationId;
+    orgPlan = String(organization.plan || '').toUpperCase();
+    contract = readPlanContract(organization.plan_contract, orgPlan);
+    if (!contract && (COMMERCIAL_PLAN_IDS.has(orgPlan) || !LEGACY_PLAN_IDS.has(orgPlan))) {
+      throw new Error('PLAN_CONTRACT_REQUIRED');
     }
-  } catch (err) {
-    console.warn('Could not fetch org plan, defaulting to PRO:', err);
   }
 
   // 2. Fetch all applicable flags from DB in a single optimized query
@@ -97,11 +105,13 @@ export async function evaluateTenantFlags(
        CASE 
          WHEN campus_id IS NULL THEN 1
          ELSE 2
-       END ASC`,
+       END ASC,
+       CASE WHEN environment = 'all' THEN 1 ELSE 2 END ASC,
+       updated_at ASC, id ASC`,
     [organizationId, environment, campusId || '']
   );
 
-  const flagsMap: Record<string, boolean> = {
+  let flagsMap: Record<string, boolean> = {
     'members.digital_card': false,
     'financial.advanced_reports': false,
     'secretariat.module_enabled': false,
@@ -118,6 +128,15 @@ export async function evaluateTenantFlags(
     'studio.context_navigation_v2': false,
     'content.analytics_dashboard': false
   };
+  if (contract) {
+    for (const key of ENTITLEMENT_KEYS) flagsMap[key] = contract.entitlements[key];
+  } else {
+    // Preserve the former shared-cell access for existing contracts only.
+    for (const key of ['visitors.module_enabled', 'pastoral.module_enabled', 'ministries.module_enabled', 'volunteers.module_enabled']) {
+      flagsMap[key] = true;
+    }
+    flagsMap['system.plan_entitlements'] = false;
+  }
   const configsMap: Record<string, any> = {};
   const catalogMap: Map<string, { category: string; description: string; hasOverride: boolean }> = new Map();
 
@@ -164,6 +183,12 @@ export async function evaluateTenantFlags(
       }
     }
   }
+  if (contract) {
+    flagsMap = applyContractEntitlements(flagsMap, contract);
+    for (const key of ENTITLEMENT_KEYS) {
+      if (!catalogMap.has(key)) catalogMap.set(key, { category: 'Plano contratado', description: key, hasOverride: false });
+    }
+  }
 
   // Build catalog array for admin UI
   const catalog = Array.from(catalogMap.entries()).map(([key, meta]) => ({
@@ -172,6 +197,7 @@ export async function evaluateTenantFlags(
     description: meta.description,
     enabled: Boolean(flagsMap[key]),
     hasOverride: meta.hasOverride,
+    contracted: contract ? Boolean(contract.entitlements[key]) : undefined,
     config: configsMap[key] || null
   }));
 
@@ -182,6 +208,8 @@ export async function evaluateTenantFlags(
     plan: orgPlan,
     flags: flagsMap,
     configs: configsMap,
+    contract_version: contract?.version,
+    limits: contract ? { active_members: contract.max_members, campuses: contract.max_campuses, enforcement: 'advisory' } : undefined,
     catalog
   };
 }
@@ -246,7 +274,8 @@ export async function setFeatureFlagOverride(params: {
     updatedBy = 'Admin'
   } = params;
 
-  const flagId = `ff_${organizationId}_${campusId || 'all'}_${environment}_${featureKey.replace(/\./g, '_')}`;
+  // The production schema limits IDs to 36 characters; tenant, scope and key still identify the override.
+  const flagId = createHash('sha256').update(JSON.stringify([organizationId, campusId, environment, featureKey])).digest('hex').slice(0, 36);
   const configJson = configPayload ? JSON.stringify(configPayload) : null;
 
   const sql = `

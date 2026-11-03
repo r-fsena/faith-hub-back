@@ -15,7 +15,7 @@ const dbPath = require.resolve('../src/db/index.ts');
 const response = (statusCode, body) => ({ statusCode, body: JSON.stringify(body) });
 require.cache[dbPath] = { id: dbPath, filename: dbPath, loaded: true, exports: {
   apiResponse: response,
-  query: async (sql, params = []) => { assert.equal((sql.match(/\?/g) || []).length, params.length, 'SQL parameter count: ' + sql); calls.push({ sql, params }); return dbQuery(sql, params); },
+  query: async (sql, params = []) => { assert.equal((sql.match(/\?/g) || []).length, params.length, 'SQL parameter count: ' + sql); calls.push({ sql, params }); const result = await dbQuery(sql, params); if (sql.includes('FROM organizations')) { return { rows: result.rows.length ? result.rows.map(row => ({ id: params[0], plan: 'PRO', status: 'ACTIVE', ...row })) : [{ id: params[0], plan: 'PRO', status: 'ACTIVE' }] }; } return result; },
   getConnection: async () => connection
 }};
 const josePath = require.resolve('jose');

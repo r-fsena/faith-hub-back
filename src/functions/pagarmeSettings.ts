@@ -1,3 +1,4 @@
+import { enforcePlanAccess } from '../services/planAccess';
 import { v5 as uuidv5 } from 'uuid';
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { query, apiResponse } from '../db';
@@ -25,6 +26,8 @@ const DEFAULT_GATEWAY_CONFIG = {
 
 // GET /pagarme-settings
 export const getGatewayConfig = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  const planAccess = await enforcePlanAccess(event, 'financial.credit_card_gateway');
+  if (planAccess) return planAccess;
   try {
     const auth = await requireAuth(event);
     if ('errorResponse' in auth) {
@@ -62,6 +65,8 @@ export const getGatewayConfig = async (event: APIGatewayProxyEvent): Promise<API
 
 // POST /pagarme-settings
 export const updateGatewayConfig = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  const planAccess = await enforcePlanAccess(event, 'financial.credit_card_gateway');
+  if (planAccess) return planAccess;
   try {
     const auth = await requireAuth(event);
     if ('errorResponse' in auth) {

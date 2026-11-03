@@ -1,3 +1,4 @@
+import { enforcePlanAccess } from '../services/planAccess';
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { v4 as uuidv4 } from 'uuid';
 import { query, apiResponse, getConnection } from '../db';
@@ -11,6 +12,8 @@ const STORE_ADMIN_ROLES = ['SUPERADMIN', 'PASTOR', 'ADMIN', 'TREASURER', 'LEADER
 
 // POST /pdv/orders
 export const createOrder = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  const planAccess = await enforcePlanAccess(event, 'pdv.module_enabled');
+  if (planAccess) return planAccess;
   let connection: Awaited<ReturnType<typeof getConnection>> | undefined;
   try {
     const rateCheck = await checkRateLimit(event, {
@@ -130,6 +133,8 @@ export const createOrder = async (event: APIGatewayProxyEvent): Promise<APIGatew
 
 // GET /pdv/orders
 export const getOrders = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  const planAccess = await enforcePlanAccess(event, 'pdv.module_enabled');
+  if (planAccess) return planAccess;
   try {
     const auth = await requireAuth(event);
     if ('errorResponse' in auth) return auth.errorResponse;
@@ -187,6 +192,8 @@ export const getOrders = async (event: APIGatewayProxyEvent): Promise<APIGateway
 
 // PUT /pdv/orders/{id}/status
 export const updateOrderStatus = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  const planAccess = await enforcePlanAccess(event, 'pdv.module_enabled');
+  if (planAccess) return planAccess;
   let connection: Awaited<ReturnType<typeof getConnection>> | undefined;
   try {
     const auth = await requireAuth(event);

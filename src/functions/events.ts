@@ -1,3 +1,4 @@
+import { enforcePlanAccess } from '../services/planAccess';
 import { authorizeResource } from '../services/tenantResource';
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { v4 as uuidv4 } from 'uuid';
@@ -9,6 +10,8 @@ const EVENT_ADMIN_ROLES = ['SUPERADMIN', 'PASTOR', 'ADMIN', 'LEADER'];
 
 // GET /events
 export const getEvents = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  const planAccess = await enforcePlanAccess(event, 'events.module_enabled');
+  if (planAccess) return planAccess;
   try {
     const user = await getAuthenticatedUser(event);
     const admin = event.queryStringParameters?.admin === 'true' && Boolean(user && (user.isSuperAdmin || EVENT_ADMIN_ROLES.includes(user.role)));
@@ -76,6 +79,8 @@ export const getEvents = async (event: APIGatewayProxyEvent): Promise<APIGateway
 
 // GET /events/{id}
 export const getEventById = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  const planAccess = await enforcePlanAccess(event, 'events.module_enabled');
+  if (planAccess) return planAccess;
   try {
     const id = event.pathParameters?.id;
     if (!id) return apiResponse(400, { message: 'ID é obrigatório' });
@@ -116,6 +121,8 @@ export const getEventById = async (event: APIGatewayProxyEvent): Promise<APIGate
 
 // POST /events
 export const createOrUpdateEvent = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  const planAccess = await enforcePlanAccess(event, 'events.module_enabled');
+  if (planAccess) return planAccess;
   let connection: any;
   try {
     const auth = await requireAuth(event);
@@ -212,6 +219,8 @@ export const createOrUpdateEvent = async (event: APIGatewayProxyEvent): Promise<
 
 // DELETE /events/{id}
 export const deleteEvent = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  const planAccess = await enforcePlanAccess(event, 'events.module_enabled');
+  if (planAccess) return planAccess;
   const connection = await getConnection();
   try {
     const auth = await requireAuth(event);

@@ -1,3 +1,4 @@
+import { enforcePlanAccess } from '../services/planAccess';
 import { authorizeResource } from '../services/tenantResource';
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { v4 as uuidv4 } from 'uuid';
@@ -10,6 +11,8 @@ const STORE_ADMIN_ROLES = ['SUPERADMIN', 'PASTOR', 'ADMIN', 'LEADER', 'VOLUNTEER
 
 // GET /pdv/products
 export const getProducts = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  const planAccess = await enforcePlanAccess(event, 'pdv.module_enabled');
+  if (planAccess) return planAccess;
   try {
     const user = await getAuthenticatedUser(event);
     const admin = event.queryStringParameters?.admin === 'true' && Boolean(user && (user.isSuperAdmin || STORE_ADMIN_ROLES.includes(user.role)));
@@ -105,6 +108,8 @@ export const getProducts = async (event: APIGatewayProxyEvent): Promise<APIGatew
 
 // POST /pdv/products
 export const createOrUpdateProduct = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  const planAccess = await enforcePlanAccess(event, 'pdv.module_enabled');
+  if (planAccess) return planAccess;
   try {
     const auth = await requireAuth(event);
     if ('errorResponse' in auth) return auth.errorResponse;
@@ -190,6 +195,8 @@ export const createOrUpdateProduct = async (event: APIGatewayProxyEvent): Promis
 
 // DELETE /pdv/products/{id}
 export const deleteProduct = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  const planAccess = await enforcePlanAccess(event, 'pdv.module_enabled');
+  if (planAccess) return planAccess;
   try {
     const auth = await requireAuth(event);
     if ('errorResponse' in auth) return auth.errorResponse;

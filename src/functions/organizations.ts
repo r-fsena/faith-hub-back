@@ -1,9 +1,18 @@
+import { buildPlanContract, readPlanContract, LEGACY_PLAN_IDS } from '../services/planCatalog';
+import { initializePlanEntitlements } from '../services/planProvisioning';
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
-import { query, apiResponse } from '../db';
+import { query, apiResponse, getConnection } from '../db';
 import { v4 as uuidv4 } from 'uuid';
 import { requireAuth, enforceRole, enforceTenant, getAuthenticatedUser } from '../services/authMiddleware';
 import { logSecurityEvent } from '../services/auditLogService';
 import { seedDefaultMinistries } from '../services/ministrySeedService';
+
+function withCapacity(organization: any) {
+  const contract = readPlanContract(organization.plan_contract, organization.plan);
+  return { ...organization, plan_contract: contract, capacity_warning: contract &&
+    (Number(organization.active_members) > contract.max_members || Number(organization.active_campuses) > contract.max_campuses)
+    ? 'Capacidade contratada excedida. Avalie uma proposta de expansão; a operação permanece disponível.' : null };
+}
 
 // GET /organizations
 export const listOrganizations = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
@@ -16,20 +25,24 @@ export const listOrganizations = async (event: APIGatewayProxyEvent): Promise<AP
       const { rows } = await query(`
         SELECT o.*, 
                COUNT(DISTINCT c.id) as total_campuses,
-               COUNT(DISTINCT m.id) as total_members
+               COUNT(DISTINCT m.id) as total_members,
+               COUNT(DISTINCT CASE WHEN UPPER(m.status) IN ('ACTIVE','ATIVO') AND UPPER(COALESCE(m.role,'MEMBER')) NOT IN ('VISITOR','VISITANTE','GUEST') THEN m.id END) as active_members,
+               COUNT(DISTINCT CASE WHEN c.status = 'ACTIVE' THEN c.id END) as active_campuses
         FROM organizations o
         LEFT JOIN campuses c ON c.organization_id = o.id
         LEFT JOIN members m ON m.organization_id = o.id
         GROUP BY o.id
         ORDER BY o.created_at ASC
       `);
-      return apiResponse(200, { data: rows });
+      return apiResponse(200, { data: rows.map(withCapacity) });
     }
 
     const { rows } = await query(`
       SELECT o.*, 
              COUNT(DISTINCT c.id) as total_campuses,
-             COUNT(DISTINCT m.id) as total_members
+             COUNT(DISTINCT m.id) as total_members,
+             COUNT(DISTINCT CASE WHEN UPPER(m.status) IN ('ACTIVE','ATIVO') AND UPPER(COALESCE(m.role,'MEMBER')) NOT IN ('VISITOR','VISITANTE','GUEST') THEN m.id END) as active_members,
+             COUNT(DISTINCT CASE WHEN c.status = 'ACTIVE' THEN c.id END) as active_campuses
       FROM organizations o
       LEFT JOIN campuses c ON c.organization_id = o.id
       LEFT JOIN members m ON m.organization_id = o.id
@@ -37,7 +50,7 @@ export const listOrganizations = async (event: APIGatewayProxyEvent): Promise<AP
       GROUP BY o.id
     `, [auth.user.organizationId]);
 
-    return apiResponse(200, { data: rows });
+    return apiResponse(200, { data: rows.map(withCapacity) });
   } catch (error: any) {
     console.error('Erro ao listar organizações:', error);
     return apiResponse(500, { error: 'Erro ao listar organizações' });
@@ -59,7 +72,9 @@ export const getOrganization = async (event: APIGatewayProxyEvent): Promise<APIG
     if (rows.length === 0) {
       return apiResponse(404, { error: 'Organização não encontrada' });
     }
-    return apiResponse(200, rows[0]);
+    const organization = rows[0];
+    if (!user) delete organization.plan_contract;
+    return apiResponse(200, organization);
   } catch (error: any) {
     console.error('Erro ao obter organização:', error);
     return apiResponse(500, { error: 'Erro ao obter organização' });
@@ -68,6 +83,7 @@ export const getOrganization = async (event: APIGatewayProxyEvent): Promise<APIG
 
 // POST /organizations (PROTEGIDO: Somente SuperAdmin)
 export const createOrUpdateOrganization = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  let connection: Awaited<ReturnType<typeof getConnection>> | undefined;
   try {
     const auth = await requireAuth(event);
     if ('errorResponse' in auth) return auth.errorResponse;
@@ -77,6 +93,9 @@ export const createOrUpdateOrganization = async (event: APIGatewayProxyEvent): P
 
     const body = JSON.parse(event.body || '{}');
     const { id, name, slug, cnpj, plan, primary_color, secondary_color, logo_url, status } = body;
+
+    const tenant = enforceTenant(auth.user, id);
+    if (!tenant.allowed) return tenant.errorResponse!;
 
     // Se passou apenas ID e status para inativar/reativar
     if (id && status && !name && !slug) {
@@ -101,28 +120,42 @@ export const createOrUpdateOrganization = async (event: APIGatewayProxyEvent): P
     }
 
     const orgId = id || uuidv4();
+    connection = await getConnection();
+    await connection.beginTransaction();
+    const [currentRows] = id ? await connection.query('SELECT * FROM organizations WHERE id = ? FOR UPDATE', [id]) as any : [[]];
+    if (id && !currentRows.length) { await connection.rollback(); return apiResponse(404, { error: 'Organização não encontrada' }); }
+    const current = currentRows[0];
+    const selectedPlan = plan || current?.plan || 'CONECTAR';
+    const planChanged = Boolean(current && selectedPlan !== current.plan);
+    if (planChanged && body.confirm_plan_change !== true) {
+      await connection.rollback();
+      return apiResponse(409, { error: 'PLAN_CHANGE_CONFIRMATION_REQUIRED', message: 'Confirme a mudança de módulos. Os dados serão preservados; cobrança existente exige revisão separada.' });
+    }
+    let contract = current ? readPlanContract(current.plan_contract, current.plan) : null;
+    if (!current || planChanged) {
+      const [plans] = await connection.query("SELECT * FROM saas_plans WHERE id = ? AND status = 'ACTIVE'", [selectedPlan]) as any;
+      contract = buildPlanContract(plans[0], { monthly_amount: body.monthly_amount === '' ? undefined : body.monthly_amount,
+        max_members: body.max_members === '' ? undefined : body.max_members, max_campuses: body.max_campuses === '' ? undefined : body.max_campuses });
+    } else if (!contract && !LEGACY_PLAN_IDS.has(selectedPlan)) throw new Error('PLAN_CONTRACT_REQUIRED');
+    const execute = (sql: string, params?: any[]) => connection!.query(sql, params);
     const cleanSlug = slug.toLowerCase().trim().replace(/[^a-z0-9-]/g, '-');
+    const [slugRows] = await execute('SELECT id FROM organizations WHERE slug = ? AND id <> ? LIMIT 1 FOR UPDATE', [cleanSlug, orgId]) as any;
+    if (slugRows.length) { await connection.rollback(); return apiResponse(409, { error: 'Este endereço já pertence a outra organização.' }); }
     const sql = `
       INSERT INTO organizations (id, name, slug, cnpj, plan, primary_color, secondary_color, logo_url, status)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-      ON DUPLICATE KEY UPDATE
-        name = VALUES(name),
-        slug = VALUES(slug),
-        cnpj = VALUES(cnpj),
-        plan = VALUES(plan),
-        primary_color = VALUES(primary_color),
-        secondary_color = VALUES(secondary_color),
-        logo_url = VALUES(logo_url),
-        status = VALUES(status),
-        updated_at = NOW()
     `;
 
-    await query(sql, [
+    if (id) await execute(`UPDATE organizations SET name = ?, slug = ?, cnpj = ?, plan = ?,
+      primary_color = ?, secondary_color = ?, logo_url = ?, status = ?, updated_at = NOW() WHERE id = ?`, [
+      name, cleanSlug, cnpj || '', selectedPlan, primary_color || '#0f766e', secondary_color || '#14b8a6', logo_url || '', status || 'ACTIVE', orgId
+    ]);
+    else await execute(sql, [
       orgId,
       name,
       cleanSlug,
       cnpj || '',
-      plan || 'PRO',
+      selectedPlan,
       primary_color || '#0f766e',
       secondary_color || '#14b8a6',
       logo_url || '',
@@ -130,13 +163,13 @@ export const createOrUpdateOrganization = async (event: APIGatewayProxyEvent): P
     ]);
 
     if (id) {
-      await query(
+      await execute(
         `UPDATE church_settings SET church_name = ?, pwa_slug = ?, primary_color = ?, secondary_color = ?, status = ?, updated_at = NOW() WHERE organization_id = ?`,
         [name, cleanSlug, primary_color || '#0f766e', secondary_color || '#14b8a6', status || 'ACTIVE', id]
       );
     } else {
       const campusId = `campus_${cleanSlug.replace(/-/g, '_')}_sede`;
-      await query(`
+      await execute(`
         INSERT INTO campuses (
           id, organization_id, name, slug, is_headquarters, status
         ) VALUES (?, ?, ?, 'sede', 1, 'ACTIVE')
@@ -148,7 +181,7 @@ export const createOrUpdateOrganization = async (event: APIGatewayProxyEvent): P
       ]);
 
       const settingsId = `settings_${cleanSlug.replace(/-/g, '_')}`;
-      await query(`
+      await execute(`
         INSERT INTO church_settings (
           id, church_name, slogan, cnpj, primary_color, secondary_color,
           pwa_theme_color, pwa_short_name, pwa_slug, organization_id, campus_id, offline_mode, status
@@ -168,8 +201,11 @@ export const createOrUpdateOrganization = async (event: APIGatewayProxyEvent): P
       ]);
 
       // Seed automático dos ministérios padrão para a nova igreja/tenant
-      await seedDefaultMinistries(orgId, campusId);
+      if (!contract || contract.entitlements['ministries.module_enabled']) await seedDefaultMinistries(orgId, campusId, execute, true);
     }
+
+    if (contract && (!current || planChanged)) await initializePlanEntitlements(orgId, contract, execute);
+    await connection.commit();
 
     await logSecurityEvent({
       organizationId: orgId,
@@ -177,13 +213,15 @@ export const createOrUpdateOrganization = async (event: APIGatewayProxyEvent): P
       action: id ? 'UPDATE_ORGANIZATION' : 'CREATE_ORGANIZATION',
       resource: 'organizations',
       resourceId: orgId,
-      details: { name, slug: cleanSlug, plan: plan || 'PRO' },
+      details: { name, slug: cleanSlug, plan: selectedPlan, planChanged, dataPreserved: true, contract_version: contract?.version },
       event
     });
 
     return apiResponse(200, { message: 'Organização salva com sucesso!', organization_id: orgId });
   } catch (error: any) {
+    if (connection) await connection.rollback();
+    if (/CONTRACT|PLAN_|MULTICAMPUS/.test(error.message)) return apiResponse(400, { error: error.message });
     console.error('Erro ao salvar organização:', error);
     return apiResponse(500, { error: 'Erro ao salvar organização' });
-  }
+  } finally { connection?.release(); }
 };

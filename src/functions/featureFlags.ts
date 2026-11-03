@@ -10,6 +10,12 @@ import {
 
 const FF_ADMIN_ROLES = ['SUPERADMIN', 'PASTOR', 'ADMIN'];
 
+function forbiddenPlanChange(evaluated: Awaited<ReturnType<typeof evaluateTenantFlags>>, items: any[]) {
+  if (!evaluated.contract_version) return false;
+  return items.some(item => item.feature_key === 'system.plan_entitlements' ||
+    (item.is_enabled && !evaluated.catalog.find(entry => entry.key === item.feature_key)?.contracted));
+}
+
 /**
  * GET /feature-flags
  * Query parameters:
@@ -94,6 +100,12 @@ export const toggleFeatureFlag = async (
       });
     }
 
+    if (typeof is_enabled !== 'boolean') return apiResponse(400, { error: 'is_enabled deve ser booleano' });
+    const current = await evaluateTenantFlags(orgId, campus_id, environment as EnvironmentScope);
+    if (forbiddenPlanChange(current, [{ feature_key, is_enabled }])) {
+      return apiResponse(403, { error: 'PLAN_FEATURE_NOT_INCLUDED', message: 'A ativação exige contratação do recurso.' });
+    }
+
     await setFeatureFlagOverride({
       organizationId: orgId,
       campusId: campus_id || null,
@@ -154,6 +166,12 @@ export const batchUpdateFeatureFlags = async (
         error: 'Campo obrigatório: array de flags'
       });
     }
+
+    if (flags.some(item => !item || typeof item.feature_key !== 'string' || typeof item.is_enabled !== 'boolean')) {
+      return apiResponse(400, { error: 'Flags inválidas' });
+    }
+    const current = await evaluateTenantFlags(orgId, campus_id, environment as EnvironmentScope);
+    if (forbiddenPlanChange(current, flags)) return apiResponse(403, { error: 'PLAN_FEATURE_NOT_INCLUDED' });
 
     for (const item of flags) {
       if (item.feature_key !== undefined && item.is_enabled !== undefined) {

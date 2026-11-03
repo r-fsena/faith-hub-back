@@ -1,3 +1,4 @@
+import { enforcePlanAccess } from '../services/planAccess';
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { v4 as uuidv4 } from 'uuid';
 import { query, getConnection, apiResponse } from '../db';
@@ -15,6 +16,8 @@ const generateShortCode = (): string => {
 
 // POST /tickets/checkout — public registration, all prices and settlement are server-owned.
 export const checkout = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  const planAccess = await enforcePlanAccess(event, 'events.module_enabled');
+  if (planAccess) return planAccess;
   const rateCheck = await checkRateLimit(event, { maxRequests: 20, windowSeconds: 60, identifierPrefix: 'ticket_checkout' });
   if (!rateCheck.allowed) return rateCheck.errorResponse!;
   const user = await getAuthenticatedUser(event);
@@ -65,6 +68,8 @@ export const checkout = async (event: APIGatewayProxyEvent): Promise<APIGatewayP
 };
 
 export const myTickets = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  const planAccess = await enforcePlanAccess(event, 'events.module_enabled');
+  if (planAccess) return planAccess;
   const auth = await requireAuth(event);
   if ('errorResponse' in auth) return auth.errorResponse;
   const tenantCheck = enforceTenant(auth.user, event.queryStringParameters?.organization_id);
@@ -79,6 +84,8 @@ export const myTickets = async (event: APIGatewayProxyEvent): Promise<APIGateway
 
 // POST /tickets/scan (PROTEGIDO: Apenas Portaria / Voluntários / Líderes Autorizados)
 export const scanTicket = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  const planAccess = await enforcePlanAccess(event, 'events.module_enabled');
+  if (planAccess) return planAccess;
   const connection = await getConnection();
   try {
     const auth = await requireAuth(event);
@@ -213,6 +220,8 @@ export const scanTicket = async (event: APIGatewayProxyEvent): Promise<APIGatewa
 
 // GET /tickets/{id}/pass (Dados estruturados para Passaporte / Carteira Digital)
 export const getTicketPass = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  const planAccess = await enforcePlanAccess(event, 'events.module_enabled');
+  if (planAccess) return planAccess;
   try {
     const auth = await requireAuth(event);
     if ('errorResponse' in auth) return auth.errorResponse;
@@ -263,6 +272,8 @@ export const getTicketPass = async (event: APIGatewayProxyEvent): Promise<APIGat
 
 // GET /tickets/{id}/calendar.ics (Download de arquivo iCalendar para Apple / Android)
 export const getTicketCalendar = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  const planAccess = await enforcePlanAccess(event, 'events.module_enabled');
+  if (planAccess) return planAccess;
   try {
     const auth = await requireAuth(event);
     if ('errorResponse' in auth) return auth.errorResponse;

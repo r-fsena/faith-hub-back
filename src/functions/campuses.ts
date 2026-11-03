@@ -1,3 +1,4 @@
+import { enforcePlanAccess } from '../services/planAccess';
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { query, apiResponse } from '../db';
 import { v4 as uuidv4 } from 'uuid';
@@ -88,6 +89,10 @@ export const createOrUpdateCampus = async (event: APIGatewayProxyEvent): Promise
     const orgId = tenantCheck.effectiveOrgId;
 
     const campusId = id || uuidv4();
+    if (!id) {
+      const planAccess = await enforcePlanAccess(event, 'system.multicampus_enabled');
+      if (planAccess) return planAccess;
+    }
     const formattedSlug = slug.toLowerCase().trim().replace(/[^a-z0-9-]/g, '-');
 
     if (is_headquarters) {

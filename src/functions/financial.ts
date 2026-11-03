@@ -1,3 +1,4 @@
+import { enforcePlanAccess } from '../services/planAccess';
 import { authorizeResource } from '../services/tenantResource';
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { query, apiResponse } from '../db';
@@ -12,6 +13,8 @@ const FINANCIAL_ROLES = ['SUPERADMIN', 'PASTOR', 'ADMIN', 'TREASURER'];
 // ==========================================
 
 export const listFinancialTransactions = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  const planAccess = await enforcePlanAccess(event, 'financial.cashflow_ledger');
+  if (planAccess) return planAccess;
   try {
     const auth = await requireAuth(event);
     if ('errorResponse' in auth) return auth.errorResponse;
@@ -89,6 +92,8 @@ export const listFinancialTransactions = async (event: APIGatewayProxyEvent): Pr
 };
 
 export const createFinancialTransaction = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  const planAccess = await enforcePlanAccess(event, (() => { try { const b = JSON.parse(event.body || '{}'); return b.origin_module === 'TITHES' && b.type === 'INCOME' && b.status === 'PENDING' ? 'financial.online_pix_giving' : 'financial.cashflow_ledger'; } catch { return 'financial.cashflow_ledger'; } })());
+  if (planAccess) return planAccess;
   try {
     const auth = await requireAuth(event);
     if ('errorResponse' in auth) return auth.errorResponse;
@@ -188,6 +193,8 @@ export const createFinancialTransaction = async (event: APIGatewayProxyEvent): P
 };
 
 export const updateFinancialTransaction = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  const planAccess = await enforcePlanAccess(event, 'financial.cashflow_ledger');
+  if (planAccess) return planAccess;
   try {
     const auth = await requireAuth(event);
     if ('errorResponse' in auth) return auth.errorResponse;
@@ -268,6 +275,8 @@ export const updateFinancialTransaction = async (event: APIGatewayProxyEvent): P
 };
 
 export const deleteFinancialTransaction = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  const planAccess = await enforcePlanAccess(event, 'financial.cashflow_ledger');
+  if (planAccess) return planAccess;
   try {
     const auth = await requireAuth(event);
     if ('errorResponse' in auth) return auth.errorResponse;
@@ -312,6 +321,8 @@ export const deleteFinancialTransaction = async (event: APIGatewayProxyEvent): P
 // ==========================================
 
 export const getFinancialSummary = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  const planAccess = await enforcePlanAccess(event, 'financial.cashflow_ledger');
+  if (planAccess) return planAccess;
   try {
     const auth = await requireAuth(event);
     if ('errorResponse' in auth) return auth.errorResponse;
@@ -457,6 +468,8 @@ export const getFinancialSummary = async (event: APIGatewayProxyEvent): Promise<
 // ==========================================
 
 export const listSpecialProjects = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  const planAccess = await enforcePlanAccess(event, 'financial.special_projects');
+  if (planAccess) return planAccess;
   try {
     const auth = await requireAuth(event);
     if ('errorResponse' in auth) return auth.errorResponse;
@@ -493,6 +506,8 @@ export const listSpecialProjects = async (event: APIGatewayProxyEvent): Promise<
 };
 
 export const createOrUpdateSpecialProject = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  const planAccess = await enforcePlanAccess(event, 'financial.special_projects');
+  if (planAccess) return planAccess;
   try {
     const auth = await requireAuth(event);
     if ('errorResponse' in auth) return auth.errorResponse;
@@ -568,6 +583,8 @@ export const createOrUpdateSpecialProject = async (event: APIGatewayProxyEvent):
 };
 
 export const deleteSpecialProject = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  const planAccess = await enforcePlanAccess(event, 'financial.special_projects');
+  if (planAccess) return planAccess;
   try {
     const auth = await requireAuth(event);
     if ('errorResponse' in auth) return auth.errorResponse;

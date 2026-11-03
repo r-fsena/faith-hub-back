@@ -1,3 +1,4 @@
+import { enforcePlanAccess } from '../services/planAccess';
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { apiResponse, query } from '../db';
 import { enforcePermission, enforceRole, enforceTenant, requireAuth } from '../services/authMiddleware';
@@ -44,6 +45,8 @@ function numericRow(row: any) {
 
 // GET /pdv/analytics
 export const getPdvAnalytics = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  const planAccess = await enforcePlanAccess(event, 'pdv.module_enabled');
+  if (planAccess) return planAccess;
   try {
     const auth = await requireAuth(event);
     if ('errorResponse' in auth) return auth.errorResponse;

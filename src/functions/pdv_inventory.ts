@@ -1,3 +1,4 @@
+import { enforcePlanAccess } from '../services/planAccess';
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { apiResponse, getConnection, query } from '../db';
 import { AuthUser, enforcePermission, enforceRole, enforceTenant, requireAuth } from '../services/authMiddleware';
@@ -38,6 +39,8 @@ async function inventoryAuth(
 
 // GET /pdv/inventory
 export const getInventory = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  const planAccess = await enforcePlanAccess(event, 'pdv.stock_inventory');
+  if (planAccess) return planAccess;
   try {
     const scope = await inventoryAuth(event, 'inventory.view');
     if ('errorResponse' in scope) return scope.errorResponse;
@@ -120,6 +123,8 @@ export const getInventory = async (event: APIGatewayProxyEvent): Promise<APIGate
 
 // GET /pdv/inventory/movements
 export const getMovements = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  const planAccess = await enforcePlanAccess(event, 'pdv.stock_inventory');
+  if (planAccess) return planAccess;
   try {
     const scope = await inventoryAuth(event, 'inventory.view');
     if ('errorResponse' in scope) return scope.errorResponse;
@@ -155,6 +160,8 @@ export const getMovements = async (event: APIGatewayProxyEvent): Promise<APIGate
 
 // POST /pdv/inventory/movements
 export const createMovement = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  const planAccess = await enforcePlanAccess(event, 'pdv.stock_inventory');
+  if (planAccess) return planAccess;
   let connection: Awaited<ReturnType<typeof getConnection>> | undefined;
   try {
     const scope = await inventoryAuth(event, 'inventory.manage');
@@ -215,6 +222,8 @@ export const createMovement = async (event: APIGatewayProxyEvent): Promise<APIGa
 
 // PUT /pdv/inventory/{productId}/settings
 export const updateInventorySettings = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  const planAccess = await enforcePlanAccess(event, 'pdv.stock_inventory');
+  if (planAccess) return planAccess;
   try {
     const scope = await inventoryAuth(event, 'inventory.manage');
     if ('errorResponse' in scope) return scope.errorResponse;
