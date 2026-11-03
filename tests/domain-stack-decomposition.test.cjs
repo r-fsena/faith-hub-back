@@ -20,6 +20,7 @@ test('domain consolidation preserves every event while reducing action lambdas',
     }
   }
   functions.pdvInventory.timeout = 60;
+  functions.batchImportMembers.timeout = 28;
 
   const serverless = {
     service: {
@@ -38,6 +39,7 @@ test('domain consolidation preserves every event while reducing action lambdas',
     expectedEventCount
   );
   assert.equal(functions.pdvInventory.timeout, 60);
+  assert.equal(functions.membersApi.timeout, 28);
   for (const [name, group] of Object.entries(DomainConsolidation.domainGroups)) {
     assert.equal(functions[name].handler, group.handler);
     assert.equal(functions[name].name, `faith-hub-backend-dev-${name}`);

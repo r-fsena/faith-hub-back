@@ -98,11 +98,15 @@ class ServerlessDomainConsolidation {
 
       const existingTarget = functions[targetName];
       const baseFunction = existingTarget || functions[group.sources[0]];
+      const groupTimeout = group.sources.some(name => functions[name].timeout)
+        ? Math.max(...group.sources.map(name => functions[name].timeout || this.serverless.service.provider.timeout || 6))
+        : undefined;
       const events = group.sources.flatMap((sourceName) => functions[sourceName].events || []);
       for (const sourceName of group.sources) delete functions[sourceName];
 
       functions[targetName] = {
         ...baseFunction,
+        ...(groupTimeout ? { timeout: groupTimeout } : {}),
         name: existingTarget?.name || `${this.serverless.service.service}-${this.serverless.service.provider.stage}-${targetName}`,
         handler: group.handler,
         events
