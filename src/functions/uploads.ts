@@ -4,7 +4,7 @@ import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { v4 as uuidv4 } from 'uuid';
 import * as path from 'path';
 import { apiResponse } from '../db';
-import { requireAuth, getAuthenticatedUser } from '../services/authMiddleware';
+import { requireAuth, getAuthenticatedUser, enforceTenant } from '../services/authMiddleware';
 import { logSecurityEvent } from '../services/auditLogService';
 import { checkRateLimit } from '../services/rateLimiter';
 
@@ -47,7 +47,9 @@ export const getUploadUrl = async (event: APIGatewayProxyEvent): Promise<APIGate
     const auth = await requireAuth(event);
     if ('errorResponse' in auth) return auth.errorResponse;
     const user = auth.user;
-    const orgId = user?.organizationId || 'org_default';
+    const tenant = enforceTenant(user,event.headers?.['x-organization-id']||event.queryStringParameters?.organization_id);
+    if(!tenant.allowed)return tenant.errorResponse!;
+    const orgId = tenant.effectiveOrgId;
 
     const { filename, contentType, target_route, prefix } = event.queryStringParameters || {};
     const type = (contentType || 'image/jpeg').toLowerCase();

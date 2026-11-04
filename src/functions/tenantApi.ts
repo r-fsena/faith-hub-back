@@ -1,3 +1,4 @@
+import { pwaExperienceHandler } from './pwaExperience';
 import * as churchSettings from './churchSettings';
 import * as pagarmeSettings from './pagarmeSettings';
 import * as organizations from './organizations';
@@ -7,6 +8,7 @@ import * as auditLogs from './auditLogs';
 import { createDomainApiHandler, DomainRouteMap } from './domainApiRouter';
 
 export const tenantApiRoutes: DomainRouteMap = {
+  'ANY /PWA-EXPERIENCE/{PROXY+}': pwaExperienceHandler,
   'GET /CHURCH-SETTINGS': churchSettings.getSettings,
   'POST /CHURCH-SETTINGS': churchSettings.updateSettings,
   'GET /PAGARME-SETTINGS': pagarmeSettings.getGatewayConfig,

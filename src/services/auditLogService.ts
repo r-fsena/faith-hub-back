@@ -13,6 +13,8 @@ export interface AuditLogEntry {
   details?: any;
   status?: 'SUCCESS' | 'DENIED' | 'ERROR';
   event?: APIGatewayProxyEvent;
+  executor?: (sql:string,params:any[])=>Promise<any>;
+  strict?: boolean;
 }
 
 export async function logSecurityEvent(entry: AuditLogEntry): Promise<void> {
@@ -41,7 +43,7 @@ export async function logSecurityEvent(entry: AuditLogEntry): Promise<void> {
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
-    await query(sql, [
+    await (entry.executor || query)(sql, [
       id,
       entry.organizationId || user?.organizationId || 'org_default',
       entry.campusId || null,
@@ -59,5 +61,6 @@ export async function logSecurityEvent(entry: AuditLogEntry): Promise<void> {
   } catch (err) {
     // Audit logging should never crash the main transaction
     console.error('Falha ao registrar log de auditoria:', err);
+    if (entry.strict) throw err;
   }
 }

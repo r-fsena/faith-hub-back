@@ -153,6 +153,14 @@ resources:
           maxReceiveCount: 5
 
 functions:
+  pwaExperience:
+    handler: src/functions/pwaExperience.pwaExperienceHandler
+    timeout: 28
+    events:
+      - httpApi:
+          path: /pwa-experience/{proxy+}
+          method: ANY
+
   publicJourney:
     handler: src/functions/publicJourney.publicJourneyHandler
     timeout: 28

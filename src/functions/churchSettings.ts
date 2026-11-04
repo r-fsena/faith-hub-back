@@ -1,6 +1,7 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { query, apiResponse } from '../db';
 import { requireAuth, enforceRole, enforceTenant } from '../services/authMiddleware';
+import { publishedExperience } from '../services/pwaExperienceService';
 import { logSecurityEvent } from '../services/auditLogService';
 
 export const DEFAULT_KANBAN_CONFIG = {
@@ -168,7 +169,7 @@ function formatSettings(item: any) {
 }
 
 // GET /church-settings (Público para leitura de identidade visual do PWA/App)
-export const getSettings = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+const getSettingsLegacy = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   try {
     const rawSlug = event.queryStringParameters?.slug;
     const orgId = event.queryStringParameters?.organization_id;
@@ -327,8 +328,8 @@ export const updateSettings = async (event: APIGatewayProxyEvent): Promise<APIGa
         instagram_url, youtube_url, facebook_url, website_url,
         logo_icon_url, logo_header_url, banner_url,
         primary_color, secondary_color, pwa_theme_color, pwa_short_name, pwa_slug, offline_mode,
-        organization_id, kanban_config, bible_config, store_config, popup_notice, welcome_screen_config
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        organization_id, kanban_config, bible_config, store_config, popup_notice, welcome_screen_config, theme_mode, pwa_splash_bg
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON DUPLICATE KEY UPDATE
         church_name = VALUES(church_name),
         slogan = VALUES(slogan),
@@ -362,6 +363,7 @@ export const updateSettings = async (event: APIGatewayProxyEvent): Promise<APIGa
         store_config = VALUES(store_config),
         popup_notice = VALUES(popup_notice),
         welcome_screen_config = VALUES(welcome_screen_config),
+        theme_mode = VALUES(theme_mode), pwa_splash_bg = VALUES(pwa_splash_bg),
         updated_at = NOW()
     `;
 
@@ -398,7 +400,9 @@ export const updateSettings = async (event: APIGatewayProxyEvent): Promise<APIGa
       bibleValue,
       storeValue,
       popupNoticeValue,
-      welcomeScreenValue
+      welcomeScreenValue,
+      ['LIGHT','DARK','AUTO'].includes(body.theme_mode)?body.theme_mode:'LIGHT',
+      /^#[0-9a-f]{6}$/i.test(body.pwa_splash_bg||'')?body.pwa_splash_bg:'#0f172a'
     ];
 
     await query(sql, params);
@@ -438,4 +442,13 @@ export const updateSettings = async (event: APIGatewayProxyEvent): Promise<APIGa
     console.error('Erro ao salvar church-settings:', error);
     return apiResponse(500, { message: 'Erro ao salvar configurações' });
   }
+};
+
+// Only the published experience is appended to the public branding response.
+export const getSettings = async (event:APIGatewayProxyEvent):Promise<APIGatewayProxyResult> => {
+ const response=await getSettingsLegacy(event);
+ if(response.statusCode!==200)return response;
+ const item=JSON.parse(response.body);
+ try {if(item.organization_id)item.pwa_experience=await publishedExperience(item.organization_id,event.queryStringParameters?.campus_id||null,item);}catch{item.pwa_experience=null;}
+ return apiResponse(200,item);
 };

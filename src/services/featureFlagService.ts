@@ -119,6 +119,7 @@ export async function evaluateTenantFlags(
 
   let flagsMap: Record<string, boolean> = {
     'system.saas_public_journey': false,
+    'system.saas_pwa_customization': false,
     'system.saas_public_checkout': false,
     'system.saas_public_onboarding': false,
     'members.digital_card': false,
