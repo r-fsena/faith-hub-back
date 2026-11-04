@@ -174,6 +174,16 @@ test("global and screen contrast are checked independently", () => {
       .some((v) => v.includes("events")),
   );
 });
+test("contrast review identifies the exact mode, screen and color fields without changing validation messages", () => {
+  const config = c.resolveExperience({}, {
+    theme: { light: { muted: "#ffffff" } },
+    screens: { events: { palette: { navigationText: "#ffffff", navigation: "#ffffff" } } },
+  });
+  const details = c.contrastDetails(config);
+  assert.ok(details.some(issue => issue.mode === "light" && issue.screen === "global" && issue.foreground === "muted" && issue.background === "surface"));
+  assert.ok(details.some(issue => issue.mode === "dark" && issue.screen === "events" && issue.foreground === "navigationText" && issue.background === "navigation"));
+  assert.deepEqual(c.contrastIssues(config), details.map(issue => issue.message));
+});
 test("preflight is public but editing requires authentication", async () => {
   state.user = null;
   assert.equal((await h(event("draft", "OPTIONS"))).statusCode, 204);

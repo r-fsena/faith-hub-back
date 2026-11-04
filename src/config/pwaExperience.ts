@@ -232,8 +232,15 @@ export function contrast(a: string, b: string) {
 }
 export const onColor = (hex: string) =>
   contrast(hex, "#ffffff") >= contrast(hex, "#0f172a") ? "#ffffff" : "#0f172a";
-export function contrastIssues(config: ExperienceConfig) {
-  const issues: string[] = [];
+export interface ContrastIssue {
+  mode: "light" | "dark";
+  screen: ScreenId | "global";
+  foreground: keyof Palette;
+  background: keyof Palette;
+  message: string;
+}
+export function contrastDetails(config: ExperienceConfig) {
+  const issues: ContrastIssue[] = [];
   for (const mode of ["light", "dark"] as const) {
     for (const [screen, p] of [
       ["global", config.theme[mode]],
@@ -241,7 +248,7 @@ export function contrastIssues(config: ExperienceConfig) {
         id,
         { ...config.theme[mode], ...v?.palette },
       ]),
-    ] as Array<[string, Palette]>) {
+    ] as Array<[ScreenId | "global", Palette]>) {
       for (const [fg, bg] of [
         ["text", "background"],
         ["text", "surface"],
@@ -252,12 +259,19 @@ export function contrastIssues(config: ExperienceConfig) {
         ["navigationActive", "navigation"],
       ] as Array<[keyof Palette, keyof Palette]>)
         if (contrast(p[fg], p[bg]) < 4.5)
-          issues.push(
-            `${mode === "light" ? "Claro" : "Escuro"} · ${screen} · ${PALETTE_LABELS[fg]} / ${PALETTE_LABELS[bg]}`,
-          );
+          issues.push({
+            mode,
+            screen,
+            foreground: fg,
+            background: bg,
+            message: `${mode === "light" ? "Claro" : "Escuro"} · ${screen} · ${PALETTE_LABELS[fg]} / ${PALETTE_LABELS[bg]}`,
+          });
     }
   }
   return issues;
+}
+export function contrastIssues(config: ExperienceConfig) {
+  return contrastDetails(config).map((issue) => issue.message);
 }
 export function preset(id: ExperienceConfig["template_id"]) {
   const p = defaultExperience();
