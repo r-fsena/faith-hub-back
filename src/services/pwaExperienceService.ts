@@ -6,6 +6,7 @@ import {
   EXPERIENCE_FLAG,
   validatePatch,
   resolveExperience,
+  merge,
   contrastIssues,
 } from "../config/pwaExperience";
 export class ExperienceError extends Error {
@@ -39,7 +40,7 @@ export async function publishedExperience(
   campus: string | null,
   branding?: any,
 ) {
-  const base = branding || (await experienceBase(org));
+  // Public configuration contains only overrides; legacy images remain in church-settings once.
   if (!(await experienceEnabled(org, campus)))
     return { enabled: false, config: null, revision: "0" };
   if (campus) {
@@ -55,17 +56,21 @@ export async function publishedExperience(
   );
   const organization = rows.find((r) => r.scope_key === "organization"),
     local = campus ? rows.find((r) => r.scope_key === scopeKey(campus)) : null;
+  const patch = merge(
+    validatePatch(decode(organization?.published_json) || {}),
+    validatePatch(decode(local?.published_json) || {}),
+  );
+  const meaningful = (value: any): boolean =>
+    value && typeof value === "object"
+      ? Object.entries(value).some(
+          ([key, v]) => key !== "schema_version" && meaningful(v),
+        )
+      : true;
   return {
     enabled: true,
-    config: resolveExperience(
-      base,
-      decode(organization?.published_json),
-      decode(local?.published_json),
-    ),
+    config: patch,
     revision: `${organization?.published_revision || 0}:${local?.published_revision || 0}`,
-    customized: !!(
-      organization?.published_revision || local?.published_revision
-    ),
+    customized: meaningful(patch),
   };
 }
 export async function editorExperience(org: string, campus: string | null) {
@@ -87,11 +92,6 @@ export async function editorExperience(org: string, campus: string | null) {
     draft: decode(own?.draft_json) || {},
     published: decode(own?.published_json) || {},
     inherited,
-    resolved: resolveExperience(
-      base,
-      decode(parent?.published_json),
-      decode(own?.draft_json) || decode(own?.published_json),
-    ),
     history,
   };
 }
@@ -159,11 +159,24 @@ export async function changeExperience(
           422,
           `Revise o contraste: ${issues.slice(0, 4).join("; ")}`,
         );
-      if(!campus){
-        const [children]=await db.query("SELECT scope_key,published_json FROM pwa_experience_scopes WHERE organization_id = ? AND environment = 'production' AND campus_id IS NOT NULL AND published_json IS NOT NULL FOR UPDATE",[org]) as any;
-        for(const child of children){
-          const problems=contrastIssues(resolveExperience(settings[0]||{},next,decode(child.published_json)));
-          if(problems.length)throw new ExperienceError(422,`A nova identidade prejudica o contraste da unidade ${child.scope_key}. Revise os ajustes da unidade antes de publicar.`);
+      if (!campus) {
+        const [children] = (await db.query(
+          "SELECT scope_key,published_json FROM pwa_experience_scopes WHERE organization_id = ? AND environment = 'production' AND campus_id IS NOT NULL AND published_json IS NOT NULL FOR UPDATE",
+          [org],
+        )) as any;
+        for (const child of children) {
+          const problems = contrastIssues(
+            resolveExperience(
+              settings[0] || {},
+              next,
+              decode(child.published_json),
+            ),
+          );
+          if (problems.length)
+            throw new ExperienceError(
+              422,
+              `A nova identidade prejudica o contraste da unidade ${child.scope_key}. Revise os ajustes da unidade antes de publicar.`,
+            );
         }
       }
     }
