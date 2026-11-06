@@ -62,7 +62,7 @@
     "test:intelligence:mysql": "node scripts/test-intelligence-mysql.cjs --temporary-only"
   },
   "dependencies": {
-    "@aws-sdk/client-cognito-identity-provider": "^3.0.0",
+    "@aws-sdk/client-cognito-identity-provider": "^3.1161.0",
     "@aws-sdk/client-dynamodb": "^3.1156.0",
     "@aws-sdk/client-s3": "^3.1020.0",
     "@aws-sdk/client-secrets-manager": "^3.1156.0",
