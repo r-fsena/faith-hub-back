@@ -5,6 +5,13 @@
  * their logical ids in the root stack for a safe, in-place cutover.
  */
 module.exports = (resource, logicalId) => {
+  // These queues are shared by the root IAM role and every Lambda environment.
+  // Legacy grouping otherwise mistakes the Intelligence prefix for the handler
+  // and creates a role -> nested queue -> role dependency cycle.
+  if (['IntelligenceQueue', 'IntelligenceDeadLetterQueue'].includes(logicalId)) {
+    return false;
+  }
+
   const domainStacks = {
     MembersApi: 'ApiMembers',
     ContentApi: 'ApiContent',

@@ -87,3 +87,12 @@ test('domain route maps do not contain duplicate route keys', () => {
     assert.equal(new Set(routeKeys).size, routeKeys.length, `${file} contém rota duplicada`);
   }
 });
+
+test('shared intelligence queues remain in the root to avoid legacy IAM dependency cycles', () => {
+  const stackMap = require('../stacks-map.js');
+  for (const id of ['IntelligenceQueue', 'IntelligenceDeadLetterQueue']) {
+    assert.equal(stackMap({ Type: 'AWS::SQS::Queue' }, id), false);
+  }
+  // The worker itself must continue through the existing function strategy.
+  assert.equal(stackMap({ Type: 'AWS::Lambda::Function' }, 'IntelligenceWorkerLambdaFunction'), undefined);
+});
