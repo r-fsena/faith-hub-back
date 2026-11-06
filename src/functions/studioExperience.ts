@@ -8,6 +8,7 @@ const STUDIO_ROLES = ['SUPERADMIN', 'PASTOR', 'ADMIN', 'TREASURER', 'LEADER', 'V
 const SEARCH_ROLES = ['SUPERADMIN', 'PASTOR', 'ADMIN', 'LEADER'];
 const ONBOARDING_STEPS = new Set(['organization', 'campus', 'branding', 'members', 'team', 'modules', 'first_module']);
 const NAVIGATION_TABS = new Set([
+  'intelligence',
   'dashboard', 'people_workspace', 'membros', 'visitantes', 'pastoral_radar', 'celulas',
   'ministries_workspace', 'ministerios', 'escalas', 'kids_workspace', 'kids_salas', 'kids_checkin',
   'kids_chamados', 'kids_familias', 'kids_config_salas', 'kids_relatorios',

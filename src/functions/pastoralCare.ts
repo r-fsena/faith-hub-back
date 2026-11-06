@@ -1,3 +1,5 @@
+import { intelligenceScope, scopedWhere } from '../services/intelligenceScope';
+import { evaluateTenantFlags } from '../services/featureFlagService';
 import { enforcePlanAccess } from '../services/planAccess';
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { v4 as uuidv4 } from 'uuid';
@@ -682,6 +684,13 @@ export const getMemberTimeline360 = async (event: any): Promise<APIGatewayProxyR
     const roleCheck = enforceRole(auth.user, PASTORAL_ROLES);
     if (!roleCheck.allowed) return roleCheck.errorResponse!;
 
+    const scope = await intelligenceScope(event, auth.user);
+    if ('statusCode' in scope) return scope;
+    const memberFilter = scopedWhere(scope, 'm', 'campus_id', 'cell_group_id');
+    const meetingFilter = scopedWhere(scope, 'cm', 'campus_id', 'cell_group_id');
+    const careFilter = scopedWhere({...scope,cellIds:null}, 'pcl');
+    const ministryFilter = scopedWhere({...scope,cellIds:null}, 'ss');
+    const features = await evaluateTenantFlags(scope.organizationId, scope.campusId, 'production');
     const memberId = event.pathParameters?.id || event.pathParameters?.memberId;
     if (!memberId) return apiResponse(400, { error: 'ID do membro ausente' });
 
@@ -690,10 +699,10 @@ export const getMemberTimeline360 = async (event: any): Promise<APIGatewayProxyR
         m.id, m.name, m.phone, m.email, m.role, m.created_at, m.status,
         cg.name as cell_name, leader.name as leader_name, leader.phone as leader_phone
       FROM members m
-      LEFT JOIN cell_groups cg ON m.cell_group_id = cg.id
-      LEFT JOIN members leader ON cg.leader_id = leader.id
-      WHERE m.id = ? LIMIT 1
-    `, [memberId]);
+      LEFT JOIN cell_groups cg ON m.cell_group_id = cg.id AND cg.organization_id = m.organization_id
+      LEFT JOIN members leader ON cg.leader_id = leader.id AND leader.organization_id = m.organization_id
+      WHERE m.id = ? AND m.organization_id = ?${memberFilter.sql} LIMIT 1
+    `, [memberId, scope.organizationId, ...memberFilter.params]);
 
     if (memRows.length === 0) return apiResponse(404, { error: 'Membro não encontrado' });
     const member = memRows[0];
@@ -702,22 +711,22 @@ export const getMemberTimeline360 = async (event: any): Promise<APIGatewayProxyR
     const { rows: meetings } = await query(`
       SELECT cm.meeting_date, cm.study_topic, cma.status as attendance_status, cma.justification
       FROM cell_meeting_attendees cma
-      INNER JOIN cell_meetings cm ON cma.meeting_id = cm.id
-      WHERE cma.member_id = ?
+      INNER JOIN cell_meetings cm ON cma.meeting_id = cm.id AND cm.organization_id = cma.organization_id
+      WHERE cma.member_id = ? AND cma.organization_id = ?${meetingFilter.sql}
       ORDER BY cm.meeting_date DESC
       LIMIT 12
-    `, [memberId]);
+    `, [memberId, scope.organizationId, ...meetingFilter.params]);
 
     // Histórico de cuidados pastorais
     const { rows: careLogs } = await query(`
       SELECT id, caregiver_name, contact_type, summary, scheduled_follow_up, created_at
-      FROM pastoral_care_logs
-      WHERE member_id = ?
+      FROM pastoral_care_logs pcl
+      WHERE pcl.member_id = ? AND pcl.organization_id = ?${careFilter.sql}${auth.user.role === 'LEADER' ? ' AND pcl.caregiver_id = ?' : ''}
       ORDER BY created_at DESC
-    `, [memberId]);
+    `, [memberId, scope.organizationId, ...careFilter.params, ...(auth.user.role === 'LEADER' ? [auth.user.userId] : [])]);
 
     // Ministérios e escalas
-    const { rows: ministries } = await query(`
+    const { rows: ministries } = features.flags['ministries.module_enabled'] ? await query(`
       SELECT 
         m.name as ministry_name,
         mr.name as role_name,
@@ -726,14 +735,15 @@ export const getMemberTimeline360 = async (event: any): Promise<APIGatewayProxyR
         ss.service_date,
         ss.service_time
       FROM service_roster_items sri
-      INNER JOIN service_schedules ss ON sri.schedule_id = ss.id
-      INNER JOIN ministries m ON ss.ministry_id = m.id
-      INNER JOIN ministry_roles mr ON sri.role_id = mr.id
-      WHERE sri.member_id = ?
+      INNER JOIN service_schedules ss ON sri.schedule_id = ss.id AND ss.organization_id = sri.organization_id
+      INNER JOIN ministries m ON ss.ministry_id = m.id AND m.organization_id = ss.organization_id
+      INNER JOIN ministry_roles mr ON sri.role_id = mr.id AND mr.organization_id = sri.organization_id
+      WHERE sri.member_id = ? AND sri.organization_id = ?${ministryFilter.sql}
       ORDER BY ss.service_date DESC
       LIMIT 10
-    `, [memberId]);
+    `, [memberId, scope.organizationId, ...ministryFilter.params]) : { rows: [] };
 
+    await logSecurityEvent({organizationId:scope.organizationId,campusId:scope.campusId,user:auth.user,action:'VIEW_PASTORAL_TIMELINE',resource:'members',resourceId:memberId,event,strict:true});
     return apiResponse(200, {
       member,
       meetings,

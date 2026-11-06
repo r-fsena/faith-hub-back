@@ -1,4 +1,5 @@
 import { pwaExperienceHandler } from './pwaExperience';
+import { intelligenceHandler } from './intelligence';
 import * as churchSettings from './churchSettings';
 import * as pagarmeSettings from './pagarmeSettings';
 import * as organizations from './organizations';
@@ -8,6 +9,7 @@ import * as auditLogs from './auditLogs';
 import { createDomainApiHandler, DomainRouteMap } from './domainApiRouter';
 
 export const tenantApiRoutes: DomainRouteMap = {
+  'ANY /INTELLIGENCE/{PROXY+}': intelligenceHandler,
   'ANY /PWA-EXPERIENCE/{PROXY+}': pwaExperienceHandler,
   'GET /CHURCH-SETTINGS': churchSettings.getSettings,
   'POST /CHURCH-SETTINGS': churchSettings.updateSettings,

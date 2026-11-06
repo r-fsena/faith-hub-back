@@ -42,7 +42,7 @@ const DOMAIN_GROUPS = Object.freeze({
   tenantApi: {
     handler: 'src/functions/tenantApi.tenantApiHandler',
     sources: [
-      'pwaExperience', 'getChurchSettings', 'updateChurchSettings', 'getPagarmeSettings', 'updatePagarmeSettings',
+      'intelligence', 'pwaExperience', 'getChurchSettings', 'updateChurchSettings', 'getPagarmeSettings', 'updatePagarmeSettings',
       'listOrganizations', 'getOrganization', 'createOrUpdateOrganization', 'listCampuses',
       'getCampus', 'createOrUpdateCampus', 'deleteCampus', 'getFeatureFlags',
       'toggleFeatureFlag', 'batchUpdateFeatureFlags', 'resetTenantFlags', 'listAuditLogs'

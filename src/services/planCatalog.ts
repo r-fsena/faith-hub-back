@@ -30,8 +30,11 @@ export function normalizeEntitlements(value: unknown): Record<string, boolean> {
   if (!input || typeof input !== 'object' || Array.isArray(input)) throw new Error('PLAN_ENTITLEMENTS_REQUIRED');
   const flags: Record<string, boolean> = {};
   for (const key of ENTITLEMENT_KEYS) {
-    if (typeof input[key] !== 'boolean') throw new Error(`INVALID_PLAN_ENTITLEMENT:${key}`);
-    flags[key] = input[key];
+    // Additive, free evolution of content indicators. Explicit denials and existing commercial terms are preserved.
+    const value = input[key] === undefined && ['intelligence.overview','intelligence.usage_collection'].includes(key)
+      ? input['content.analytics_dashboard'] === true : input[key];
+    if (typeof value !== 'boolean') throw new Error(`INVALID_PLAN_ENTITLEMENT:${key}`);
+    flags[key] = value;
   }
   if (Object.keys(input).some(key => !ENTITLEMENT_KEYS.has(key))) throw new Error('UNKNOWN_PLAN_ENTITLEMENT');
   for (const [key, enabled] of Object.entries(flags)) {

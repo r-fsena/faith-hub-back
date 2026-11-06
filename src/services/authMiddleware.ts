@@ -78,7 +78,7 @@ export async function requireAuth(
   }
   const path = (event as any).rawPath || event.path || '';
   const expired = user.trialExpiresAt && new Date(user.trialExpiresAt).getTime() <= Date.now();
-  if (!user.isSuperAdmin && (expired || user.trialPendingStart) && !/\/members\/me$|\/public\/journey\/|\/saas\/invoices|\/studio\/preferences/.test(path)) {
+  if (!user.isSuperAdmin && (expired || user.trialPendingStart) && !/\/members\/me$|\/public\/journey\/|\/saas\/invoices|\/studio\/preferences|\/intelligence\/me\/usage$/.test(path)) {
     return { errorResponse: apiResponse(402, { error: user.trialPendingStart ? 'TRIAL_NOT_STARTED' : 'TRIAL_EXPIRED', message: user.trialPendingStart ? 'Confirme o início do teste no Studio.' : 'Seu teste de 14 dias terminou. Contrate um plano para continuar.' }) };
   }
   let body: any = {};

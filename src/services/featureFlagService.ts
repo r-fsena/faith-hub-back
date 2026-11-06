@@ -137,7 +137,9 @@ export async function evaluateTenantFlags(
     'studio.global_search': false,
     'studio.personalized_navigation': false,
     'studio.context_navigation_v2': false,
-    'content.analytics_dashboard': false
+    'content.analytics_dashboard': false,
+    'intelligence.overview': false,
+    'intelligence.usage_collection': false
   };
   if (contract) {
     for (const key of ENTITLEMENT_KEYS) flagsMap[key] = contract.entitlements[key];

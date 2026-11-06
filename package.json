@@ -55,7 +55,11 @@
     "db:migrate:public-journey": "node migrate_public_journey.js",
     "db:migrate:public-journey:status": "node migrate_public_journey.js --status",
     "db:migrate:pwa-experience": "node migrate_pwa_experience.js",
-    "db:migrate:pwa-experience:status": "node migrate_pwa_experience.js --status"
+    "db:migrate:pwa-experience:status": "node migrate_pwa_experience.js --status",
+    "db:migrate:intelligence": "node migrate_intelligence.js",
+    "db:migrate:intelligence:status": "node migrate_intelligence.js --status",
+    "db:migrate:intelligence:schema": "node migrate_intelligence.js --schema-only",
+    "test:intelligence:mysql": "node scripts/test-intelligence-mysql.cjs --temporary-only"
   },
   "dependencies": {
     "@aws-sdk/client-cognito-identity-provider": "^3.0.0",

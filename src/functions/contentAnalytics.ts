@@ -25,7 +25,7 @@ function resolvePeriod(event: APIGatewayProxyEvent): { startDate: string; endDat
   return { startDate, endDate };
 }
 
-async function contentExists(organizationId: string, contentType: string, contentId: string): Promise<{ exists: boolean; campusId: string | null }> {
+export async function contentExists(organizationId: string, contentType: string, contentId: string): Promise<{ exists: boolean; campusId: string | null }> {
   const statements: Record<string, { sql: string; params: any[] }> = {
     EVENT: { sql: 'SELECT id, campus_id FROM events WHERE id = ? AND organization_id = ? LIMIT 1', params: [contentId, organizationId] },
     BROADCAST: { sql: 'SELECT id, campus_id FROM broadcasts WHERE id = ? AND organization_id = ? LIMIT 1', params: [contentId, organizationId] },
@@ -62,6 +62,9 @@ export const trackContentEngagement = async (event: APIGatewayProxyEvent): Promi
 
     const flags = await evaluateTenantFlags(organizationId, body.campus_id || null, 'production');
     if (!flags.flags['content.analytics_dashboard']) return apiResponse(403, { error: 'FEATURE_DISABLED', message: 'A inteligência de conteúdo não está habilitada.' });
+
+    // Pilot churches use only the consent-aware durable pipeline. An older build cannot bypass withdrawal.
+    if (flags.flags['intelligence.overview'] || flags.flags['intelligence.usage_collection']) return apiResponse(202,{accepted:false,reason:'UPDATE_APP_FOR_USAGE_POLICY'});
 
     if (flags.contract_version && contentType === 'EVENT' && !flags.flags['events.module_enabled']) return apiResponse(403, { error: 'PLAN_FEATURE_NOT_INCLUDED' });
 

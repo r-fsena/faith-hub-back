@@ -4,11 +4,14 @@ useDotenv: true
 
 params:
   default:
+    intelligenceMaintenanceEnabled: false
     splitStacksPerType: true
     splitStacksPerGroupFunction: false
   prod:
     splitStacksPerType: false
     splitStacksPerGroupFunction: true
+  dev:
+    intelligenceMaintenanceEnabled: true
 
 provider:
   name: aws
@@ -71,6 +74,7 @@ provider:
     DB_SSL: ${env:DB_SSL, 'require'}
     RATE_LIMIT_TABLE: !Ref RateLimitTable
     SAAS_OPERATIONS_QUEUE_URL: !Ref SaasOperationsQueue
+    INTELLIGENCE_QUEUE_URL: !Ref IntelligenceQueue
     S3_MEDIA_BUCKET: ${env:S3_MEDIA_BUCKET, 'faith-hub-media-bucket-rafaelsena'}
     ASAAS_SECRET_ARN: ${env:ASAAS_SECRET_ARN, ''}
   iam:
@@ -104,6 +108,13 @@ provider:
             - sqs:DeleteMessage
             - sqs:GetQueueAttributes
           Resource: !GetAtt SaasOperationsQueue.Arn
+        - Effect: Allow
+          Action:
+            - sqs:SendMessage
+            - sqs:ReceiveMessage
+            - sqs:DeleteMessage
+            - sqs:GetQueueAttributes
+          Resource: !GetAtt IntelligenceQueue.Arn
 
 plugins:
   - ./infrastructure/serverless-domain-consolidation.cjs
@@ -124,6 +135,52 @@ custom:
 
 resources:
   Resources:
+    IntelligenceDeadLetterQueue:
+      Type: AWS::SQS::Queue
+      Properties:
+        QueueName: ${self:service}-${sls:stage}-intelligence-dlq
+        MessageRetentionPeriod: 345600
+        SqsManagedSseEnabled: true
+    IntelligenceQueue:
+      Type: AWS::SQS::Queue
+      Properties:
+        QueueName: ${self:service}-${sls:stage}-intelligence
+        MessageRetentionPeriod: 86400
+        VisibilityTimeout: 180
+        SqsManagedSseEnabled: true
+        RedrivePolicy:
+          deadLetterTargetArn: !GetAtt IntelligenceDeadLetterQueue.Arn
+          maxReceiveCount: 5
+    IntelligenceQueueAgeAlarm:
+      Type: AWS::CloudWatch::Alarm
+      Properties:
+        AlarmDescription: Atraso de processamento da medição de uso do PWA
+        Namespace: AWS/SQS
+        MetricName: ApproximateAgeOfOldestMessage
+        Dimensions:
+          - Name: QueueName
+            Value: !GetAtt IntelligenceQueue.QueueName
+        Statistic: Maximum
+        Period: 300
+        EvaluationPeriods: 2
+        Threshold: 900
+        ComparisonOperator: GreaterThanThreshold
+        TreatMissingData: notBreaching
+    IntelligenceDeadLetterAlarm:
+      Type: AWS::CloudWatch::Alarm
+      Properties:
+        AlarmDescription: Interações de uso aguardando revisão na fila de falhas
+        Namespace: AWS/SQS
+        MetricName: ApproximateNumberOfMessagesVisible
+        Dimensions:
+          - Name: QueueName
+            Value: !GetAtt IntelligenceDeadLetterQueue.QueueName
+        Statistic: Maximum
+        Period: 300
+        EvaluationPeriods: 1
+        Threshold: 0
+        ComparisonOperator: GreaterThanThreshold
+        TreatMissingData: notBreaching
     RateLimitTable:
       Type: AWS::DynamoDB::Table
       Properties:
@@ -153,6 +210,31 @@ resources:
           maxReceiveCount: 5
 
 functions:
+  intelligence:
+    handler: src/functions/intelligence.intelligenceHandler
+    timeout: 29
+    events:
+      - httpApi:
+          method: ANY
+          path: /intelligence/{proxy+}
+  intelligenceWorker:
+    handler: src/functions/intelligence.intelligenceWorker
+    timeout: 120
+    reservedConcurrency: 2
+    events:
+      - sqs:
+          arn: !GetAtt IntelligenceQueue.Arn
+          batchSize: 5
+          functionResponseType: ReportBatchItemFailures
+          maximumConcurrency: 2
+  maintainIntelligence:
+    handler: src/functions/intelligence.maintainIntelligence
+    timeout: 120
+    reservedConcurrency: 1
+    events:
+      - schedule:
+          rate: cron(15 4 * * ? *)
+          enabled: ${param:intelligenceMaintenanceEnabled}
   pwaExperience:
     handler: src/functions/pwaExperience.pwaExperienceHandler
     timeout: 28
