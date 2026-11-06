@@ -7,6 +7,8 @@ function mock(file,exports){const id=require.resolve(file);require.cache[id]={id
 async function execute(sql,params=[]){
   assert.equal((sql.match(/\?/g)||[]).length,params.length,sql);
   state.calls.push({sql,params});
+  if(sql.includes('LEFT JOIN intelligence_measurement im'))return [{started_at:state.started,comparable_since:state.started,expected_units:state.expectedUnits||1,measured_units:state.measuredUnits||1,last_event_at:state.started,last_processed_at:state.started}];
+  if(sql.includes('FROM tenant_feature_flags'))return [{last_changed:state.lastCollectionChange||null}];
   if(sql.includes('security_audit_logs')&&state.auditFail)throw Error('AUDIT_FAILURE');
   if(sql.includes('FROM campuses'))return state.campusExists?[{id:'campus-a'}]:[];
   if(sql.includes('FROM cell_groups'))return [{id:'cell-owned'}];
@@ -136,6 +138,11 @@ test('overview reads are tenant-scoped and a current stock is never labeled as h
   const response=await handler(request('overview'));assert.equal(response.statusCode,200);const body=JSON.parse(response.body);
   const stock=body.metrics.find(m=>m.key==='registered_members');assert.equal(stock.reference,'current_state');assert.equal(stock.previous,null);
   for(const call of state.calls.filter(call=>call.sql.includes('SELECT')))assert.ok(call.params.includes('org-a'),call.sql);
+});
+test('digital growth is withheld when a campus lacks a baseline or collection was recently changed',async()=>{
+  state.expectedUnits=2;state.measuredUnits=1;
+  let response=await handler(request('overview'));let data=JSON.parse(response.body);assert.equal(data.metrics.find(m=>m.key==='digital_active').change.percent,null);assert.equal(data.quality.usage_comparison_status,'forming');
+  state.expectedUnits=1;state.lastCollectionChange=new Date().toISOString();response=await handler(request('overview'));data=JSON.parse(response.body);assert.equal(data.metrics.find(m=>m.key==='digital_active').change.percent,null);
 });
 test('360 timeline now resolves tenant, unit and leader scope before returning member data',async()=>{
   const req=request('overview');req.path='/pastoral/members/person/timeline';req.pathParameters={id:'person'};

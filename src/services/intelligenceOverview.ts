@@ -10,7 +10,7 @@ export async function intelligenceOverview(scope: IntelligenceScope, flags: Reco
   const visitorScope = scopedWhere(scope,'v','campus_id','assigned_cell_id');
   const activityScope = scopedWhere(scope,'a','campus_id','cell_group_id');
   const contentScope = scopedWhere(scope,'e');
-  const campusScope = scopedWhere({...scope,cellIds:null},'im');
+  const campusScope = scopedWhere({...scope,cellIds:null},'c','id');
   const range = [period.start,period.end,period.previousStart,period.previousEnd];
   const utcRange = range.map(utcBoundary).map(x=>x.slice(0,19).replace('T',' '));
   const cards:any[] = [], errors:string[] = [];
@@ -43,12 +43,22 @@ export async function intelligenceOverview(scope: IntelligenceScope, flags: Reco
     return comparison(rows[0]);
   });
   const {rows:measurement} = scope.cellIds === null
-    ? await query(`SELECT DATE_FORMAT(MIN(im.started_at),'%Y-%m-%dT%H:%i:%s.000Z') AS started_at,DATE_FORMAT(MAX(im.last_event_at),'%Y-%m-%dT%H:%i:%s.000Z') AS last_event_at,DATE_FORMAT(MAX(im.last_processed_at),'%Y-%m-%dT%H:%i:%s.000Z') AS last_processed_at
-      FROM intelligence_measurement im WHERE im.organization_id = ?${campusScope.sql}`,[org,...campusScope.params])
+    ? await query(`SELECT DATE_FORMAT(MIN(im.started_at),'%Y-%m-%dT%H:%i:%s.000Z') AS started_at,DATE_FORMAT(MAX(im.started_at),'%Y-%m-%dT%H:%i:%s.000Z') AS comparable_since,
+      COUNT(*) AS expected_units,SUM(im.started_at IS NOT NULL) AS measured_units,
+      DATE_FORMAT(MAX(im.last_event_at),'%Y-%m-%dT%H:%i:%s.000Z') AS last_event_at,DATE_FORMAT(MAX(im.last_processed_at),'%Y-%m-%dT%H:%i:%s.000Z') AS last_processed_at
+      FROM campuses c LEFT JOIN intelligence_measurement im ON im.organization_id = c.organization_id AND im.campus_id = c.id
+      WHERE c.organization_id = ?${campusScope.sql}`,[org,...campusScope.params])
     : await query(`SELECT DATE_FORMAT(MIN(a.first_at),'%Y-%m-%dT%H:%i:%s.000Z') AS started_at,DATE_FORMAT(MAX(a.last_at),'%Y-%m-%dT%H:%i:%s.000Z') AS last_event_at,NULL AS last_processed_at
       FROM intelligence_activity_daily a WHERE a.organization_id = ?${activityScope.sql}`,[org,...activityScope.params]);
   const measured = measurement[0] || {};
   const startedAt = measured.started_at ? new Date(measured.started_at).toISOString() : null;
+  const policyCampus=scope.campusIds?` AND (campus_id IS NULL OR campus_id IN (${scope.campusIds.map(()=>'?').join(',')||"''"}))`:'';
+  const {rows:policy}=await query(`SELECT DATE_FORMAT(MAX(updated_at),'%Y-%m-%dT%H:%i:%s.000Z') AS last_changed FROM tenant_feature_flags
+    WHERE (organization_id = ? OR organization_id = 'global') AND feature_key = 'intelligence.usage_collection'
+    AND environment IN ('all','production')${policyCampus}`,[org,...(scope.campusIds||[])]);
+  const comparisonSince=[measured.comparable_since,policy[0]?.last_changed].filter(Boolean).map(value=>new Date(value).toISOString()).sort().at(-1)||startedAt;
+  const baselineCovered=scope.cellIds===null&&!!flags['intelligence.usage_collection']&&Number(measured.expected_units)>0&&
+    Number(measured.measured_units)===Number(measured.expected_units)&&!!comparisonSince&&comparisonSince<=utcBoundary(period.previousStart);
   const digital:any={};
   await metric('digital_active','Pessoas ativas no PWA','Pessoas adultas que autorizaram a medição e tiveram uso registrado. Equipe administrativa é contabilizada separadamente.','intelligence',true,async()=>{
     const {rows}=await query(`SELECT COUNT(DISTINCT CASE WHEN a.activity_date >= ? AND a.activity_date < ? THEN a.subject_key END) AS current_value,
@@ -59,7 +69,6 @@ export async function intelligenceOverview(scope: IntelligenceScope, flags: Reco
     const value=rawCurrent>0&&rawCurrent<10?null:rawCurrent;
     const previous=rawPrevious>0&&rawPrevious<10?null:rawPrevious;
     const windowMeasured = !!startedAt && startedAt < utcBoundary(period.end);
-    const baselineCovered = !!startedAt && startedAt <= utcBoundary(period.previousStart);
     digital.currentSuppressed=value===null;digital.hasActivity=rawCurrent>0;
     return {value:windowMeasured?value:null,previous:baselineCovered?previous:null,change:variation(windowMeasured?value:null,baselineCovered?previous:null),
       status:!windowMeasured?'not_measured':value===null?'insufficient_sample':'available',reference:'selected_period',
@@ -111,6 +120,8 @@ export async function intelligenceOverview(scope: IntelligenceScope, flags: Reco
       daily:usageVisible?daily.map(r=>({day:r.day,people:Number(r.people)>=10?Number(r.people):null,suppressed:Number(r.people)<10})):[],
     },quality:{
       collection_enabled:!!flags['intelligence.usage_collection'],measurement_started_at:startedAt,
+      usage_comparison_status:scope.cellIds!==null?'restricted_group_scope':!flags['intelligence.usage_collection']?'paused':baselineCovered?'ready':'forming',
+      measured_units:Number(measured.measured_units||0),expected_units:Number(measured.expected_units||0),
       last_event_at:measured.last_event_at,last_processed_at:measured.last_processed_at,
       eligible_adults:Number(consentCounts[0]?.eligible||0)>=10?Number(consentCounts[0].eligible):null,
       authorized_adults:Number(consentCounts[0]?.authorized||0)>=10?Number(consentCounts[0].authorized):null,
@@ -118,6 +129,7 @@ export async function intelligenceOverview(scope: IntelligenceScope, flags: Reco
       notes:['Uso digital representa uma amostra de adultos que autorizaram a coleta; não representa toda a comunidade.',
         'Os comparativos usam dias completos. As interações de hoje aparecem no horário da última interação e entram no período comparável no dia seguinte.',
         'Filtros cadastrais usam a unidade principal do cadastro. A medição digital usa a unidade da atividade registrada.',
+        'Novas autorizações, unidades, versões e pausas de coleta alteram a amostra. O comparativo digital exige uma janela verificável para todas as unidades do escopo e não mede toda a comunidade.',
         'Ausência de registro não comprova ausência de uso ou participação. Dados offline, bloqueios e versões antigas podem reduzir a cobertura.',
         'Conteúdo legado mistura pessoas autenticadas e navegadores. Não somar alcance de conteúdo e ativos digitais.',
         'Comparações operacionais usam os registros existentes, cuja cobertura de lançamento precisa ser conferida. A base cadastral é uma posição atual, sem MoM retroativo.',

@@ -15,7 +15,7 @@ let stage='connect';
     .replace(/^CREATE (?:TEMPORARY )?TABLE `[^`]+`/,`CREATE TEMPORARY TABLE \`${target}\``).replace(/,\n\)/g,'\n)');
   await db.query(ddl);
  }
- for(const table of ['members','campuses','cell_groups','cell_meetings','cell_meeting_attendees','church_visitors','content_engagement_events','devotionals','pastoral_care_logs','ministries','ministry_roles','service_schedules','service_roster_items','security_audit_logs']){
+ for(const table of ['members','campuses','cell_groups','cell_meetings','cell_meeting_attendees','church_visitors','content_engagement_events','devotionals','pastoral_care_logs','ministries','ministry_roles','service_schedules','service_roster_items','security_audit_logs','tenant_feature_flags']){
   stage='temporary schema: '+table;
   await temporaryCopy(table);
  }
