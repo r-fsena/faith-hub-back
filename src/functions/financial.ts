@@ -630,7 +630,7 @@ export const listSaasInvoices = async (event: APIGatewayProxyEvent): Promise<API
     let sql = `
       SELECT i.*, o.name as church_name, o.plan as current_plan
       FROM saas_invoices i
-      LEFT JOIN organizations o ON o.id = i.organization_id
+      LEFT JOIN organizations o ON o.id = i.organization_id COLLATE utf8mb4_unicode_ci
       WHERE i.organization_id = ?
     `;
     const params: any[] = [orgId];
