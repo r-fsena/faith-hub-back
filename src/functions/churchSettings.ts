@@ -3,6 +3,7 @@ import { query, apiResponse } from '../db';
 import { requireAuth, enforceRole, enforceTenant } from '../services/authMiddleware';
 import { publishedExperience } from '../services/pwaExperienceService';
 import { logSecurityEvent } from '../services/auditLogService';
+import { v4 as uuidv4 } from 'uuid';
 
 export const DEFAULT_KANBAN_CONFIG = {
   RECEBIDO: {
@@ -180,7 +181,7 @@ const getSettingsLegacy = async (event: APIGatewayProxyEvent): Promise<APIGatewa
          FROM church_settings cs
          LEFT JOIN organizations o ON cs.organization_id = o.id
          WHERE cs.organization_id = ? OR cs.id = ? 
-         ORDER BY cs.updated_at DESC LIMIT 1`,
+         ORDER BY cs.updated_at DESC, cs.id DESC LIMIT 1`,
         [orgId, orgId]
       );
       if (rows.length > 0) {
@@ -214,7 +215,7 @@ const getSettingsLegacy = async (event: APIGatewayProxyEvent): Promise<APIGatewa
          FROM church_settings cs
          LEFT JOIN organizations o ON (cs.organization_id = o.id OR cs.pwa_slug = o.slug)
          WHERE cs.pwa_slug = ? OR cs.pwa_slug = ? OR cs.id = ? OR cs.organization_id IN (SELECT id FROM organizations WHERE slug = ? OR slug = ?) 
-         ORDER BY cs.updated_at DESC LIMIT 1`,
+         ORDER BY cs.updated_at DESC, cs.id DESC LIMIT 1`,
         [rawSlug, cleanSlug, rawSlug, rawSlug, cleanSlug]
       );
       if (rows.length > 0) {
@@ -257,7 +258,7 @@ const getSettingsLegacy = async (event: APIGatewayProxyEvent): Promise<APIGatewa
     return apiResponse(200, DEFAULT_SETTINGS);
   } catch (error: any) {
     console.error('Erro ao buscar church-settings:', error);
-    return apiResponse(200, DEFAULT_SETTINGS);
+    return apiResponse(503, { message: 'Não foi possível carregar a identidade da igreja. Tente novamente.' });
   }
 };
 
@@ -270,25 +271,27 @@ export const updateSettings = async (event: APIGatewayProxyEvent): Promise<APIGa
     const roleCheck = enforceRole(auth.user, ['SUPERADMIN', 'PASTOR', 'ADMIN']);
     if (!roleCheck.allowed) return roleCheck.errorResponse!;
 
-    const body = JSON.parse(event.body || '{}');
+    let body = JSON.parse(event.body || '{}');
     const requestedOrgId = body.organization_id || body.orgId;
 
     const tenantCheck = enforceTenant(auth.user, requestedOrgId);
     if (!tenantCheck.allowed) return tenantCheck.errorResponse!;
     const orgId = tenantCheck.effectiveOrgId;
 
+    // Read and write the same tenant-owned record. Older clients fabricated a new
+    // ID from the slug on every save, creating competing identity records.
+    const existing = await query(
+      'SELECT * FROM church_settings WHERE organization_id = ? ORDER BY updated_at DESC, id DESC LIMIT 1', [orgId]
+    );
+    if (body.id) {
+      const conflict = await query('SELECT id FROM church_settings WHERE id = ? AND organization_id <> ? LIMIT 1', [body.id, orgId]);
+      if (conflict.rows.length) return apiResponse(403, { message: 'Configuração não pertence a esta organização.' });
+    }
+    // Preserve configurations owned by other editors (Bible, store, notices,
+    // welcome slides) when a client submits only identity/contact fields.
+    body = { ...(existing.rows[0] ? formatSettings(existing.rows[0]) : {}), ...body };
     const pwaSlug = (body.pwa_slug || body.slug || 'igreja').toLowerCase().trim();
-
-    let settingsId = body.id;
-    if (!settingsId && orgId) {
-      const existing = await query(`SELECT id FROM church_settings WHERE organization_id = ? LIMIT 1`, [orgId]);
-      if (existing.rows.length > 0) {
-        settingsId = existing.rows[0].id;
-      }
-    }
-    if (!settingsId) {
-      settingsId = `settings_${pwaSlug.replace(/-/g, '_')}`;
-    }
+    const settingsId = existing.rows[0]?.id || uuidv4();
 
     const sloganValue = body.slogan !== undefined ? body.slogan : (body.tagline !== undefined ? body.tagline : '');
     const instagramValue = body.instagram_url !== undefined ? body.instagram_url : (body.instagram !== undefined ? body.instagram : '');

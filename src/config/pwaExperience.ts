@@ -483,3 +483,16 @@ export function paletteFor(
 ): Palette {
   return { ...config.theme[mode], ...config.screens[screen]?.palette };
 }
+
+// An entirely achromatic palette opts the full UI (including legacy modules) into monochrome.
+export function isMonochromeExperience(config: ExperienceConfig): boolean {
+  return [config.theme.light, config.theme.dark].every(palette =>
+    Object.values(palette).every(value => /^#([0-9a-f]{2})\1\1$/i.test(value)) && palette.background.toLowerCase() !== palette.text.toLowerCase()
+  );
+}
+export function monochromePalettes(): Pick<ExperienceConfig['theme'], 'light' | 'dark'> {
+  return {
+    light: { background: '#ffffff', surface: '#ffffff', surfaceMuted: '#f5f5f5', border: '#d4d4d4', text: '#000000', muted: '#404040', primary: '#000000', onPrimary: '#ffffff', secondary: '#000000', header: '#ffffff', headerText: '#000000', navigation: '#ffffff', navigationText: '#404040', navigationActive: '#000000', input: '#ffffff', heroText: '#ffffff' },
+    dark: { background: '#000000', surface: '#000000', surfaceMuted: '#141414', border: '#404040', text: '#ffffff', muted: '#d4d4d4', primary: '#ffffff', onPrimary: '#000000', secondary: '#ffffff', header: '#000000', headerText: '#ffffff', navigation: '#000000', navigationText: '#d4d4d4', navigationActive: '#ffffff', input: '#000000', heroText: '#ffffff' },
+  };
+}
