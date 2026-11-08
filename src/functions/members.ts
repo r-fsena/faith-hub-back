@@ -14,6 +14,9 @@ import { v4 as uuidv4 } from "uuid";
 import { requireAuth, enforceRole, enforceTenant, getAuthenticatedUser, normalizeRole } from "../services/authMiddleware";
 import { logSecurityEvent } from "../services/auditLogService";
 import { checkRateLimit } from "../services/rateLimiter";
+import {recordInvitationMilestone} from '../services/intelligenceInvitation';
+import {intelligenceScope,scopedWhere} from '../services/intelligenceScope';
+import {safeIdentifier} from '../services/intelligenceModel';
 
 const cognitoClient = new CognitoIdentityProviderClient({ region: process.env.AWS_REGION || "us-east-2" });
 const USER_POOL_ID = process.env.USER_POOL_ID as string;
@@ -26,6 +29,13 @@ const headers = {
 };
 
 const LEADERSHIP_ROLES = ['SUPERADMIN', 'PASTOR', 'ADMIN', 'LEADER'];
+
+async function trackedResend(username:string,organizationId:string,userId:string,event:any){
+  try{
+    await cognitoClient.send(new AdminCreateUserCommand({UserPoolId:USER_POOL_ID,Username:username,MessageAction:'RESEND',DesiredDeliveryMediums:['EMAIL']}));
+    return recordInvitationMilestone(organizationId,userId,'RESEND','REQUESTED',event);
+  }catch(error){await recordInvitationMilestone(organizationId,userId,'RESEND','FAILED',event);throw error;}
+}
 
 // 1. Convidar / Cadastrar Membro
 export const invite: APIGatewayProxyHandlerV2 = async (event) => {
@@ -64,6 +74,16 @@ export const invite: APIGatewayProxyHandlerV2 = async (event) => {
     if (operational_permissions !== undefined && !auth.user.isSuperAdmin && !['PASTOR', 'ADMIN'].includes(auth.user.role)) {
       return { statusCode: 403, headers, body: JSON.stringify({ error: 'Sem permissão para alterar permissões operacionais' }) };
     }
+    const campusList=[...new Set<string>(Array.isArray(campus_ids)&&campus_ids.length?campus_ids:campus_id?[campus_id]:['campus_sede'])];
+    if(!campusList.length||campusList.length>100||campusList.some(id=>!safeIdentifier(id)||id==='all'))return {statusCode:400,headers,body:JSON.stringify({error:'Selecione unidades específicas para o convite.'})};
+    if(!auth.user.isSuperAdmin&&!auth.user.campusIds.includes('all')&&campusList.some(id=>!auth.user.campusIds.includes(id)))return {statusCode:403,headers,body:JSON.stringify({error:'Sem permissão para conceder acesso a esta unidade.'})};
+    const {rows:validCampuses}=await query(`SELECT id FROM campuses WHERE organization_id = ? AND id IN (${campusList.map(()=>'?').join(',')})`,[orgValue,...campusList]);
+    if(validCampuses.length!==campusList.length)return {statusCode:400,headers,body:JSON.stringify({error:'Confira as unidades da igreja antes de enviar o convite.'})};
+    const primaryCampus=campusList[0],campusIdsJson=JSON.stringify(campusList);
+    const inviteScope=await intelligenceScope(event as any,auth.user,{organization_id:orgValue,campus_id:primaryCampus});
+    if('statusCode'in inviteScope)return inviteScope;
+    if(inviteScope.cellIds&&(!cellGroupId||!inviteScope.cellIds.includes(cellGroupId)))return {statusCode:403,headers,body:JSON.stringify({error:'Líderes podem convidar somente para seus grupos.'})};
+    if(cellGroupId){const {rows:cells}=await query("SELECT id FROM cell_groups WHERE organization_id = ? AND COALESCE(campus_id,'campus_sede') = ? AND id = ?",[orgValue,primaryCampus,cellGroupId]);if(!cells.length)return {statusCode:400,headers,body:JSON.stringify({error:'A célula precisa pertencer à mesma igreja e unidade.'})};}
     const userAttributes: { Name: string; Value: string }[] = [
       { Name: "email", Value: email },
       { Name: "name", Value: name },
@@ -97,12 +117,6 @@ export const invite: APIGatewayProxyHandlerV2 = async (event) => {
     if (isMasterRole && !auth.user.isSuperAdmin) {
       return { statusCode: 403, headers, body: JSON.stringify({ error: "Apenas Administradores Master podem conceder permissões globais" }) };
     }
-
-    const campusList = Array.isArray(campus_ids) && campus_ids.length > 0 
-      ? campus_ids 
-      : (campus_id ? [campus_id] : ['campus_sede']);
-    const primaryCampus = campusList[0] || 'campus_sede';
-    const campusIdsJson = JSON.stringify(campusList);
 
     const pBirthDate = birth_date || birthDate || null;
     const pStreet = address_street || null;
@@ -153,6 +167,8 @@ export const invite: APIGatewayProxyHandlerV2 = async (event) => {
       pOperational
     ]);
 
+    const registrationTracked=await recordInvitationMilestone(orgValue,cognitoUserId,'INVITE','REGISTERED',event);
+    const invitationTracked=await recordInvitationMilestone(orgValue,cognitoUserId,'INVITE','REQUESTED',event);
     await logSecurityEvent({
       organizationId: orgValue,
       user: auth.user,
@@ -174,7 +190,7 @@ export const invite: APIGatewayProxyHandlerV2 = async (event) => {
     return {
       statusCode: 201,
       headers,
-      body: JSON.stringify({ message: "Membro convidado com sucesso", user: newUser }),
+      body: JSON.stringify({ message: "Membro convidado com sucesso", user: newUser,activation_tracking_pending:!registrationTracked||!invitationTracked }),
     };
   } catch (error: any) {
     console.error('Erro ao convidar membro:', error);
@@ -318,7 +334,9 @@ export const resetPassword: APIGatewayProxyHandlerV2 = async (event) => {
 
     const tenantCheck = enforceTenant(auth.user, event.headers?.['x-organization-id'] || event.queryStringParameters?.organization_id);
     if (!tenantCheck.allowed) return tenantCheck.errorResponse!;
-    const { rows: targets } = await query('SELECT id, role FROM members WHERE LOWER(email) = ? AND organization_id = ?', [cleanEmail, tenantCheck.effectiveOrgId]);
+    const invitationScope=await intelligenceScope(event as any,auth.user);if('statusCode'in invitationScope)return invitationScope;
+    const invitationFilter=scopedWhere(invitationScope,'m','campus_id','cell_group_id');
+    const { rows: targets } = await query(`SELECT m.id,m.role FROM members m WHERE LOWER(m.email) = ? AND m.organization_id = ?${invitationFilter.sql}`, [cleanEmail, tenantCheck.effectiveOrgId,...invitationFilter.params]);
     if (!targets.length) return { statusCode: 404, headers, body: JSON.stringify({ error: 'Membro não encontrado' }) };
     if (normalizeRole(targets[0].role) === 'SUPERADMIN' && !auth.user.isSuperAdmin) return { statusCode: 403, headers, body: JSON.stringify({ error: 'Acesso negado' }) };
     // Identifica o status atual do usuário no Cognito
@@ -339,15 +357,11 @@ export const resetPassword: APIGatewayProxyHandlerV2 = async (event) => {
     // o comando AdminResetUserPassword falha por restrição da AWS.
     // O comando correto é AdminCreateUserCommand com MessageAction: 'RESEND' usando o e-mail.
     if (userStatus === 'FORCE_CHANGE_PASSWORD') {
-      await cognitoClient.send(new AdminCreateUserCommand({
-        UserPoolId: USER_POOL_ID,
-        Username: cleanEmail,
-        MessageAction: 'RESEND'
-      }));
+      const tracked=await trackedResend(cleanEmail,tenantCheck.effectiveOrgId,targets[0].id,event);
       return { 
         statusCode: 200, 
         headers, 
-        body: JSON.stringify({ message: "Convite e senha provisória reenviados com sucesso pelo AWS Cognito." }) 
+        body: JSON.stringify({ message: "Reenvio do convite e senha provisória solicitado ao AWS Cognito.",activation_tracking_pending:!tracked })
       };
     }
 
@@ -366,15 +380,11 @@ export const resetPassword: APIGatewayProxyHandlerV2 = async (event) => {
     } catch (resetErr: any) {
       // Fallback: se o reset falhar por estado não confirmado, tenta RESEND usando o e-mail
       if (resetErr.name === 'NotAuthorizedException' || resetErr.message?.includes('cannot be reset')) {
-        await cognitoClient.send(new AdminCreateUserCommand({
-          UserPoolId: USER_POOL_ID,
-          Username: cleanEmail,
-          MessageAction: 'RESEND'
-        }));
+        const tracked=await trackedResend(cleanEmail,tenantCheck.effectiveOrgId,targets[0].id,event);
         return { 
           statusCode: 200, 
           headers, 
-          body: JSON.stringify({ message: "Convite de ativação reenviado com sucesso pelo AWS Cognito." }) 
+          body: JSON.stringify({ message: "Reenvio do convite de ativação solicitado ao AWS Cognito.",activation_tracking_pending:!tracked })
         };
       }
       throw resetErr;

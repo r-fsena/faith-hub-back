@@ -124,7 +124,11 @@
         "visitors.module_enabled": false,
         "volunteers.module_enabled": false,
         "intelligence.overview": true,
-        "intelligence.usage_collection": true
+        "intelligence.usage_collection": true,
+        "intelligence.activation": true,
+        "intelligence.member_journey": false,
+        "intelligence.actions": true,
+        "intelligence.goals": true
       },
       "status": "ACTIVE"
     },
@@ -235,7 +239,11 @@
         "visitors.module_enabled": true,
         "volunteers.module_enabled": true,
         "intelligence.overview": true,
-        "intelligence.usage_collection": true
+        "intelligence.usage_collection": true,
+        "intelligence.activation": true,
+        "intelligence.member_journey": true,
+        "intelligence.actions": true,
+        "intelligence.goals": true
       },
       "status": "ACTIVE"
     },
@@ -351,7 +359,11 @@
         "visitors.module_enabled": true,
         "volunteers.module_enabled": true,
         "intelligence.overview": true,
-        "intelligence.usage_collection": true
+        "intelligence.usage_collection": true,
+        "intelligence.activation": true,
+        "intelligence.member_journey": true,
+        "intelligence.actions": true,
+        "intelligence.goals": true
       },
       "status": "ACTIVE"
     },
@@ -467,7 +479,11 @@
         "visitors.module_enabled": true,
         "volunteers.module_enabled": true,
         "intelligence.overview": true,
-        "intelligence.usage_collection": true
+        "intelligence.usage_collection": true,
+        "intelligence.activation": true,
+        "intelligence.member_journey": true,
+        "intelligence.actions": true,
+        "intelligence.goals": true
       },
       "status": "ACTIVE"
     }

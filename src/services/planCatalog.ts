@@ -31,8 +31,11 @@ export function normalizeEntitlements(value: unknown): Record<string, boolean> {
   const flags: Record<string, boolean> = {};
   for (const key of ENTITLEMENT_KEYS) {
     // Additive, free evolution of content indicators. Explicit denials and existing commercial terms are preserved.
+    const base=input['intelligence.overview']??input['content.analytics_dashboard']===true;
+    const additions=['intelligence.activation','intelligence.member_journey','intelligence.actions','intelligence.goals'];
     const value = input[key] === undefined && ['intelligence.overview','intelligence.usage_collection'].includes(key)
-      ? input['content.analytics_dashboard'] === true : input[key];
+      ? input['content.analytics_dashboard'] === true : input[key]===undefined&&additions.includes(key)
+      ? !!base&&(key!=='intelligence.member_journey'||input['visitors.module_enabled']===true) : input[key];
     if (typeof value !== 'boolean') throw new Error(`INVALID_PLAN_ENTITLEMENT:${key}`);
     flags[key] = value;
   }

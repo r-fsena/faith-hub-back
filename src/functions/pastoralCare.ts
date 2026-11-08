@@ -1,3 +1,4 @@
+import {privateWelcomeEndpoint,createWelcomeVisitor} from '../services/intelligenceWelcomeLegacy';
 import { intelligenceScope, scopedWhere } from '../services/intelligenceScope';
 import { evaluateTenantFlags } from '../services/featureFlagService';
 import { enforcePlanAccess } from '../services/planAccess';
@@ -308,369 +309,64 @@ export const getMemberCareLogs = async (event: APIGatewayProxyEvent): Promise<AP
 export const listVisitors = async (event: any): Promise<APIGatewayProxyResult> => {
   const planAccess = await enforcePlanAccess(event, 'visitors.module_enabled');
   if (planAccess) return planAccess;
-  try {
-    const auth = await requireAuth(event);
-    if ('errorResponse' in auth) return auth.errorResponse;
-
-    const roleCheck = enforceRole(auth.user, PASTORAL_ROLES);
-    if (!roleCheck.allowed) return roleCheck.errorResponse!;
-
-    const qp = event.queryStringParameters || {};
-    const requestedOrgId = qp.organization_id;
-    const campusId = qp.campus_id;
-    const stage = qp.stage;
-    const search = qp.search;
-
-    const tenantCheck = enforceTenant(auth.user, requestedOrgId);
-    if (!tenantCheck.allowed) return tenantCheck.errorResponse!;
-    const orgId = tenantCheck.effectiveOrgId;
-
-    let sql = `
-      SELECT 
-        v.id,
-        v.organization_id,
-        v.campus_id,
-        v.name,
-        v.phone,
-        v.email,
-        v.neighborhood,
-        v.origin_channel,
-        v.stage,
-        v.assigned_cell_id,
-        v.assigned_leader_id,
-        v.first_visit_date,
-        v.notes,
-        v.created_at,
-        v.updated_at,
-        DATEDIFF(CURRENT_DATE, v.first_visit_date) as days_since_first_visit,
-        cg.name as cell_name,
-        cg.meeting_day as cell_day,
-        cg.meeting_time as cell_time,
-        cg.neighborhood as cell_neighborhood,
-        leader.name as leader_name,
-        leader.phone as leader_phone
-      FROM church_visitors v
-      LEFT JOIN cell_groups cg ON v.assigned_cell_id = cg.id
-      LEFT JOIN members leader ON v.assigned_leader_id = leader.id
-      WHERE v.organization_id = ?
-    `;
-    const params: any[] = [orgId];
-
-    if (campusId && campusId !== 'all') {
-      sql += ` AND v.campus_id = ?`;
-      params.push(campusId);
-    }
-    if (stage && stage !== 'ALL') {
-      sql += ` AND v.stage = ?`;
-      params.push(stage);
-    }
-    if (search) {
-      sql += ` AND (v.name LIKE ? OR v.phone LIKE ? OR v.neighborhood LIKE ?)`;
-      params.push(`%${search}%`, `%${search}%`, `%${search}%`);
-    }
-
-    sql += ` ORDER BY v.created_at DESC`;
-
-    const { rows } = await query(sql, params);
-    return apiResponse(200, rows);
-  } catch (err: any) {
-    console.error('Erro ao listar visitantes:', err);
-    return apiResponse(500, { error: 'Erro ao listar visitantes' });
-  }
+  return privateWelcomeEndpoint(event,'list');
 };
 
-// POST /pastoral/visitors -> Cadastrar novo visitante (Recepção e QR Code Público)
 export const registerVisitor = async (event: any): Promise<APIGatewayProxyResult> => {
   const planAccess = await enforcePlanAccess(event, 'visitors.module_enabled');
   if (planAccess) return planAccess;
-  try {
-    const body = JSON.parse(event.body || '{}');
-    const { name, phone, email, neighborhood, origin_channel = 'SUNDAY_SERVICE', campus_id, notes, organization_id } = body;
-
-    if (!name || !phone) {
-      return apiResponse(400, { error: 'Nome e telefone/WhatsApp são obrigatórios' });
-    }
-
-    let effectiveOrgId = organization_id;
-    let authUser: any = null;
-
-    const authHeader = event.headers?.Authorization || event.headers?.authorization;
-    if (authHeader) {
-      const auth = await requireAuth(event);
-      if (!('errorResponse' in auth)) {
-        authUser = auth.user;
-        const tenantCheck = enforceTenant(auth.user, organization_id);
-        if (tenantCheck.allowed) {
-          effectiveOrgId = tenantCheck.effectiveOrgId;
-        }
-      }
-    }
-
-    if (!effectiveOrgId) {
-      effectiveOrgId = 'org_default';
-    }
-
-    // Se é acesso público anônimo, aplica rate limiting estrito
-    if (!authUser) {
-      const rate = await checkRateLimit(event, { maxRequests: 15, windowSeconds: 60, identifierPrefix: 'public_visitor' });
-      if (!rate.allowed) return rate.errorResponse!;
-    }
-
-    const id = uuidv4();
-    const cleanPhone = phone.replace(/\D/g, '');
-    const firstVisitDate = body.first_visit_date || new Date().toISOString().split('T')[0];
-
-    await query(`
-      INSERT INTO church_visitors 
-      (id, organization_id, campus_id, name, phone, email, neighborhood, origin_channel, stage, first_visit_date, notes)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'NEW', ?, ?)
-    `, [
-      id,
-      effectiveOrgId,
-      campus_id || 'campus_sede',
-      name.trim(),
-      cleanPhone,
-      email ? email.trim() : null,
-      neighborhood ? neighborhood.trim() : null,
-      origin_channel,
-      firstVisitDate,
-      notes || null
-    ]);
-
-    if (authUser) {
-      await logSecurityEvent({
-        organizationId: effectiveOrgId,
-        user: authUser,
-        action: 'REGISTER_VISITOR',
-        resource: 'church_visitors',
-        resourceId: id,
-        details: { visitor_name: name, channel: origin_channel },
-        event
-      });
-    }
-
-    return apiResponse(201, {
-      message: '✓ Visitante cadastrado com sucesso no acolhimento!',
-      id,
-      name,
-      stage: 'NEW'
-    });
-  } catch (err: any) {
-    console.error('Erro ao cadastrar visitante:', err);
-    return apiResponse(500, { error: 'Erro ao cadastrar visitante' });
-  }
+  return createWelcomeVisitor(event);
 };
 
-// PUT /pastoral/visitors/{id}/stage -> Mover visitante no Funil Kanban
 export const updateVisitorStage = async (event: any): Promise<APIGatewayProxyResult> => {
   const planAccess = await enforcePlanAccess(event, 'visitors.module_enabled');
   if (planAccess) return planAccess;
-  try {
-    const auth = await requireAuth(event);
-    if ('errorResponse' in auth) return auth.errorResponse;
-
-    const roleCheck = enforceRole(auth.user, PASTORAL_ROLES);
-    if (!roleCheck.allowed) return roleCheck.errorResponse!;
-
-    const visitorId = event.pathParameters?.id || event.pathParameters?.visitorId;
-    if (!visitorId) return apiResponse(400, { error: 'ID do visitante ausente' });
-
-    const body = JSON.parse(event.body || '{}');
-    const { stage } = body;
-
-    const validStages = ['NEW', 'CONTACTED_24H', 'REFERRED_TO_CELL', 'ATTENDING_CELL', 'INTEGRATED_MEMBER', 'ARCHIVED'];
-    if (!stage || !validStages.includes(stage)) {
-      return apiResponse(400, { error: 'Etapa inválida' });
-    }
-
-    const { rows } = await query(`SELECT organization_id, name FROM church_visitors WHERE id = ? LIMIT 1`, [visitorId]);
-    if (rows.length === 0) return apiResponse(404, { error: 'Visitante não encontrado' });
-
-    const tenantCheck = enforceTenant(auth.user, rows[0].organization_id);
-    if (!tenantCheck.allowed) return tenantCheck.errorResponse!;
-
-    await query(`
-      UPDATE church_visitors 
-      SET stage = ?, updated_at = NOW() 
-      WHERE id = ? AND organization_id = ?
-    `, [stage, visitorId, tenantCheck.effectiveOrgId]);
-
-    return apiResponse(200, { message: 'Etapa do visitante atualizada com sucesso', stage });
-  } catch (err: any) {
-    console.error('Erro ao atualizar etapa:', err);
-    return apiResponse(500, { error: 'Erro ao atualizar etapa do visitante' });
-  }
+  return privateWelcomeEndpoint(event,'stage');
 };
 
-// PUT /pastoral/visitors/{id}/refer-cell -> Encaminhar visitante para uma célula
 export const referVisitorToCell = async (event: any): Promise<APIGatewayProxyResult> => {
   const planAccess = await enforcePlanAccess(event, 'visitors.module_enabled');
   if (planAccess) return planAccess;
-  try {
-    const auth = await requireAuth(event);
-    if ('errorResponse' in auth) return auth.errorResponse;
-
-    const roleCheck = enforceRole(auth.user, PASTORAL_ROLES);
-    if (!roleCheck.allowed) return roleCheck.errorResponse!;
-
-    const visitorId = event.pathParameters?.id || event.pathParameters?.visitorId;
-    if (!visitorId) return apiResponse(400, { error: 'ID do visitante ausente' });
-
-    const body = JSON.parse(event.body || '{}');
-    const { cell_group_id } = body;
-    if (!cell_group_id) return apiResponse(400, { error: 'cell_group_id é obrigatório' });
-
-    const { rows: visRows } = await query(`SELECT organization_id, name, phone, neighborhood FROM church_visitors WHERE id = ? LIMIT 1`, [visitorId]);
-    if (visRows.length === 0) return apiResponse(404, { error: 'Visitante não encontrado' });
-
-    const tenantCheck = enforceTenant(auth.user, visRows[0].organization_id);
-    if (!tenantCheck.allowed) return tenantCheck.errorResponse!;
-
-    const { rows: cellRows } = await query(`
-      SELECT cg.id, cg.name, cg.leader_id, m.name as leader_name, m.phone as leader_phone
-      FROM cell_groups cg
-      LEFT JOIN members m ON cg.leader_id = m.id
-      WHERE cg.id = ? AND cg.organization_id = ?
-      LIMIT 1
-    `, [cell_group_id, tenantCheck.effectiveOrgId]);
-
-    if (cellRows.length === 0) return apiResponse(404, { error: 'Célula não encontrada' });
-
-    const cell = cellRows[0];
-
-    await query(`
-      UPDATE church_visitors 
-      SET assigned_cell_id = ?, assigned_leader_id = ?, stage = 'REFERRED_TO_CELL', updated_at = NOW()
-      WHERE id = ? AND organization_id = ?
-    `, [cell_group_id, cell.leader_id, visitorId, tenantCheck.effectiveOrgId]);
-
-    return apiResponse(200, {
-      message: 'Visitante encaminhado para a célula com sucesso!',
-      cell_name: cell.name,
-      leader_name: cell.leader_name,
-      leader_phone: cell.leader_phone,
-      visitor_name: visRows[0].name,
-      visitor_phone: visRows[0].phone
-    });
-  } catch (err: any) {
-    console.error('Erro ao encaminhar visitante:', err);
-    return apiResponse(500, { error: 'Erro ao encaminhar visitante' });
-  }
+  return privateWelcomeEndpoint(event,'refer');
 };
 
-// DELETE /pastoral/visitors/{id} -> Arquivar ou excluir visitante
 export const deleteVisitor = async (event: any): Promise<APIGatewayProxyResult> => {
   const planAccess = await enforcePlanAccess(event, 'visitors.module_enabled');
   if (planAccess) return planAccess;
-  try {
-    const auth = await requireAuth(event);
-    if ('errorResponse' in auth) return auth.errorResponse;
-
-    const roleCheck = enforceRole(auth.user, PASTORAL_ROLES);
-    if (!roleCheck.allowed) return roleCheck.errorResponse!;
-
-    const visitorId = event.pathParameters?.id || event.pathParameters?.visitorId;
-    if (!visitorId) return apiResponse(400, { error: 'ID do visitante ausente' });
-
-    const { rows } = await query(`SELECT organization_id FROM church_visitors WHERE id = ? LIMIT 1`, [visitorId]);
-    if (rows.length === 0) return apiResponse(404, { error: 'Visitante não encontrado' });
-
-    const tenantCheck = enforceTenant(auth.user, rows[0].organization_id);
-    if (!tenantCheck.allowed) return tenantCheck.errorResponse!;
-
-    await query(`DELETE FROM church_visitors WHERE id = ? AND organization_id = ?`, [visitorId, tenantCheck.effectiveOrgId]);
-
-    return apiResponse(200, { message: 'Visitante removido com sucesso' });
-  } catch (err: any) {
-    console.error('Erro ao excluir visitante:', err);
-    return apiResponse(500, { error: 'Erro ao remover visitante' });
-  }
+  return privateWelcomeEndpoint(event,'archive');
 };
 
-// ==========================================
-// RELATÓRIOS EXECUTIVOS & PRONTUÁRIO 360º
-// ==========================================
-
-// GET /pastoral/executive-report -> Métricas de retenção e rankings
 export const getExecutiveReport = async (event: any): Promise<APIGatewayProxyResult> => {
   const planAccess = await enforcePlanAccess(event, 'pastoral.module_enabled');
   if (planAccess) return planAccess;
   try {
-    const auth = await requireAuth(event);
-    if ('errorResponse' in auth) return auth.errorResponse;
-
-    const roleCheck = enforceRole(auth.user, PASTORAL_ROLES);
-    if (!roleCheck.allowed) return roleCheck.errorResponse!;
-
-    const requestedOrgId = event.queryStringParameters?.organization_id;
-    const tenantCheck = enforceTenant(auth.user, requestedOrgId);
-    if (!tenantCheck.allowed) return tenantCheck.errorResponse!;
-    const orgId = tenantCheck.effectiveOrgId;
-
-    // 1. Visitantes & Taxa de Conversão dos últimos 90 dias
-    const { rows: visitorMetrics } = await query(`
-      SELECT 
-        COUNT(*) as total_visitors,
-        SUM(CASE WHEN stage = 'NEW' THEN 1 ELSE 0 END) as stage_new,
-        SUM(CASE WHEN stage = 'CONTACTED_24H' THEN 1 ELSE 0 END) as stage_contacted,
-        SUM(CASE WHEN stage = 'REFERRED_TO_CELL' THEN 1 ELSE 0 END) as stage_referred,
-        SUM(CASE WHEN stage = 'ATTENDING_CELL' THEN 1 ELSE 0 END) as stage_attending,
-        SUM(CASE WHEN stage = 'INTEGRATED_MEMBER' THEN 1 ELSE 0 END) as stage_integrated
-      FROM church_visitors
-      WHERE organization_id = ?
-        AND created_at >= DATE_SUB(CURDATE(), INTERVAL 90 DAY)
-    `, [orgId]);
-
-    // 2. Ranking de Células: Presença Média e Saúde
-    const { rows: cellHealth } = await query(`
-      SELECT 
-        cg.id,
-        cg.name,
-        cg.meeting_day,
-        cg.neighborhood,
-        leader.name as leader_name,
-        COUNT(DISTINCT m.id) as total_members,
-        (
-          SELECT COUNT(*)
-          FROM cell_meeting_attendees cma
-          INNER JOIN cell_meetings cm ON cma.meeting_id = cm.id
-          WHERE cm.cell_group_id = cg.id AND cma.status = 'PRESENT'
-            AND cm.meeting_date >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
-        ) as total_attendances_30d,
-        (
-          SELECT COUNT(*)
-          FROM cell_meetings cm
-          WHERE cm.cell_group_id = cg.id
-            AND cm.meeting_date >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
-        ) as meetings_count_30d
-      FROM cell_groups cg
-      LEFT JOIN members leader ON cg.leader_id = leader.id
-      LEFT JOIN members m ON m.cell_group_id = cg.id AND m.status = 'ACTIVE'
-      WHERE cg.organization_id = ?
-      GROUP BY cg.id
-      ORDER BY total_members DESC
-    `, [orgId]);
-
-    // 3. Contatos pastorais realizados no mês
-    const { rows: careMetrics } = await query(`
-      SELECT 
-        contact_type,
-        COUNT(*) as count
-      FROM pastoral_care_logs
-      WHERE organization_id = ?
-        AND created_at >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
-      GROUP BY contact_type
-    `, [orgId]);
-
-    return apiResponse(200, {
-      visitor_funnel: visitorMetrics[0] || {},
-      cell_rankings: cellHealth,
-      care_metrics: careMetrics
-    });
-  } catch (err: any) {
-    console.error('Erro ao gerar relatório executivo:', err);
-    return apiResponse(500, { error: 'Erro ao gerar relatório executivo' });
-  }
+    const auth = await requireAuth(event);if ('errorResponse' in auth) return auth.errorResponse;
+    const roleCheck = enforceRole(auth.user, PASTORAL_ROLES);if (!roleCheck.allowed) return roleCheck.errorResponse!;
+    const scope = await intelligenceScope(event, auth.user);if ('statusCode' in scope) return scope;
+    const orgId = scope.organizationId,flags = (await evaluateTenantFlags(orgId,scope.campusId,'production')).flags;
+    const visitors = scopedWhere(scope,'v','campus_id','assigned_cell_id'),cells = scopedWhere(scope,'cg','campus_id','id');
+    const care = scopedWhere({...scope,cellIds:null},'pcl');
+    const {rows:visitorMetrics} = flags['visitors.module_enabled'] ? await query(`SELECT COUNT(*) AS total_visitors,
+      SUM(v.stage = 'NEW') AS stage_new,SUM(v.stage = 'CONTACTED_24H') AS stage_contacted,
+      SUM(v.stage = 'REFERRED_TO_CELL') AS stage_referred,SUM(v.stage = 'ATTENDING_CELL') AS stage_attending,
+      SUM(v.stage = 'INTEGRATED_MEMBER') AS stage_integrated FROM church_visitors v
+      WHERE v.organization_id = ? AND v.created_at >= DATE_SUB(CURRENT_DATE,INTERVAL 90 DAY)${visitors.sql}`,[orgId,...visitors.params]) : {rows:[]};
+    const {rows:cellHealth} = flags['cell_groups.module_enabled'] ? await query(`SELECT cg.id,cg.name,cg.meeting_day,cg.neighborhood,
+      leader.name AS leader_name,COUNT(DISTINCT m.id) AS total_members,
+      (SELECT COUNT(*) FROM cell_meeting_attendees cma INNER JOIN cell_meetings cm ON cm.organization_id = cma.organization_id AND cm.id = cma.meeting_id
+       WHERE cma.organization_id = cg.organization_id AND cm.cell_group_id = cg.id AND COALESCE(cm.campus_id,'campus_sede') = COALESCE(cg.campus_id,'campus_sede')
+       AND cma.status = 'PRESENT' AND cm.meeting_date >= DATE_SUB(CURRENT_DATE,INTERVAL 30 DAY)) AS total_attendances_30d,
+      (SELECT COUNT(*) FROM cell_meetings cm2 WHERE cm2.organization_id = cg.organization_id AND cm2.cell_group_id = cg.id
+       AND COALESCE(cm2.campus_id,'campus_sede') = COALESCE(cg.campus_id,'campus_sede') AND cm2.meeting_date >= DATE_SUB(CURRENT_DATE,INTERVAL 30 DAY)) AS meetings_count_30d
+      FROM cell_groups cg LEFT JOIN members leader ON leader.organization_id = cg.organization_id AND leader.id = cg.leader_id
+      LEFT JOIN members m ON m.organization_id = cg.organization_id AND m.cell_group_id = cg.id AND UPPER(m.status) IN ('ACTIVE','ATIVO')
+      WHERE cg.organization_id = ?${cells.sql} GROUP BY cg.id ORDER BY total_members DESC LIMIT 200`,[orgId,...cells.params]) : {rows:[]};
+    const {rows:careMetrics} = await query(`SELECT pcl.contact_type,COUNT(*) AS count FROM pastoral_care_logs pcl
+      WHERE pcl.organization_id = ? AND pcl.created_at >= DATE_SUB(CURRENT_DATE,INTERVAL 30 DAY)${care.sql}${scope.cellIds?' AND pcl.caregiver_id = ?':''}
+      GROUP BY pcl.contact_type`,[orgId,...care.params,...(scope.cellIds?[scope.user.userId]:[])]);
+    return apiResponse(200,{visitor_funnel:visitorMetrics[0]||{},cell_rankings:cellHealth,care_metrics:careMetrics,
+      coverage:'registered_records_only',note:'Etapas atuais e registros lançados; não representam conversão por coorte nem ausência presumida.'},{'Cache-Control':'no-store'});
+  }catch{return apiResponse(503,{error:'Não foi possível consultar as fontes autorizadas.'});}
 };
 
 // GET /pastoral/members/{id}/timeline -> Prontuário 360º pastoral do membro
@@ -938,7 +634,7 @@ export const pastoralHandler = async (event: any): Promise<APIGatewayProxyResult
   }
 
   // 4. /pastoral/visitors/{id}/refer-cell
-  if (rawPath.includes('/visitors/') && rawPath.endsWith('/refer-cell') && (method === 'PUT' || method === 'POST')) {
+  if (rawPath.includes('/visitors/') && (rawPath.endsWith('/refer-cell') || rawPath.endsWith('/refer')) && (method === 'PUT' || method === 'POST')) {
     const parts = rawPath.split('/').filter(Boolean);
     const visIdx = parts.indexOf('visitors');
     if (!event.pathParameters) event.pathParameters = {};

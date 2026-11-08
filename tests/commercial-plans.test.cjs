@@ -144,7 +144,13 @@ test('verified provisioning writes the entire contracted matrix transactionally 
     assert.equal(state.commits, 1); assert.equal(state.rollbacks, 0); assert.equal(state.releases, 1);
     const rows = state.writes.filter(call => call.sql.includes('INSERT INTO tenant_feature_flags'));
     assert.equal(rows.length, Object.keys(contract.entitlements).length);
-    for (const row of rows) { assert.equal(row.params[1], result.organization_id); assert.equal(Boolean(row.params[3]), contract.entitlements[row.params[2]], row.params[2]); }
+    const pilotOnly=new Set(Object.keys(require('../migrate_intelligence_journeys.js').additions));
+    for (const row of rows) {
+      assert.equal(row.params[1], result.organization_id);
+      const expected=pilotOnly.has(row.params[2])&&result.organization_id!=='org_default'?false:contract.entitlements[row.params[2]];
+      assert.equal(Boolean(row.params[3]),expected,row.params[2]);
+    }
+    assert.deepEqual(JSON.parse(state.writes.find(call=>call.sql.includes('UPDATE organizations SET plan_contract')).params[0]).entitlements,contract.entitlements);
     assert.equal(JSON.parse(state.writes.find(call => call.sql.includes('UPDATE organizations SET plan_contract')).params[0]).max_members, contract.max_members);
   }
 });

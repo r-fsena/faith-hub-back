@@ -4,6 +4,7 @@ import { query } from '../db';
 import { normalizeRole, type AuthUser } from './authMiddleware';
 import { evaluateTenantFlags } from './featureFlagService';
 import { logSecurityEvent } from './auditLogService';
+import {recordInvitationMilestone} from './intelligenceInvitation';
 
 export const IMPORT_INVITATIONS_FLAG = 'system.saas_member_import_invitations';
 const text = (value: unknown) => String(value ?? '').trim();
@@ -27,8 +28,10 @@ export async function importMemberRows(body: any, user: AuthUser, orgId: string,
   if (body.resend_pending_invitations !== undefined && typeof body.resend_pending_invitations !== 'boolean') throw Error('Opção de reenvio inválida.');
   const send = body.send_invitations === true;
   const resend = send && body.resend_pending_invitations === true;
+  let activationTracking=false;
   {
     const evaluated = await evaluateTenantFlags(orgId, null, 'production');
+    activationTracking=!!evaluated.flags['intelligence.activation'];
     if (send && !evaluated.flags[IMPORT_INVITATIONS_FLAG]) throw Error('Envio de convites na importação indisponível para esta igreja.');
     if (evaluated.contract_version && !evaluated.flags['members.module_enabled']) throw Error('Gestão de membros indisponível neste plano.');
   }
@@ -37,7 +40,7 @@ export async function importMemberRows(body: any, user: AuthUser, orgId: string,
   const org = organizations[0];
   const { rows: campuses } = await query('SELECT id, name FROM campuses WHERE organization_id = ?', [orgId]);
   const { rows: cells } = await query('SELECT id, name, campus_id FROM cell_groups WHERE organization_id = ?', [orgId]);
-  const results = { total: rows.length, created: 0, updated: 0, invitations_requested: 0, invitations_skipped: 0,
+  const results = { total: rows.length, created: 0, updated: 0, invitations_requested: 0, invitations_skipped: 0,tracking_pending:0,
     invitation_errors: [] as any[], errors: [] as any[] };
   const seen = new Set<string>();
   const deadline = Date.now() + 21000;
@@ -107,6 +110,7 @@ export async function importMemberRows(body: any, user: AuthUser, orgId: string,
         results.created++;
       }
       saved = true;
+      if(!previous&&!await recordInvitationMilestone(orgId,cognitoId,'CSV','REGISTERED',event,activationTracking))results.tracking_pending++;
       await logSecurityEvent({organizationId:orgId,user,action:'IMPORT_MEMBER',resource:'members',resourceId:cognitoId,
         details:{role,campus_id:campus.id,updated:Boolean(previous)},event});
       if (send && (createdCognito || resend)) {
@@ -116,8 +120,10 @@ export async function importMemberRows(body: any, user: AuthUser, orgId: string,
           else {
             await cognito.send(new AdminCreateUserCommand({UserPoolId:poolId,Username:email,MessageAction:'RESEND',DesiredDeliveryMediums:['EMAIL']}));
             results.invitations_requested++;
+            if(!await recordInvitationMilestone(orgId,cognitoId,'CSV','REQUESTED',event,activationTracking))results.tracking_pending++;
           }
         } catch {
+          if(!await recordInvitationMilestone(orgId,cognitoId,'CSV','FAILED',event,activationTracking))results.tracking_pending++;
           results.invitation_errors.push({email,name,error:'Cadastro salvo; não foi possível solicitar o convite. Você pode reenviar o convite pendente.'});
         }
       } else results.invitations_skipped++;

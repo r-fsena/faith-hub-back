@@ -8,6 +8,9 @@ import { intelligenceOverview } from '../services/intelligenceOverview';
 import { usagePreference, setUsagePreference, acceptUsage, processUsage, IntelligenceError } from '../services/intelligenceUsage';
 import { corsPreflight } from './corsPreflight';
 import { SAFE_ID, dayInSaoPaulo, subjectKey } from '../services/intelligenceModel';
+import {activationFunnel,communityJourney} from '../services/intelligenceJourneys';
+import {listWelcomeVisitors,welcomeOptions,mutateWelcome} from '../services/intelligenceWelcome';
+import {actionOptions,listActions,saveAction,listGoals,saveGoal} from '../services/intelligenceActions';
 
 export async function intelligenceHandler(event:APIGatewayProxyEvent) {
   try {
@@ -42,6 +45,36 @@ export async function intelligenceHandler(event:APIGatewayProxyEvent) {
     const permission=enforcePermission(auth.user,'intelligence.view',['SUPERADMIN','PASTOR','ADMIN','LEADER']);if(!permission.allowed)return permission.errorResponse!;
     const flags=await evaluateTenantFlags(scope.organizationId,scope.campusId,'production');
     if(!flags.flags['intelligence.overview'])return apiResponse(403,{message:'O módulo de Inteligência não está habilitado para esta igreja.'});
+    const route=path.slice(path.indexOf('intelligence')+1);
+    const enabled=(key:string,parent?:string)=>{if(!flags.flags[key]||(parent&&!flags.flags[parent]))throw new IntelligenceError(403,'Este recurso não está habilitado no plano ou escopo selecionado.');};
+    const respond=(data:any)=>apiResponse(200,data,{'Cache-Control':'no-store'});
+    if(route[0]==='activation'&&method==='GET'){enabled('intelligence.activation','members.module_enabled');return respond(await activationFunnel(scope,flags.flags,event.queryStringParameters?.period||'month'));}
+    if(route[0]==='community'&&method==='GET'){enabled('intelligence.member_journey','visitors.module_enabled');return respond(await communityJourney(scope,event.queryStringParameters?.period||'month',Number(event.queryStringParameters?.window_days||7),flags.flags));}
+    if(route[0]==='welcome'){
+      enabled('intelligence.member_journey','visitors.module_enabled');
+      if(route[1]==='visitors'&&route.length===2&&method==='GET')return respond(await listWelcomeVisitors(scope,event.queryStringParameters||{}));
+      if(route[1]==='visitors'&&route[2]&&route[3]==='options'&&method==='GET')return respond(await welcomeOptions(scope,route[2],event.queryStringParameters?.search||'',!!flags.flags['cell_groups.module_enabled']));
+      if(route[1]==='visitors'&&route[2]&&route.length===3&&method==='POST'){
+        if(['refer','link'].includes(body.operation)||['REFERRED_TO_CELL','ATTENDING_CELL','INTEGRATED_MEMBER'].includes(body.stage))enabled('cell_groups.module_enabled');
+        return respond(await mutateWelcome(scope,route[2],body,event));
+      }
+    }
+    if(route[0]==='options'&&method==='GET'){
+      if(!flags.flags['intelligence.actions']&&!flags.flags['intelligence.goals'])throw new IntelligenceError(403,'Acompanhamento não está habilitado.');
+      return respond(await actionOptions(scope,flags.flags));
+    }
+    if(route[0]==='actions'){
+      enabled('intelligence.actions');
+      if(method==='GET'&&route.length===1)return respond(await listActions(scope,flags.flags,Number(event.queryStringParameters?.page||0),event.queryStringParameters?.status||'all'));
+      const management=enforcePermission(auth.user,'intelligence.manage_actions',['SUPERADMIN','PASTOR','ADMIN','LEADER']);if(!management.allowed)return management.errorResponse!;
+      if((method==='POST'&&route.length===1)||(method==='PATCH'&&route.length===2))return respond(await saveAction(scope,flags.flags,body,event,route[1]));
+    }
+    if(route[0]==='goals'){
+      enabled('intelligence.goals');
+      if(method==='GET'&&route.length===1)return respond(await listGoals(scope,flags.flags,Number(event.queryStringParameters?.page||0)));
+      const management=enforcePermission(auth.user,'intelligence.manage_actions',['SUPERADMIN','PASTOR','ADMIN','LEADER']);if(!management.allowed)return management.errorResponse!;
+      if((method==='POST'&&route.length===1)||(method==='PATCH'&&route.length===2))return respond(await saveGoal(scope,flags.flags,body,event,route[1]));
+    }
     if(action==='overview'&&method==='GET')return apiResponse(200,await intelligenceOverview(scope,flags.flags,event.queryStringParameters?.period||'month'),{'Cache-Control':'no-store'});
     return apiResponse(404,{message:'Recurso não encontrado.'});
   }catch(error){
@@ -68,6 +101,7 @@ export async function maintainIntelligence(){
     try {
     await query('DELETE FROM intelligence_activity_daily WHERE organization_id = ? AND activity_date < DATE_SUB(?,INTERVAL 90 DAY)',[org,dayInSaoPaulo()]);
     await query('DELETE FROM intelligence_event_receipts WHERE organization_id = ? AND received_at < DATE_SUB(UTC_TIMESTAMP(),INTERVAL 90 DAY)',[org]);
+    await query('DELETE FROM intelligence_invitation_events WHERE organization_id = ? AND occurred_at < DATE_SUB(UTC_TIMESTAMP(),INTERVAL 90 DAY)',[org]);
     await query("DELETE FROM content_engagement_events WHERE organization_id = ? AND source = 'PWA_INTELLIGENCE_V1' AND occurred_at < DATE_SUB(UTC_TIMESTAMP(),INTERVAL 90 DAY)",[org]);
     const flags=await evaluateTenantFlags(org,null,'production');if(!flags.flags['intelligence.overview'])continue;
     const db=await getConnection();
