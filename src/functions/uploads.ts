@@ -9,11 +9,10 @@ import { logSecurityEvent } from '../services/auditLogService';
 import { checkRateLimit } from '../services/rateLimiter';
 
 const s3 = new S3Client({
-  region: process.env.AWS_REGION || 'us-east-2',
-  credentials: process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY ? {
-    accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
-  } : undefined
+  // The default provider preserves AWS_SESSION_TOKEN for Lambda role credentials.
+  // Rebuilding credentials with only accessKeyId/secretAccessKey creates invalid
+  // presigned upload URLs whenever AWS issues temporary credentials.
+  region: process.env.AWS_REGION || 'us-east-2'
 });
 
 // Whitelist de tipos MIME e extensões permitidas
