@@ -32,6 +32,7 @@ module.exports=async({db,org,other,campus,person,user,scope,flags,model})=>{
  await db.query(`INSERT INTO church_visitors(id,organization_id,campus_id,name,phone,stage,first_visit_date,assigned_cell_id,assigned_leader_id)
   VALUES(?,?,?,'Synthetic visitor','11999999999','NEW',?,?,?)`,[visitor,org,campus,firstVisit,cell,person]);
  await trackNewWelcome(db,org,visitor,campus,person,firstVisit);
+ const ageList=await listWelcomeVisitors(scope,{id:visitor});assert.equal(Number(ageList.visitors[0].days_since_first_visit),15,'Visitor age follows the application day in Sao Paulo, including after UTC midnight');
  let [states]=await db.query('SELECT baseline_known FROM intelligence_welcome_state WHERE organization_id = ? AND visitor_id = ?',[org,visitor]);assert.equal(Number(states[0].baseline_known),0,'Backdated visitors cannot fabricate a complete cohort baseline');
  await assert.rejects(mutateWelcome(scope,visitor,{operation:'stage',stage:'ATTENDING_CELL',member_id:linked,expected_version:0},event),/presença/);
  let result=await mutateWelcome(scope,visitor,{operation:'stage',stage:'CONTACTED_24H',expected_version:0},event);assert.equal(result.journey_version,1);

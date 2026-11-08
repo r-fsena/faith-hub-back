@@ -16,7 +16,7 @@ export async function listWelcomeVisitors(scope:IntelligenceScope,options:any={}
  const page=Number(options.page||0);if(!Number.isInteger(page)||page<0||page>100)throw new IntelligenceError(400,'Página inválida.');
  const {rows}=await query(`SELECT v.*,cg.name AS cell_name,cg.meeting_day AS cell_day,cg.meeting_time AS cell_time,
  cg.neighborhood AS cell_neighborhood,leader.name AS leader_name,leader.phone AS leader_phone,
- DATEDIFF(CURRENT_DATE,v.first_visit_date) AS days_since_first_visit,COALESCE(w.version,0) AS journey_version,
+ DATEDIFF(?,v.first_visit_date) AS days_since_first_visit,COALESCE(w.version,0) AS journey_version,
  COALESCE(w.baseline_known,0) AS baseline_known,w.linked_member_id,
  DATE_FORMAT(w.contacted_at,'%Y-%m-%dT%H:%i:%s.000Z') AS contacted_at,
  DATE_FORMAT(w.linked_at,'%Y-%m-%dT%H:%i:%s.000Z') AS linked_at,
@@ -25,7 +25,7 @@ export async function listWelcomeVisitors(scope:IntelligenceScope,options:any={}
  FROM church_visitors v LEFT JOIN cell_groups cg ON cg.organization_id = v.organization_id AND cg.id = v.assigned_cell_id
  LEFT JOIN members leader ON leader.organization_id = v.organization_id AND leader.id = v.assigned_leader_id
  LEFT JOIN intelligence_welcome_state w ON w.organization_id = v.organization_id AND w.visitor_id = v.id
- WHERE v.organization_id = ?${filter.sql}${extra} ORDER BY v.created_at DESC,v.id DESC LIMIT 101 OFFSET ?`,[...params,page*100]);
+ WHERE v.organization_id = ?${filter.sql}${extra} ORDER BY v.created_at DESC,v.id DESC LIMIT 101 OFFSET ?`,[dayInSaoPaulo(),...params,page*100]);
  return {visitors:rows.slice(0,100),has_more:rows.length>100,page};
 }
 
