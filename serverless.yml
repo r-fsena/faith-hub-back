@@ -134,6 +134,11 @@ custom:
     perType: ${param:splitStacksPerType}
     perGroupFunction: ${param:splitStacksPerGroupFunction}
   esbuild:
+    external:
+      - sharp
+    packagerOptions:
+      scripts:
+        - npm install --os=linux --cpu=x64 --libc=glibc --include=optional --ignore-scripts --package-lock=false sharp@0.35.5
     bundle: true
     minify: false
     sourcemap: true
@@ -888,6 +893,7 @@ functions:
           path: /content/analytics
 
   getChurchSettings:
+    timeout: 28
     handler: src/functions/churchSettings.getSettings
     events:
       - httpApi:

@@ -78,7 +78,8 @@
     "cors": "^2.8.5",
     "jose": "^5.10.0",
     "mysql2": "^3.24.6",
-    "uuid": "^11.1.1"
+    "uuid": "^11.1.1",
+    "sharp": "0.35.5"
   },
   "devDependencies": {
     "@aws-sdk/client-amplify": "^3.1111.0",

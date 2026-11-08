@@ -4,6 +4,7 @@ import { requireAuth, enforceRole, enforceTenant } from '../services/authMiddlew
 import { publishedExperience } from '../services/pwaExperienceService';
 import { logSecurityEvent } from '../services/auditLogService';
 import { v4 as uuidv4 } from 'uuid';
+import { InstallationError, pwaInstallationResponse } from '../services/pwaInstallation';
 
 export const DEFAULT_KANBAN_CONFIG = {
   RECEBIDO: {
@@ -448,10 +449,27 @@ export const updateSettings = async (event: APIGatewayProxyEvent): Promise<APIGa
 };
 
 // Only the published experience is appended to the public branding response.
-export const getSettings = async (event:APIGatewayProxyEvent):Promise<APIGatewayProxyResult> => {
- const response=await getSettingsLegacy(event);
- if(response.statusCode!==200)return response;
- const item=JSON.parse(response.body);
- try {if(item.organization_id)item.pwa_experience=await publishedExperience(item.organization_id,event.queryStringParameters?.campus_id||null,item);}catch{item.pwa_experience=null;}
- return apiResponse(200,item);
+export const getSettings = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  const query = event.queryStringParameters || {};
+  if (query.format && !['pwa-manifest', 'pwa-icon'].includes(query.format)) {
+    return apiResponse(400, { message: 'Formato inválido.' });
+  }
+  if (query.format && !query.organization_id && !query.slug) {
+    return apiResponse(400, { message: 'Informe a igreja.' });
+  }
+  const response = await getSettingsLegacy(event);
+  if (response.statusCode !== 200) return response;
+  const item = JSON.parse(response.body);
+  try {
+    if (item.organization_id) item.pwa_experience = await publishedExperience(item.organization_id, query.campus_id || null, item);
+  } catch { item.pwa_experience = null; }
+  if (query.format) {
+    try { return await pwaInstallationResponse(event, item); }
+    catch (error) {
+      return apiResponse(error instanceof InstallationError ? error.status : 503, {
+        message: error instanceof InstallationError ? error.message : 'Não foi possível preparar a instalação.'
+      });
+    }
+  }
+  return apiResponse(200, item);
 };
