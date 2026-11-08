@@ -41,6 +41,12 @@ let db,stage='connect';
  await insert('service_roster_items',Array.from({length:5},(_,i)=>({id:'ops_roster_'+i,organization_id:org,schedule_id:'ops_schedule',role_id:i===4?'ops_role2':'ops_role1',member_id:'ops_member_'+i,status:'ACCEPTED'})));
  await insert('kids_rooms',[{id:'ops_room',organization_id:org,campus_id:a,name:'Synthetic room',min_age:0,max_age:10,capacity:10}]);
  await insert('kids_checkins',Array.from({length:3},(_,i)=>({id:'ops_checkin_'+i,organization_id:org,campus_id:a,child_id:'synthetic-child',child_name:'Synthetic fixture',room_id:'ops_room',room_name:'Synthetic room',parent_name:'Synthetic fixture',parent_phone:'00000000000',security_code:'ops_'+i,status:i===0?'CHECKED_OUT':'CHECKED_IN',checkin_at:stamp(i===2?past:date)})));
+ // Gap and end-boundary records must not enter the prior MTD slice or today's incomplete day.
+ await insert('church_financial_transactions',[{id:'ops_today',organization_id:org,campus_id:a,type:'INCOME',category:'Synthetic',description:'Fixture today excluded',amount:123.45,status:'PAID',payment_date:today}]);
+ await insert('events',[{id:'ops_gap_event',organization_id:org,campus_id:a,title:'Synthetic gap event',start_date:past+' 12:00:00',end_date:past+' 15:00:00',status:'FINISHED'}]);
+ await insert('pdv_orders',[{id:'ops_gap_order',organization_id:org,campus_id:a,user_id:'synthetic',user_name:'Fixture',status:'FINALIZADO',payment_status:'PAID',items_json:'[]',total_price:7.50,paid_at:stamp(past)}]);
+ await insert('pdv_order_items',[{id:'ops_gap_item',organization_id:org,campus_id:a,order_id:'ops_gap_order',product_id:'ops_product',product_name:'Fixture',quantity:3,unit_price:2.50,line_total:7.50}]);
+ await insert('service_schedules',[{id:'ops_gap_schedule',organization_id:org,campus_id:a,ministry_id:'ops_ministry',title:'Synthetic gap service',service_date:past,service_time:'10:00',status:'PUBLISHED'}]);
  const user={role:'ADMIN',userId:'ops_admin',organizationId:org,campusIds:[a,b],isSuperAdmin:false,operationalPermissions:[]},scope={user,organizationId:org,campusId:null,campusIds:[a,b],cellIds:null};
  stage='source SQL';const result=await intelligenceOperations(scope,'7d','units');assert.deepEqual(result.errors,[],JSON.stringify(result.errors));
  const values=key=>Object.fromEntries(result.sources[key].metrics.map(m=>[m.key,m.value]));
@@ -52,6 +58,17 @@ let db,stage='connect';
  assert.deepEqual(values('kids'),{kids_checkins:2,kids_open:2,kids_capacity:10});
  assert.equal(result.units[1].sources.finance.status,'not_available');assert.equal(result.units[1].sources.kids.status,'not_available');
  assert.equal(JSON.stringify(result).includes('synthetic-child'),false);assert.equal(JSON.stringify(result).includes('parent_phone'),false);
+ stage='month-to-date boundary regression';
+ const month=await intelligenceOperations(scope,'month','units');assert.deepEqual(month.errors,[]);
+ const gap=past>=month.period.previousEnd&&past<month.period.start;
+ if(gap){
+  // The -9-day fixtures are in the gap, not in the prior MTD comparison window.
+  assert.equal(month.sources.finance.metrics.find(m=>m.key==='income').previous,0,'Prior MTD must exclude late-month ledger records');
+  assert.equal(month.sources.events.metrics.find(m=>m.key==='events').previous,0,'Prior MTD must exclude late-month event editions');
+  assert.equal(month.sources.store.metrics.find(m=>m.key==='sales').previous,0,'Prior MTD must exclude late-month paid orders');
+  assert.equal(month.sources.teams.metrics.find(m=>m.key==='schedules').previous,0,'Prior MTD must exclude late-month services');
+  assert.equal(month.sources.kids.metrics.find(m=>m.key==='kids_checkins').previous,0,'Prior MTD must exclude late-month Kids records');
+ }
  stage='treasurer';const treasury=await intelligenceOperations({...scope,user:{...user,role:'TREASURER'}},'7d','units');assert.equal(treasury.sources.kids.status,'not_available');assert.equal(treasury.sources.events.status,'not_available');assert.equal(treasury.sources.finance.status,'available');
- console.log(JSON.stringify({passed:true,temporaryTablesOnly:true,customerRecordsRead:false,customerRecordsChanged:false,checks:['integer cents and signed result','cancelled/pending separation','tenant and campus source flag isolation','event multi-lot/ticket fanout','PDV item fanout and missing payment dates','stock availability','per-role vacancies with surplus isolation','Kids counts without identities','treasury scope']}));
+ console.log(JSON.stringify({passed:true,temporaryTablesOnly:true,customerRecordsRead:false,customerRecordsChanged:false,checks:['integer cents and signed result','cancelled/pending separation','tenant and campus source flag isolation','event multi-lot/ticket fanout','PDV item fanout and missing payment dates','stock availability','per-role vacancies with surplus isolation','Kids counts without identities','treasury scope','exact MTD windows in all five historical sources','incomplete current day exclusion']}));
 })().catch(e=>{console.error(stage+': '+e.message);process.exitCode=1;}).finally(async()=>{if(db)await db.end();});

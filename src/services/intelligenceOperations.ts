@@ -81,7 +81,8 @@ export async function intelligenceOperations(scope:IntelligenceScope,preset:stri
  const buckets=(column:string,datetime=false)=>({
   sql:`CASE WHEN ${column} >= ? AND ${column} < ? THEN 'current' ELSE 'previous' END`,
   params:datetime?[utc(period.start),utc(period.end)]:[period.start,period.end],
-  range:datetime?[utc(period.previousStart),utc(period.end)]:[period.previousStart,period.end]
+  filter:`((${column} >= ? AND ${column} < ?) OR (${column} >= ? AND ${column} < ?))`,
+  range:datetime?[utc(period.previousStart),utc(period.previousEnd),utc(period.start),utc(period.end)]:[period.previousStart,period.previousEnd,period.start,period.end]
  });
  const financeDetails:any={categories:[],coverage:'registered_ledger_only'};
  await source('finance',['income','expense','result','pending_income','pending_expense','cancelled'],async ids=>{
@@ -93,7 +94,7 @@ export async function intelligenceOperations(scope:IntelligenceScope,preset:stri
    SUM(CASE WHEN t.status='PENDING' AND t.type='INCOME' THEN ROUND(t.amount*100) ELSE 0 END) AS pending_income,
    SUM(CASE WHEN t.status='PENDING' AND t.type='EXPENSE' THEN ROUND(t.amount*100) ELSE 0 END) AS pending_expense,
    SUM(t.status='CANCELLED') AS cancelled
-   FROM church_financial_transactions t WHERE t.organization_id = ? AND t.payment_date >= ? AND t.payment_date < ?${f.sql} GROUP BY campus_id,bucket`,[...b.params,scope.organizationId,...b.range,...f.params]);
+   FROM church_financial_transactions t WHERE t.organization_id = ? AND ${b.filter}${f.sql} GROUP BY campus_id,bucket`,[...b.params,scope.organizationId,...b.range,...f.params]);
   const categories=await query(`SELECT t.type,t.category,SUM(ROUND(t.amount*100)) AS amount_cents,COUNT(*) AS records
    FROM church_financial_transactions t WHERE t.organization_id = ? AND t.status='PAID' AND t.payment_date >= ? AND t.payment_date < ?${f.sql}
    GROUP BY t.type,t.category ORDER BY amount_cents DESC,t.type,t.category LIMIT 21`,[scope.organizationId,period.start,period.end,...f.params]);
@@ -109,7 +110,7 @@ export async function intelligenceOperations(scope:IntelligenceScope,preset:stri
    SUM(t.status='CANCELED') AS cancelled_tickets,
    (SELECT COALESCE(SUM(l.total_capacity),0) FROM event_lots l WHERE l.event_id=e.id) AS ticket_capacity
    FROM events e LEFT JOIN event_tickets t ON t.event_id=e.id AND t.organization_id=e.organization_id AND t.organization_id = ?
-   WHERE e.organization_id = ? AND e.status IN ('PUBLISHED','FINISHED') AND e.start_date >= ? AND e.start_date < ?${f.sql}
+   WHERE e.organization_id = ? AND e.status IN ('PUBLISHED','FINISHED') AND ${b.filter}${f.sql}
    GROUP BY e.id,e.organization_id,e.campus_id,e.start_date ORDER BY e.start_date,e.id LIMIT 5001`,[...b.params,scope.organizationId,scope.organizationId,...b.range,...f.params]);
   if(rows.length>5000)throw Error('EVENT_WINDOW_TOO_LARGE');return rows;
  });
@@ -117,7 +118,7 @@ export async function intelligenceOperations(scope:IntelligenceScope,preset:stri
   const f=scopeFor(ids,'o'),b=buckets('o.paid_at',true);
   const {rows}=await query(`SELECT COALESCE(o.campus_id,'campus_sede') AS campus_id,${b.sql} AS bucket,COUNT(*) AS paid_orders,SUM(ROUND(o.total_price*100)) AS sales,
    SUM((SELECT COALESCE(SUM(i.quantity),0) FROM pdv_order_items i WHERE i.organization_id = ? AND i.order_id=o.id)) AS sold_units
-   FROM pdv_orders o WHERE o.organization_id = ? AND o.payment_status='PAID' AND o.status <> 'CANCELADO' AND o.paid_at >= ? AND o.paid_at < ?${f.sql} GROUP BY campus_id,bucket`,[...b.params,scope.organizationId,scope.organizationId,...b.range,...f.params]);
+   FROM pdv_orders o WHERE o.organization_id = ? AND o.payment_status='PAID' AND o.status <> 'CANCELADO' AND ${b.filter}${f.sql} GROUP BY campus_id,bucket`,[...b.params,scope.organizationId,scope.organizationId,...b.range,...f.params]);
   const unknown=await query(`SELECT COALESCE(o.campus_id,'campus_sede') AS campus_id,'current' AS bucket,COUNT(*) AS undated_orders FROM pdv_orders o
    WHERE o.organization_id = ? AND o.payment_status='PAID' AND o.status <> 'CANCELADO' AND o.paid_at IS NULL${f.sql} GROUP BY campus_id`,[scope.organizationId,...f.params]);return [...rows,...unknown.rows];
  },['undated_orders']);
@@ -133,7 +134,7 @@ export async function intelligenceOperations(scope:IntelligenceScope,preset:stri
    FROM service_schedules s INNER JOIN ministries m ON m.organization_id=s.organization_id AND m.id=s.ministry_id
    LEFT JOIN ministry_roles r ON r.organization_id=s.organization_id AND r.ministry_id=s.ministry_id
    LEFT JOIN service_roster_items i ON i.organization_id=s.organization_id AND i.schedule_id=s.id AND i.role_id=r.id
-   WHERE s.organization_id = ? AND s.status IN ('PUBLISHED','COMPLETED') AND s.service_date >= ? AND s.service_date < ?${f.sql}
+   WHERE s.organization_id = ? AND s.status IN ('PUBLISHED','COMPLETED') AND ${b.filter}${f.sql}
    GROUP BY s.id,s.organization_id,s.campus_id,bucket,r.id,r.min_volunteers)
    SELECT campus_id,bucket,COUNT(DISTINCT id) AS schedules,SUM(required_slots) AS required_slots,SUM(accepted_slots) AS accepted_slots,
    SUM(GREATEST(0,required_slots-accepted_slots)) AS uncovered_slots FROM roles WHERE organization_id = ? GROUP BY campus_id,bucket`,[...b.params,scope.organizationId,...b.range,...f.params,scope.organizationId])).rows;
@@ -141,7 +142,7 @@ export async function intelligenceOperations(scope:IntelligenceScope,preset:stri
  await source('kids',['kids_checkins','kids_open','kids_capacity'],async ids=>{
   const f=scopeFor(ids,'k'),r=scopeFor(ids,'r'),b=buckets('k.checkin_at',true);
   const historic=await query(`SELECT COALESCE(k.campus_id,'campus_sede') AS campus_id,${b.sql} AS bucket,COUNT(*) AS kids_checkins FROM kids_checkins k
-   WHERE k.organization_id = ? AND k.status IN ('CHECKED_IN','CALLING_PARENTS','CHECKED_OUT') AND k.checkin_at >= ? AND k.checkin_at < ?${f.sql} GROUP BY campus_id,bucket`,[...b.params,scope.organizationId,...b.range,...f.params]);
+   WHERE k.organization_id = ? AND k.status IN ('CHECKED_IN','CALLING_PARENTS','CHECKED_OUT') AND ${b.filter}${f.sql} GROUP BY campus_id,bucket`,[...b.params,scope.organizationId,...b.range,...f.params]);
   const open=await query(`SELECT COALESCE(k.campus_id,'campus_sede') AS campus_id,'current' AS bucket,COUNT(*) AS kids_open FROM kids_checkins k
    WHERE k.organization_id = ? AND k.status IN ('CHECKED_IN','CALLING_PARENTS')${f.sql} GROUP BY campus_id`,[scope.organizationId,...f.params]);
   const rooms=await query(`SELECT COALESCE(r.campus_id,'campus_sede') AS campus_id,'current' AS bucket,SUM(GREATEST(r.capacity,0)) AS kids_capacity FROM kids_rooms r

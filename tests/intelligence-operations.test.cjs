@@ -36,3 +36,11 @@ test('negative/zero bases never create invented growth rates',()=>{assert.deepEq
 test('catalog additions preserve existing denials and commercial data',()=>{const old={'content.analytics_dashboard':true,'financial.cashflow_ledger':true,'system.multicampus_enabled':true,'kids.module_enabled':true,'intelligence.finance':false,price:399};const result=extend(old);assert.equal(result['intelligence.finance'],false);assert.equal(result['intelligence.operations'],true);assert.equal(result['intelligence.multicampus'],true);assert.equal(result.price,399);assert.equal(old['intelligence.operations'],undefined);});
 test('consolidated average ticket is weighted by paid orders, never averaged across campuses',async()=>{state.campuses.push({id:'camp-b',name:'B'});state.sales=[{campus_id:'camp-a',bucket:'current',paid_orders:1,sales:10000},{campus_id:'camp-b',bucket:'current',paid_orders:9,sales:9000}];const r=await intelligenceOperations({...scope(),campusIds:['camp-a','camp-b']},'month','units');assert.equal(r.sources.store.metrics.find(m=>m.key==='average_ticket').value,1900);assert.equal(r.units[0].sources.store.metrics.find(m=>m.key==='average_ticket').value,10000);assert.equal(r.units[1].sources.store.metrics.find(m=>m.key==='average_ticket').value,1000);});
 test('unit and operation flags cannot be bypassed by a direct URL',async()=>{state.flags['intelligence.operations']=false;assert.equal((await handler(request('operations'))).statusCode,403);state.flags['intelligence.multicampus']=false;assert.equal((await handler(request('units'))).statusCode,403);});
+
+for(const preset of ['month','last_month','7d','30d'])test(preset+' enforces the exact two comparison windows in all five historical sources',async()=>{
+ const model=require('../src/services/intelligenceModel.ts'),p=model.intelligencePeriod(preset);
+ const r=await intelligenceOperations(scope(),preset,'units');assert.deepEqual(r.errors,[]);
+ const ranged=state.calls.filter(c=>c.sql.includes('CASE WHEN')&&c.sql.includes('AS bucket'));
+ assert.equal(ranged.length,5);
+ for(const call of ranged){assert.match(call.sql,/\) OR \(/);const boundary=/o\.paid_at|k\.checkin_at/.test(call.sql)?model.utcBoundary(p.previousEnd).slice(0,19).replace('T',' '):p.previousEnd;assert.ok(call.params.includes(boundary),'Missing previousEnd would include records from the gap between the two windows');}
+});
