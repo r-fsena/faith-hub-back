@@ -101,6 +101,11 @@ provider:
           Action:
             - dynamodb:UpdateItem
           Resource: !GetAtt RateLimitTable.Arn
+        - Sid: TenantScopedMediaUploads
+          Effect: Allow
+          Action:
+            - s3:PutObject
+          Resource: "arn:aws:s3:::${env:S3_MEDIA_BUCKET, 'faith-hub-media-bucket-rafaelsena'}/*/*"
         - Effect: Allow
           Action:
             - sqs:SendMessage
