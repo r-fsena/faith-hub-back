@@ -128,7 +128,10 @@
         "intelligence.activation": true,
         "intelligence.member_journey": false,
         "intelligence.actions": true,
-        "intelligence.goals": true
+        "intelligence.goals": true,
+        "intelligence.finance": false,
+        "intelligence.operations": false,
+        "intelligence.multicampus": false
       },
       "status": "ACTIVE"
     },
@@ -243,7 +246,10 @@
         "intelligence.activation": true,
         "intelligence.member_journey": true,
         "intelligence.actions": true,
-        "intelligence.goals": true
+        "intelligence.goals": true,
+        "intelligence.finance": false,
+        "intelligence.operations": true,
+        "intelligence.multicampus": false
       },
       "status": "ACTIVE"
     },
@@ -363,7 +369,10 @@
         "intelligence.activation": true,
         "intelligence.member_journey": true,
         "intelligence.actions": true,
-        "intelligence.goals": true
+        "intelligence.goals": true,
+        "intelligence.finance": true,
+        "intelligence.operations": true,
+        "intelligence.multicampus": true
       },
       "status": "ACTIVE"
     },
@@ -483,7 +492,10 @@
         "intelligence.activation": true,
         "intelligence.member_journey": true,
         "intelligence.actions": true,
-        "intelligence.goals": true
+        "intelligence.goals": true,
+        "intelligence.finance": true,
+        "intelligence.operations": true,
+        "intelligence.multicampus": true
       },
       "status": "ACTIVE"
     }

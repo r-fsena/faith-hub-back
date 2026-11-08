@@ -35,7 +35,10 @@ export function normalizeEntitlements(value: unknown): Record<string, boolean> {
     const additions=['intelligence.activation','intelligence.member_journey','intelligence.actions','intelligence.goals'];
     const value = input[key] === undefined && ['intelligence.overview','intelligence.usage_collection'].includes(key)
       ? input['content.analytics_dashboard'] === true : input[key]===undefined&&additions.includes(key)
-      ? !!base&&(key!=='intelligence.member_journey'||input['visitors.module_enabled']===true) : input[key];
+      ? !!base&&(key!=='intelligence.member_journey'||input['visitors.module_enabled']===true) : input[key]===undefined&&key==='intelligence.finance'
+      ? !!base&&input['financial.cashflow_ledger']===true : input[key]===undefined&&key==='intelligence.operations'
+      ? !!base&&['events.module_enabled','pdv.module_enabled','kids.module_enabled','volunteers.module_enabled'].some(k=>input[k]===true) : input[key]===undefined&&key==='intelligence.multicampus'
+      ? !!base&&input['system.multicampus_enabled']===true : input[key];
     if (typeof value !== 'boolean') throw new Error(`INVALID_PLAN_ENTITLEMENT:${key}`);
     flags[key] = value;
   }

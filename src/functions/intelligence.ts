@@ -11,6 +11,7 @@ import { SAFE_ID, dayInSaoPaulo, subjectKey } from '../services/intelligenceMode
 import {activationFunnel,communityJourney} from '../services/intelligenceJourneys';
 import {listWelcomeVisitors,welcomeOptions,mutateWelcome} from '../services/intelligenceWelcome';
 import {actionOptions,listActions,saveAction,listGoals,saveGoal} from '../services/intelligenceActions';
+import {intelligenceOperations,FINANCE_ROLES,OPERATIONS_ROLES} from '../services/intelligenceOperations';
 
 export async function intelligenceHandler(event:APIGatewayProxyEvent) {
   try {
@@ -41,13 +42,25 @@ export async function intelligenceHandler(event:APIGatewayProxyEvent) {
       const flags=await evaluateTenantFlags(scope.organizationId,scope.campusId,'production');
       return apiResponse(202,await acceptUsage(scope.organizationId,scope.campusId,auth.user,body,flags.flags));
     }
-    const role=enforceRole(auth.user,['SUPERADMIN','PASTOR','ADMIN','LEADER']);if(!role.allowed)return role.errorResponse!;
-    const permission=enforcePermission(auth.user,'intelligence.view',['SUPERADMIN','PASTOR','ADMIN','LEADER']);if(!permission.allowed)return permission.errorResponse!;
+    const role=enforceRole(auth.user,['SUPERADMIN','PASTOR','ADMIN','TREASURER','LEADER']);if(!role.allowed)return role.errorResponse!;
+    const permission=enforcePermission(auth.user,'intelligence.view',['SUPERADMIN','PASTOR','ADMIN','TREASURER','LEADER']);if(!permission.allowed)return permission.errorResponse!;
     const flags=await evaluateTenantFlags(scope.organizationId,scope.campusId,'production');
     if(!flags.flags['intelligence.overview'])return apiResponse(403,{message:'O módulo de Inteligência não está habilitado para esta igreja.'});
     const route=path.slice(path.indexOf('intelligence')+1);
     const enabled=(key:string,parent?:string)=>{if(!flags.flags[key]||(parent&&!flags.flags[parent]))throw new IntelligenceError(403,'Este recurso não está habilitado no plano ou escopo selecionado.');};
     const respond=(data:any)=>apiResponse(200,data,{'Cache-Control':'no-store'});
+    if(['finance','operations','units'].includes(route[0])&&route.length===1&&method==='GET'){
+      const view=route[0] as 'finance'|'operations'|'units';
+      const access=enforceRole(auth.user,view==='operations'?OPERATIONS_ROLES:FINANCE_ROLES);if(!access.allowed)return access.errorResponse!;
+      if(view==='finance'){
+        enabled('intelligence.finance','financial.cashflow_ledger');enabled('financial.module_enabled');
+        const financial=enforcePermission(auth.user,'intelligence.view_financial',FINANCE_ROLES);if(!financial.allowed)return financial.errorResponse!;
+      }else if(view==='operations')enabled('intelligence.operations');
+      else{enabled('intelligence.multicampus','system.multicampus_enabled');}
+      return respond(await intelligenceOperations(scope,event.queryStringParameters?.period||'month',view));
+    }
+    // Treasury access is restricted to its financial views, never the pastoral/member panels.
+    if(auth.user.role==='TREASURER')return apiResponse(403,{message:'Seu perfil de tesouraria permite consultar somente Finanças e seu consolidado de unidades.'});
     if(route[0]==='activation'&&method==='GET'){enabled('intelligence.activation','members.module_enabled');return respond(await activationFunnel(scope,flags.flags,event.queryStringParameters?.period||'month'));}
     if(route[0]==='community'&&method==='GET'){enabled('intelligence.member_journey','visitors.module_enabled');return respond(await communityJourney(scope,event.queryStringParameters?.period||'month',Number(event.queryStringParameters?.window_days||7),flags.flags));}
     if(route[0]==='welcome'){

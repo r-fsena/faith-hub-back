@@ -143,7 +143,10 @@ export async function evaluateTenantFlags(
     'intelligence.activation': false,
     'intelligence.member_journey': false,
     'intelligence.actions': false,
-    'intelligence.goals': false
+    'intelligence.goals': false,
+    'intelligence.finance': false,
+    'intelligence.operations': false,
+    'intelligence.multicampus': false
   };
   if (contract) {
     for (const key of ENTITLEMENT_KEYS) flagsMap[key] = contract.entitlements[key];

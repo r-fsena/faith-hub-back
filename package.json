@@ -62,7 +62,9 @@
     "test:intelligence:mysql": "node scripts/test-intelligence-mysql.cjs --temporary-only",
     "db:migrate:intelligence:journeys": "node migrate_intelligence_journeys.js",
     "db:migrate:intelligence:journeys:status": "node migrate_intelligence_journeys.js --status",
-    "db:migrate:intelligence:journeys:schema": "node migrate_intelligence_journeys.js --schema-only"
+    "db:migrate:intelligence:journeys:schema": "node migrate_intelligence_journeys.js --schema-only",
+    "db:migrate:intelligence:operations": "node migrate_intelligence_operations.js",
+    "db:migrate:intelligence:operations:status": "node migrate_intelligence_operations.js --status"
   },
   "dependencies": {
     "@aws-sdk/client-cognito-identity-provider": "^3.0.0",
