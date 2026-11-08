@@ -12,7 +12,10 @@ const s3 = new S3Client({
   // The default provider preserves AWS_SESSION_TOKEN for Lambda role credentials.
   // Rebuilding credentials with only accessKeyId/secretAccessKey creates invalid
   // presigned upload URLs whenever AWS issues temporary credentials.
-  region: process.env.AWS_REGION || 'us-east-2'
+  region: process.env.AWS_REGION || 'us-east-2',
+  // The image body arrives later from the browser. Do not pre-sign the checksum
+  // of an empty body; S3 still computes and stores the uploaded object's checksum.
+  requestChecksumCalculation: 'WHEN_REQUIRED'
 });
 
 // Whitelist de tipos MIME e extensões permitidas
