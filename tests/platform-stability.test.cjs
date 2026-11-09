@@ -202,7 +202,8 @@ test('Ministry management is scoped to responsible leaders while tenant admins r
   assert.match(handler, /const managementScope = event\.queryStringParameters\?\.scope === 'manage'/);
   assert.match(handler, /managementScope && !\(user\.isSuperAdmin \|\| GLOBAL_MINISTRY_ROLES\.includes\(user\.role\)\)/);
   assert.match(handler, /sql \+= ` AND m\.leader_id = \?`/);
-  assert.match(handler, /requireAuth\(event\)/);
+  assert.match(handler, /requireMinistryAuth\(event\)/);
+  assert.match(read('faith-hub-backend/src/services/ministryScope.ts'), /requireAuth\(event\)/);
   assert.match(handler, /canUserViewMinistrySchedules/);
 });
 

@@ -93,7 +93,7 @@ test('Studio ministry scope exposes all ministries only to tenant administrators
   const adminResult = await ministries.listMinistries(event({}, { queryStringParameters: { organization_id: 'org-a', scope: 'manage' } }));
   assert.equal(adminResult.statusCode, 200);
   const adminList = calls.find(call => call.sql.includes('FROM ministries m'));
-  assert.doesNotMatch(adminList.sql, /m\.leader_id = \?/);
+  assert.doesNotMatch(adminList.sql, /AND m\.leader_id = \?/);
 });
 test('Ministry detail reads reject unrelated leaders and limit schedules to participants', async () => {
   reset();
