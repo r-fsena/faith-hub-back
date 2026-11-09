@@ -1,3 +1,4 @@
+import { parseCampusCoordinates } from '../services/campusCoordinates';
 import { enforcePlanAccess } from '../services/planAccess';
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { query, apiResponse } from '../db';
@@ -22,8 +23,8 @@ export const listCampuses = async (event: APIGatewayProxyEvent): Promise<APIGate
              COUNT(DISTINCT m.id) as total_members,
              COUNT(DISTINCT cg.id) as total_cells
       FROM campuses c
-      LEFT JOIN members m ON m.campus_id = c.id
-      LEFT JOIN cell_groups cg ON cg.campus_id = c.id
+      LEFT JOIN members m ON m.campus_id = c.id AND m.organization_id = c.organization_id
+      LEFT JOIN cell_groups cg ON cg.campus_id = c.id AND cg.organization_id = c.organization_id
       WHERE c.organization_id = ?
       GROUP BY c.id
       ORDER BY c.is_headquarters DESC, c.created_at ASC
@@ -88,11 +89,20 @@ export const createOrUpdateCampus = async (event: APIGatewayProxyEvent): Promise
     if (!tenantCheck.allowed) return tenantCheck.errorResponse!;
     const orgId = tenantCheck.effectiveOrgId;
 
+    let existing: any = null;
     if (id) {
-      const { rows: owned } = await query('SELECT id FROM campuses WHERE id = ? AND organization_id = ? LIMIT 1', [id, orgId]);
+      const { rows: owned } = await query('SELECT id, address, latitude, longitude FROM campuses WHERE id = ? AND organization_id = ? LIMIT 1', [id, orgId]);
       if (!owned.length) return apiResponse(404, { error: 'Unidade não encontrada nesta organização.' });
+      existing = owned[0];
       if (!auth.user.isSuperAdmin && !auth.user.campusIds.includes('all') && !auth.user.campusIds.includes(id)) return apiResponse(403, { error: 'Sem acesso a esta unidade.' });
     }
+    let coordinates;
+    try {
+      const supplied = Object.hasOwn(body, 'latitude') || Object.hasOwn(body, 'longitude');
+      // An address change invalidates a previous pin unless coordinates are explicitly supplied.
+      const preserve = existing && !supplied && (address === undefined || address === existing.address);
+      coordinates = parseCampusCoordinates(preserve ? existing.latitude : body.latitude, preserve ? existing.longitude : body.longitude);
+    } catch (error: any) { return apiResponse(400, { error: error.message }); }
     const campusId = id || uuidv4();
     if (!id) {
       const planAccess = await enforcePlanAccess(event, 'system.multicampus_enabled');
@@ -104,44 +114,23 @@ export const createOrUpdateCampus = async (event: APIGatewayProxyEvent): Promise
       await query(`UPDATE campuses SET is_headquarters = FALSE WHERE organization_id = ?`, [orgId]);
     }
 
-    const sql = `
-      INSERT INTO campuses (
-        id, organization_id, name, slug, is_headquarters,
-        pastor_name, phone, whatsapp, email,
-        address, neighborhood, city, state, status
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      ON DUPLICATE KEY UPDATE
-        name = VALUES(name),
-        slug = VALUES(slug),
-        is_headquarters = VALUES(is_headquarters),
-        pastor_name = VALUES(pastor_name),
-        phone = VALUES(phone),
-        whatsapp = VALUES(whatsapp),
-        email = VALUES(email),
-        address = VALUES(address),
-        neighborhood = VALUES(neighborhood),
-        city = VALUES(city),
-        state = VALUES(state),
-        status = VALUES(status),
-        updated_at = NOW()
-    `;
-
-    await query(sql, [
-      campusId,
-      orgId,
-      name,
-      formattedSlug,
-      Boolean(is_headquarters),
-      pastor_name || '',
-      phone || '',
-      whatsapp || '',
-      email || '',
-      address || '',
-      neighborhood || '',
-      city || '',
-      state || '',
-      status || 'ACTIVE'
-    ]);
+    const values = [
+      name, formattedSlug, Boolean(is_headquarters), pastor_name || '', phone || '',
+      whatsapp || '', email || '', address ?? existing?.address ?? '', neighborhood || '',
+      city || '', state || '', status || 'ACTIVE', coordinates.latitude, coordinates.longitude
+    ];
+    if (id) {
+      await query(`UPDATE campuses SET
+        name = ?, slug = ?, is_headquarters = ?, pastor_name = ?, phone = ?,
+        whatsapp = ?, email = ?, address = ?, neighborhood = ?, city = ?, state = ?,
+        status = ?, latitude = ?, longitude = ?, updated_at = NOW()
+        WHERE organization_id = ? AND id = ?`, [...values, orgId, campusId]);
+    } else {
+      await query(`INSERT INTO campuses (
+        id, organization_id, name, slug, is_headquarters, pastor_name, phone,
+        whatsapp, email, address, neighborhood, city, state, status, latitude, longitude
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, [campusId, orgId, ...values]);
+    }
 
     await logSecurityEvent({
       organizationId: orgId,
@@ -149,12 +138,13 @@ export const createOrUpdateCampus = async (event: APIGatewayProxyEvent): Promise
       action: id ? 'UPDATE_CAMPUS' : 'CREATE_CAMPUS',
       resource: 'campuses',
       resourceId: campusId,
-      details: { name, slug: formattedSlug, is_headquarters: Boolean(is_headquarters) },
+      details: { name, slug: formattedSlug, is_headquarters: Boolean(is_headquarters), ...coordinates },
       event
     });
 
     return apiResponse(200, { message: 'Campus/Unidade salva com sucesso!', campus_id: campusId });
   } catch (error: any) {
+    if (error?.code === 'ER_DUP_ENTRY') return apiResponse(409, { error: 'Já existe uma unidade com este identificador nesta igreja.' });
     console.error('Erro ao salvar campus:', error);
     return apiResponse(500, { error: 'Erro ao salvar unidade' });
   }

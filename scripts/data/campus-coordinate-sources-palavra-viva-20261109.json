@@ -1,0 +1,268 @@
+{
+  "version": "2026-11-09",
+  "organization_id": "org_434723d4803be266",
+  "entries": [
+    {
+      "campus_id": "campus_434723d4803be266",
+      "name": "Palavra Viva Church Sede",
+      "expected_address": "Palavra Viva Church, Av. Gov. Ivo Silveira, 2847 - Capoeiras, Florianópolis - SC, 88085-001 — Brasil",
+      "source_url": "https://www.palavravivachurch.org/archives/onde-encontrar/palavra-viva-church-sede",
+      "status": "READY",
+      "latitude": -27.600626,
+      "longitude": -48.5946863,
+      "coordinate_source": "https://www.google.com.br/maps/dir//-27.600626,-48.5946863/@-27.6012298,-48.5949789,17.25z"
+    },
+    {
+      "campus_id": "239d5916-e55e-554d-8714-7c612cf71163",
+      "name": "Palavra Viva Church Ingleses",
+      "expected_address": "SC-403, 5280 - Ingleses Norte, Florianópolis - SC, 88058-001 — Brasil",
+      "source_url": "https://www.palavravivachurch.org/archives/onde-encontrar/palavra-viva-church-ingleses",
+      "status": "READY",
+      "latitude": -27.4383361,
+      "longitude": -48.4089105,
+      "coordinate_source": "https://www.google.com.br/maps/dir//Rod.+Armando+Calil+Bulos,+5280+-+Ingleses+do+Rio+Vermelho,+Florian%C3%B3polis+-+SC,+88058-001/@-27.4385796,-48.4093656,18z/data=!4m8!4m7!1m0!1m5!1m1!1s0x9527421b677662a5:0xe2112a7e33678d73!2m2!1d-48.4089105!2d-27.4383361"
+    },
+    {
+      "campus_id": "cc4a4fbd-7bee-5cc6-8180-25a1ce236071",
+      "name": "Palavra Viva Church Morro das Pedras",
+      "expected_address": "Rua Olindina Maria Lopes, 40, Areias Morro das Pedras, Florianópolis CEP 88066-028 — Brasil",
+      "source_url": "https://www.palavravivachurch.org/archives/onde-encontrar/palavra-viva-church-morro-das-pedras",
+      "status": "READY",
+      "latitude": -27.7058962,
+      "longitude": -48.5045199,
+      "coordinate_source": "https://www.google.com/maps/dir//Servid%C3%A3o+Olindina+Maria+Lopes,+40+-+Ribeir%C3%A3o+da+Ilha,+Florian%C3%B3polis+-+SC,+88064-030/@-27.7058962,-48.5067086,17z/data=!4m9!4m8!1m0!1m5!1m1!1s0x95273b339692880d:0x71c48988797b2918!2m2!1d-48.5045199!2d-27.7058962!3e0"
+    },
+    {
+      "campus_id": "29d9108b-7d17-554f-8639-f6d93dc2deea",
+      "name": "Palavra Viva Church Canasvieiras",
+      "expected_address": "Rod. José Carlos Daux, 18070, Vargem Pequena - Canasvieiras – Florianópolis - SC - CEP 88052-401 — Brasil",
+      "source_url": "https://www.palavravivachurch.org/archives/onde-encontrar/palavra-viva-church-canasvieiras",
+      "status": "READY",
+      "latitude": -27.4461838,
+      "longitude": -48.4569772,
+      "coordinate_source": "https://www.google.com.br/maps/dir//Rod.+Jos%C3%A9+Carlos+Daux,+18070+-+Vargem+de+Fora,+Florian%C3%B3polis+-+SC,+88050-401/@-27.4443151,-48.4749484,13.25z/data=!4m8!4m7!1m0!1m5!1m1!1s0x952743c2265755ab:0x2e5151a5add6f214!2m2!1d-48.4569772!2d-27.4461838"
+    },
+    {
+      "campus_id": "8c54d19d-ff16-5b4b-8548-7d38bbbb7676",
+      "name": "Palavra Viva Church Rio Vermelho",
+      "expected_address": "Rodovia João Gualberto Soares, 5416 - Rio Vermelho — Florianópolis/SC — Brasil",
+      "source_url": "https://www.palavravivachurch.org/archives/onde-encontrar/palavra-viva-church-rio-vermelho",
+      "status": "PENDING_PIN",
+      "reason": "O ponto do mapa oficial diverge do bairro e o geocodificador retornou somente trechos da rodovia."
+    },
+    {
+      "campus_id": "6bfd114d-4b73-5172-8f44-38c2274dd37d",
+      "name": "Palavra Viva Church Nova Iguaçu",
+      "expected_address": "Rua Oscar Soares, Soares, 453, Centro – Nova Iguaçu/R CEP 26220-099 — Brasil",
+      "source_url": "https://www.palavravivachurch.org/archives/onde-encontrar/palavra-viva-church-nova-iguacu",
+      "status": "READY",
+      "latitude": -22.7577626,
+      "longitude": -43.4371854,
+      "coordinate_source": "https://www.google.com/maps/dir//R.+Oscar+Soares,+453+-+Parque+Rosario,+Nova+Igua%C3%A7u+-+RJ,+26550-160/@-22.7577626,-43.4393741,17z/data=!4m9!4m8!1m0!1m5!1m1!1s0x9966573c765873:0x6ecfc413b9573314!2m2!1d-43.4371854!2d-22.7577626!3e0"
+    },
+    {
+      "campus_id": "0d1d8a72-e425-528c-85ad-1a2a838d93ee",
+      "name": "Palavra Viva Church Caxias do Sul",
+      "expected_address": "Rua Midianeira, 840, bairro Midianeira, Caxias do Sul/RS CEP 95010-210 — Brasil",
+      "source_url": "https://www.palavravivachurch.org/archives/onde-encontrar/palavra-viva-church-caxias-do-sul",
+      "status": "READY",
+      "latitude": -29.1720436,
+      "longitude": -51.2001372,
+      "coordinate_source": "https://www.google.com/maps/dir//R.+Medianeira,+840+-+Medianeira,+Caxias+do+Sul+-+RS,+95010-210/@-29.1720436,-51.2023259,17z/data=!4m9!4m8!1m0!1m5!1m1!1s0x951ea321e507e353:0x6f70b30faf34ec1e!2m2!1d-51.2001372!2d-29.1720436!3e0"
+    },
+    {
+      "campus_id": "b133803b-74ad-5c07-830d-9218a586e145",
+      "name": "Palavra Viva Church Lajeado",
+      "expected_address": "Rua João Goulart, 741/109 95912580 Lajeado, RS — Brasil",
+      "source_url": "https://www.palavravivachurch.org/archives/onde-encontrar/palavra-viva-church-lajeado",
+      "status": "PENDING_PIN",
+      "reason": "O destino do mapa oficial está em outro país e o geocodificador retornou somente a rua."
+    },
+    {
+      "campus_id": "e30c20d6-883b-59b8-8eaa-53ccdb60a6b2",
+      "name": "Palavra Viva Church São Leopoldo",
+      "expected_address": "Avenida Doutor Mário Sperb, 1536 93032080 São Leopoldo, RS — Brasil",
+      "source_url": "https://www.palavravivachurch.org/archives/onde-encontrar/palavra-viva-church-sao-leopoldo",
+      "status": "READY",
+      "latitude": -29.7731115,
+      "longitude": -51.1313318,
+      "coordinate_source": "https://www.google.com.br/maps/dir//Palavra+Viva+Church+S%C3%A3o+Leopoldo+-+Av.+Dr.+Mario+Sperb,+1536+-+Jardim+America,+S%C3%A3o+Leopoldo+-+RS,+93032-080/@-29.7747722,-51.1402503,13.83z/data=!4m8!4m7!1m0!1m5!1m1!1s0x951942bdc6e558cf:0xf792cf73f4edf4be!2m2!1d-51.1313318!2d-29.7731115"
+    },
+    {
+      "campus_id": "d705fec9-1dc6-5225-87b6-8e81166412e2",
+      "name": "Palavra Viva Church Pelotas",
+      "expected_address": "Rua Prof. Araújo 1652 96020-360 Pelotas, RS — Brasil",
+      "source_url": "https://www.palavravivachurch.org/archives/onde-encontrar/palavra-viva-church-pelotas",
+      "status": "READY",
+      "latitude": -31.7558099,
+      "longitude": -52.3432077,
+      "coordinate_source": "https://www.google.com.br/maps/dir//R.+Prof.+Dr.+Ara%C3%BAjo,+1652+-+Centro,+Pelotas+-+RS,+96020-360/@-31.7563272,-52.3447119,16.25z/data=!4m8!4m7!1m0!1m5!1m1!1s0x9511b575a4973125:0x99cf73792f94900f!2m2!1d-52.3432077!2d-31.7558099"
+    },
+    {
+      "campus_id": "e8722860-6b8c-5336-8546-fffb99de554a",
+      "name": "Palavra Viva Church Palhoça",
+      "expected_address": "Av: Papa Paulo VI 646 - Ponte do Imaruim - Palhoça - SC — Brasil",
+      "source_url": "https://www.palavravivachurch.org/archives/onde-encontrar/palavra-viva-church-palhoca",
+      "status": "PENDING_PIN",
+      "reason": "A página oficial não publica um ponto de mapa; geocodificação retornou somente a rua."
+    },
+    {
+      "campus_id": "df7021bb-c567-5344-81a3-8fc8349ffacf",
+      "name": "Palavra Viva Church Videira",
+      "expected_address": "Rua Saul Brandalise, 480, Centro, Videira-SC — Brasil",
+      "source_url": "https://www.palavravivachurch.org/archives/onde-encontrar/igreja-palavra-viva-videira",
+      "status": "READY",
+      "latitude": -27.0061915,
+      "longitude": -51.1493262,
+      "coordinate_source": "https://www.google.com.br/maps/dir//R.+Saul+Brandalise,+480+-+Centro,+Videira+-+SC,+89560-000/@-27.0061581,-51.149656,18z/data=!4m8!4m7!1m0!1m5!1m1!1s0x94e14e45688e6cd1:0x5dd8e22103b35187!2m2!1d-51.1493262!2d-27.0061915"
+    },
+    {
+      "campus_id": "06336071-1bbe-59f3-88e0-5dd38c0cb68a",
+      "name": "Palavra Viva Church Garopaba",
+      "expected_address": "Rodovia SC 434 - km 4 Garopaba, CEP 88495000 - Palhocinha — Brasil",
+      "source_url": "https://www.palavravivachurch.org/archives/onde-encontrar/palavra-viva-church-garopaba",
+      "status": "READY",
+      "latitude": -28.051661,
+      "longitude": -48.64716,
+      "coordinate_source": "https://www.google.com.br/maps/dir//Prolincon+Vigil%C3%A2ncia,+Rodovia+SC+434,+KM+5,+4313,+Sala+3+-+Areias+de+Palhocinha,+Garopaba+-+SC,+88495-000/@-28.0519044,-48.6478162,17.5z/data=!4m8!4m7!1m0!1m5!1m1!1s0x9526d21819fbd871:0x3108f7421c2c5e5e!2m2!1d-48.64716!2d-28.051661"
+    },
+    {
+      "campus_id": "afb98a4a-c12e-5523-8b96-5aaca075fb35",
+      "name": "Palavra Viva Church Paulo Lopes",
+      "expected_address": "Rua Ana Raupp de Sá - Próximo a APAE 88490000 Paulo Lopes, SC — Brasil",
+      "source_url": "https://www.palavravivachurch.org/archives/onde-encontrar/palavra-viva-church-paulo-lopes",
+      "status": "READY",
+      "latitude": -27.9713407,
+      "longitude": -48.6821292,
+      "coordinate_source": "https://www.google.com/maps/dir//-27.9713407,-48.6821292/@-27.9711846,-48.7173523,13z"
+    },
+    {
+      "campus_id": "3e07a08b-58b6-5247-8386-53cba52e5373",
+      "name": "Palavra Viva Church São José",
+      "expected_address": "Rua Hipólito Henrique Pfleger - 4767 - Serraria - São José - SC, 88160-580 — Brasil",
+      "source_url": "https://www.palavravivachurch.org/archives/onde-encontrar/palavra-viva-church-sao-jose",
+      "status": "PENDING_PIN",
+      "reason": "O mapa oficial aponta Rua Otto Júlio Malina, diferente do endereço cadastrado na Rua Hipólito Henrique Pfleger."
+    },
+    {
+      "campus_id": "07ec402d-7dab-5400-837d-9f8e318a0f9c",
+      "name": "Palavra Viva Church Antônio Carlos",
+      "expected_address": "Rua Maria Garcia Coelho 60 centro CEP 88180000 — Antônio Carlos/SC — Brasil",
+      "source_url": "https://www.palavravivachurch.org/archives/onde-encontrar/palavra-viva-church-antonio-carlos",
+      "status": "READY",
+      "latitude": -27.5145707,
+      "longitude": -48.7599019,
+      "coordinate_source": "https://www.google.com.br/maps/dir//Palavra+Viva+-+R.+Catarina+Maria+Garcia,+Ant%C3%B4nio+Carlos+-+SC,+88180-000/@-27.5146297,-48.7602157,18.5z/data=!4m8!4m7!1m0!1m5!1m1!1s0x9520b25f7a0d5241:0xbe438c8470861f4c!2m2!1d-48.7599019!2d-27.5145707"
+    },
+    {
+      "campus_id": "c80de3e3-061e-527a-8473-a0fc4a41bc5a",
+      "name": "Palavra Viva Church Forquilhas",
+      "expected_address": "Av Ceniro Luiz Ribeiro Martins, s/n. Lot. Ceniro Martins - Forquilhas, São José 88107-350 São José, SC — Brasil",
+      "source_url": "https://www.palavravivachurch.org/archives/onde-encontrar/palavra-viva-church-forquilhas",
+      "status": "READY",
+      "latitude": -27.5759281,
+      "longitude": -48.6556551,
+      "coordinate_source": "https://www.google.com/maps/dir//-27.5759281,-48.6556551/@-27.5871181,-48.6587767,13z"
+    },
+    {
+      "campus_id": "5f46fb29-bc91-5810-84bc-ca76f28e1b6c",
+      "name": "Palavra Viva Church New Jersey",
+      "expected_address": "4000 US-130 Ste 1, Delran, NJ 08075 — Estados Unidos",
+      "source_url": "https://www.palavravivachurch.org/archives/onde-encontrar/palavra-viva-church-new-jersey",
+      "status": "READY",
+      "latitude": 40.0109932,
+      "longitude": -74.9600117,
+      "coordinate_source": "https://www.google.com/maps/dir//4000+US-130+%231,+Delran,+NJ+08075,+EUA/@40.0109932,-74.9622004,17z/data=!4m9!4m8!1m0!1m5!1m1!1s0x89c14ad642508c6f:0xbfe42441009ea828!2m2!1d-74.9600117!2d40.0109932!3e0"
+    },
+    {
+      "campus_id": "dfc32c75-52e2-5309-8902-ffc476709e42",
+      "name": "Palavra Viva Church Danbury",
+      "expected_address": "337 Main St, Danbury, CT — Estados Unidos",
+      "source_url": "https://www.palavravivachurch.org/archives/onde-encontrar/palavra-viva-church-danbury",
+      "status": "READY",
+      "latitude": 41.3982107,
+      "longitude": -73.4565817,
+      "coordinate_source": "https://www.openstreetmap.org/way/660071484",
+      "address_match": {
+        "house_number": "337",
+        "road": "Main Street",
+        "city": "Danbury"
+      },
+      "attribution": "© OpenStreetMap contributors, ODbL 1.0"
+    },
+    {
+      "campus_id": "83acd54d-be09-5952-8613-6980beb2e7ea",
+      "name": "Palavra Viva Church Milano",
+      "expected_address": "Via Gallarate, 200 - 200151 Milano, MI (ARIZONA 2000) — Itália",
+      "source_url": "https://www.palavravivachurch.org/archives/onde-encontrar/palavra-viva-church-milano",
+      "status": "READY",
+      "latitude": 45.5006305,
+      "longitude": 9.1233246,
+      "coordinate_source": "https://www.google.com/maps/dir//Arizona+2000,+Via+Gallarate,+Mil%C3%A3o/@45.5007294,9.0532842,12z/data=!4m9!4m8!1m0!1m5!1m1!1s0x4786c6e7455eb60d:0x680957434b763bfd!2m2!1d9.1233246!2d45.5006305!3e0"
+    },
+    {
+      "campus_id": "8f28ad4b-7d06-5db8-89ba-0e766eced3e5",
+      "name": "Palavra Viva Church Londres",
+      "expected_address": "225 WIMBLEDON PARK ROAD SW18 5RH - SOUTHFIELDS — Londres — Reino Unido",
+      "source_url": "https://www.palavravivachurch.org/archives/onde-encontrar/palavra-viva-church-londres",
+      "status": "READY",
+      "latitude": 51.4456471,
+      "longitude": -0.2054704,
+      "coordinate_source": "https://www.openstreetmap.org/way/431662530",
+      "address_match": {
+        "house_number": "225",
+        "road": "Wimbledon Park Road",
+        "city": "Greater London"
+      },
+      "attribution": "© OpenStreetMap contributors, ODbL 1.0"
+    },
+    {
+      "campus_id": "94033d74-11b5-5e27-86ca-62c0f674f0c6",
+      "name": "Palavra Viva Church Porto Alegre",
+      "expected_address": "Av. Bernardino Silveira Pastoriza, 580 - Santa Rosa de Lima, Porto Alegre - RS, 91160-310 — Brasil",
+      "source_url": "https://www.palavravivachurch.org/archives/onde-encontrar/igreja-palavra-viva-porto-alegre-2",
+      "status": "READY",
+      "latitude": -29.9909398,
+      "longitude": -51.1029155,
+      "coordinate_source": "https://www.google.com/maps/place/Av.+Bernardino+Silveira+Pastoriza,+580+-+Santa+Rosa+de+Lima,+Porto+Alegre+-+RS,+91160-310/@-29.9909398,-51.1029155,17z/data=!3m1!4b1!4m6!3m5!1s0x951976844648cfff:0xfc8a41ec4f96c7e9!8m2!3d-29.9909398!4d-51.1029155!16s%2Fg%2F11f6dmd3fj?entry=tts&g_ep=EgoyMDI0MDkxMS4wKgBIAVAD"
+    },
+    {
+      "campus_id": "3636754f-3ee7-5874-8fe9-e423d3624b5f",
+      "name": "Palavra Viva Church Lugano",
+      "expected_address": "Riva Antonio Caccia 10 Lugano 6900 Suíça, Hotel Bellevue au Lac",
+      "source_url": "https://www.palavravivachurch.org/archives/onde-encontrar/palavra-viva-church-lugano",
+      "status": "READY",
+      "latitude": 45.9938813,
+      "longitude": 8.9457346,
+      "coordinate_source": "https://www.google.com/maps/place/Best+Western+Hotel+Bellevue+au+Lac/@45.9938813,8.9435459,17z/data=!3m1!4b1!4m9!3m8!1s0x47842d97cb2de4f9:0x9f6139aad277e43c!5m2!4m1!1i2!8m2!3d45.9938813!4d8.9457346!16s%2Fg%2F1tdy3bhj?entry=tts&shorturl=1"
+    },
+    {
+      "campus_id": "ba8759a9-5964-5255-863b-025945936a42",
+      "name": "Palavra Viva Church Latina",
+      "expected_address": "Via Dei Monti Lepini 51 04100 Latina, Lácio, Itália",
+      "source_url": "https://www.palavravivachurch.org/archives/onde-encontrar/palavra-viva-church-latina",
+      "status": "READY",
+      "latitude": 41.4511688,
+      "longitude": 12.9435908,
+      "coordinate_source": "https://www.google.com/maps/dir//Via+dei+Monti+Lepini,+51,+04100+Latina+LT/@41.4511768,12.9392134,16z/data=!4m9!4m8!1m0!1m5!1m1!1s0x13250db32decc0bf:0xc7e9b3db1d4dda2d!2m2!1d12.9435908!2d41.4511688!3e0"
+    },
+    {
+      "campus_id": "26e7f14a-7c80-59eb-80e2-45937efcb62a",
+      "name": "Palavra Viva Church Paraná",
+      "expected_address": "Avenida Maringá, 1144 - Centro - Pinhais/PR — Brasil",
+      "source_url": "https://www.palavravivachurch.org/archives/onde-encontrar/palavra-viva-church-parana",
+      "status": "PENDING_PIN",
+      "reason": "A página oficial não publica um ponto de mapa; geocodificação retornou somente a avenida."
+    },
+    {
+      "campus_id": "2b613293-135b-5c51-8a72-e31b73cb7609",
+      "name": "Palavra Viva Church Portugal",
+      "expected_address": "Rua Venancio da Costa Lima, Quinta do Anjo 106 - 2950-701 — Portugal",
+      "source_url": "https://www.palavravivachurch.org/archives/onde-encontrar/palavra-viva-church-portugal",
+      "status": "READY",
+      "latitude": 38.5672551,
+      "longitude": -8.9408587,
+      "coordinate_source": "https://www.google.com/maps/place/R.+Ven%C3%A2ncio+da+Costa+Lima+106,+2950-701+Q.ta+do+Anjo,+Portugal/@38.5672593,-8.9434336,17z/data=!3m1!4b1!4m6!3m5!1s0xd1946a6abbdfb33:0x54d8b1c675339dbb!8m2!3d38.5672551!4d-8.9408587!16s%2Fg%2F11y1k80yjp?entry=tts&g_ep=EgoyMDI1MTIwOS4wIPu8ASoASAFQAw%3D%3D&skid=18d2527d-a5a8-4988-b648-25929149da51"
+    }
+  ]
+}
