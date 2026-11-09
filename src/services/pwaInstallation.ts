@@ -34,8 +34,8 @@ export function installationIdentity(settings: any, origin: string) {
   return { organizationId, slug, name, shortName, logo, version, origin,
     id: `${origin}/pwa-installations/${encodeURIComponent(organizationId)}`,
     startUrl: `${origin}/${encodeURIComponent(slug)}/`,
-    themeColor: color(config?.theme?.light?.header || settings.pwa_theme_color, '#ffffff'),
-    backgroundColor: color(config?.theme?.light?.background || settings.pwa_splash_bg, '#ffffff') };
+    themeColor: color(config?.theme?.dark?.header, '#090d16'),
+    backgroundColor: color(config?.theme?.dark?.background, '#090d16') };
 }
 export function installationManifest(settings: any, origin: string, endpoint: string) {
   const info = installationIdentity(settings, origin);
