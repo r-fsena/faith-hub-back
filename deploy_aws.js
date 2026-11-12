@@ -5,6 +5,7 @@ const path = require('node:path');
 const { validateDeployment } = require('./scripts/backend-deploy-policy.cjs');
 try {
   const { manifest, args } = validateDeployment(process.argv.slice(2), __dirname);
+  require('./scripts/check-dependency-policy.cjs').checkDependencyPolicy(__dirname);
   require('dotenv').config({ path: path.join(__dirname, '.env'), quiet: true });
   const env = { ...process.env, CI: '1', AWS_REGION: manifest.region, AWS_DEFAULT_REGION: manifest.region, AWS_PAGER: '', SLS_TELEMETRY_DISABLED: '1', SERVERLESS_UPDATE_NOTIFIER_DISABLED: '1' };
   let identity;

@@ -23,19 +23,19 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: r-fsena/faith-hub-web
-          ref: e38c6e55246575cc4be417993f5bbdadb5ff6e6e
+          ref: 65e7638b26575b9648199f30c78f3f671ef15391
           path: faith-hub-web
           persist-credentials: false
       - uses: actions/checkout@v4
         with:
           repository: r-fsena/faith-hub-pwa
-          ref: 9d35438e71448c28fd629d6cc837c56c1dc5531b
+          ref: 65b3018d676f639f3754e4be9a4eea01fb212ee8
           path: faith-hub-pwa
           persist-credentials: false
       - uses: actions/checkout@v4
         with:
           repository: r-fsena/faith-hub-site
-          ref: d1cbce5f02508ea5a890ef830ff1581725b5e67b
+          ref: 204ec5188e0e149a158d4e3ec64e440e5c9d203a
           path: faith-hub-site
           persist-credentials: false
       - uses: actions/setup-node@v4
@@ -43,6 +43,7 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: faith-hub-backend/package-lock.json
+      - run: node scripts/check-dependency-policy.cjs
       - run: npm ci
       - run: npm audit --omit=dev --audit-level=high
       - run: npm run typecheck

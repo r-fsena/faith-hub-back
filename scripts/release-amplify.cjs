@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
 const { aws } = require('./production-aws.cjs');
+const { checkDependencyPolicy } = require('./check-dependency-policy.cjs');
 const { ACCOUNT, REGION, APPS, REPOS, ensure, validateManifest, checkCheckout, checkRemote } = require('./production-release-policy.cjs');
 
 function main() {
@@ -14,6 +15,7 @@ function main() {
   const workspace = path.resolve(args[3]);
   ensure(fs.realpathSync(path.join(__dirname, '..')) === fs.realpathSync(path.join(workspace, 'faith-hub-backend')), 'Execute a ferramenta do próprio checkout de liberação.');
   const applying = args[4] === '--apply';
+  for (const repo of REPOS) checkDependencyPolicy(path.join(workspace, repo));
   const identity = aws('sts', 'get-caller-identity');
   ensure(identity.Account === ACCOUNT, 'Credenciais pertencem a outra conta AWS.');
   for (const repo of REPOS) checkCheckout(path.join(workspace, repo), m.commits[repo]);

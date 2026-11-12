@@ -2,6 +2,8 @@
 
 **Versão:** 1.0 · **Data:** 12/11/2026 · **Responsável pela decisão de liberação:** proprietário do produto ou pessoa formalmente designada.
 
+> **Condição operacional identificada nesta implantação:** foi encontrada dependência comprometida no backend. Antes de qualquer nova liberação de produção, concluir a avaliação da máquina e a rotação de credenciais em dispositivo confiável. Ver [registro e ações pendentes](DEPENDENCIAS_E_RESPOSTA_INCIDENTE_2026-11-12.md). O bloqueio de publicação automática permanece ativo.
+
 ## 1. Objetivo e alcance
 
 Estabelecer um caminho rastreável entre uma solicitação, sua implementação e sua entrada em produção. Esta primeira etapa interrompe a publicação automática a partir da `main`, registra a situação inicial e acrescenta verificações ao caminho manual de publicação. Uma alteração enviada ao GitHub passa a representar código disponível para validação, sem significar uma versão publicada.
@@ -101,7 +103,7 @@ Gates obrigatórios, executados a partir da raiz do ecossistema:
 
 Executar também `npm test` no backend para mudanças de backend e controles de release; para alterações no site, `npm run build` em `faith-hub-site`. Testes adicionais dependem do comportamento alterado. Testes que exigem AWS/banco real não são gates locais automáticos.
 
-A implementação desta etapa inclui testes dos guards no CI dos frontends, além dos testes da política no backend. Os testes transversais do backend leem fontes dos frontends; seu workflow agora faz checkout dos três repositórios irmãos em SHAs explícitos, sem credenciais de deploy. Atualizar esses SHAs no workflow quando uma entrega mudar o conjunto de versões compatíveis. Os repositórios eram públicos na verificação desta implantação; se forem tornados privados, configurar uma identidade com acesso de leitura aos repositórios irmãos antes de depender desse CI. O build do Amplify executa o guard **antes de `npm ci`**.
+A implementação desta etapa inclui testes dos guards no CI dos frontends, além dos testes da política no backend. Os testes transversais do backend leem fontes dos frontends; seu workflow agora faz checkout dos três repositórios irmãos em SHAs explícitos, sem credenciais de deploy. Atualizar esses SHAs no workflow quando uma entrega mudar o conjunto de versões compatíveis. Os repositórios eram públicos na verificação desta implantação; se forem tornados privados, configurar uma identidade com acesso de leitura aos repositórios irmãos antes de depender desse CI. O build do Amplify executa os guards de destino/commit e de dependências comprometidas **antes de `npm ci`**. O CI dos quatro repositórios também verifica o lockfile antes de instalar dependências; o backend fixa Axios por override para não resolver as versões comprometidas.
 
 ## 6. Preparar a versão para os frontends
 

@@ -7,6 +7,12 @@ const { execFileSync, spawnSync } = require('node:child_process');
 const { validateManifest, REPOS, APPS } = require('../scripts/production-release-policy.cjs');
 const { validateDeployment } = require('../scripts/backend-deploy-policy.cjs');
 const sha = 'a'.repeat(40);
+test('dependency policy blocks compromised direct and nested packages before installation', () => {
+  const { blockedDependencies } = require('../scripts/check-dependency-policy.cjs');
+  const lock = { packages: { 'node_modules/axios': { version: '1.14.1' }, 'node_modules/tool/node_modules/axios': { version: '0.30.4' }, 'node_modules/plain-crypto-js': { version: '4.2.1' }, 'node_modules/safe/node_modules/axios': { version: '1.21.1' } } };
+  assert.equal(blockedDependencies(lock).length, 3);
+  assert.equal(blockedDependencies({ packages: { 'node_modules/axios': { version: '1.21.1' } } }).length, 0);
+});
 const valid = () => ({ schemaVersion: 1, environment: 'production', account: '896884286429', region: 'us-east-2', releaseId: 'FH-20261112-001', approvalReference: 'Autorização explícita no chamado 123', ciReference: 'Checks CI do release no chamado 123', rollback: 'Reverter pelo commit anterior validado', commits: Object.fromEntries(REPOS.map(r => [r, sha])), targets: ['pwa'] });
 test('manifest rejects wrong destinations, missing approval and unpinned versions', () => {
   assert.equal(validateManifest(valid()).targets[0], 'pwa');

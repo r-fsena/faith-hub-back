@@ -2,7 +2,7 @@ const fs=require('node:fs');
 const {createHash}=require('node:crypto');
 const {aws:call}=require('./production-aws.cjs');
 const {APPS,ACCOUNT,REGION,ensure}=require('./production-release-policy.cjs');
-const aws=(service,operation,...args)=>{const data={};for(let i=0;i<args.length;i+=2){const key=args[i].slice(2).replace(/-([a-z])/g,(_,c)=>c.toUpperCase());data[key]=key==='maxResults'?Number(args[i+1]):args[i+1];}return call(service,operation,args.length?data:undefined);};
+const aws=(service,operation,...args)=>{const data={};for(let i=0;i<args.length;i+=2){const key=args[i].slice(2).replace(/-([a-z])/g,(_,c)=>c.toUpperCase());data[service==='apigatewayv2'?key[0].toUpperCase()+key.slice(1):key]=key==='maxResults'?Number(args[i+1]):args[i+1];}return call(service,operation,args.length?data:undefined);};
 ensure(process.argv.length===3,'Uso: node scripts/snapshot-production.cjs arquivo-novo.json');
 ensure(!fs.existsSync(process.argv[2]),'Baseline já existe; não sobrescrever.');
 const hash=x=>createHash('sha256').update(JSON.stringify(x ?? null)).digest('hex');

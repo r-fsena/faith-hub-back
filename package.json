@@ -95,5 +95,8 @@
     "serverless-offline": "^13.0.0",
     "serverless-plugin-split-stacks": "^1.15.0",
     "typescript": "^5.0.0"
+  },
+  "overrides": {
+    "axios": "1.21.1"
   }
 }
