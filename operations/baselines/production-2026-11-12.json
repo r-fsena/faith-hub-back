@@ -1,0 +1,3383 @@
+{
+  "capturedAt": "2026-11-12T13:14:41.492Z",
+  "account": "896884286429",
+  "operator": "arn:aws:iam::896884286429:user/antigravity-bot",
+  "region": "us-east-2",
+  "frontends": [
+    {
+      "name": "studio",
+      "id": "d2lyt83fsceg0b",
+      "repository": "https://github.com/r-fsena/faith-hub-web",
+      "autoBuild": false,
+      "autoBranchCreation": false,
+      "customRulesCount": 1,
+      "customRulesSha256": "57de9cf203235fd281308cf41f903c5ca09ac810ea555b6d497d3ee02e9d9590",
+      "buildSpec": "version: 1\nfrontend:\n  phases:\n    preBuild:\n      commands:\n        - npm ci\n    build:\n      commands:\n        - npm run build\n  artifacts:\n    baseDirectory: dist\n    files:\n      - '**/*'\n  cache:\n    paths:\n      - node_modules/**/*\n",
+      "environmentSha256": "b5d2c245902326d9478e0fa8d6d58f572e7e158df6d0976405a8bc1c98eb671c",
+      "branches": [
+        {
+          "name": "main",
+          "stage": "PRODUCTION",
+          "autoBuild": true,
+          "preview": false,
+          "environmentSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+          "jobs": [
+            {
+              "id": "156",
+              "status": "SUCCEED",
+              "commit": "a9a616c4bd95be0f974060062508bdfb93e9e2d3",
+              "start": "2026-11-11T22:20:30.221000-03:00",
+              "end": "2026-11-11T22:22:34.937000-03:00"
+            },
+            {
+              "id": "155",
+              "status": "SUCCEED",
+              "commit": "e0364684e5dc62803caffb4c9173bb350191f431",
+              "start": "2026-11-09T12:07:33.328000-03:00",
+              "end": "2026-11-09T12:09:35.854000-03:00"
+            },
+            {
+              "id": "154",
+              "status": "SUCCEED",
+              "commit": "67d513b90ac540d80a5049ce2a676c5bc3af8c08",
+              "start": "2026-11-08T22:37:37.492000-03:00",
+              "end": "2026-11-08T22:39:33.021000-03:00"
+            },
+            {
+              "id": "153",
+              "status": "SUCCEED",
+              "commit": "2f9f8c6dc2c18ea391217414894f91a38f1a2dba",
+              "start": "2026-11-08T21:44:55.618000-03:00",
+              "end": "2026-11-08T21:46:58.905000-03:00"
+            },
+            {
+              "id": "152",
+              "status": "SUCCEED",
+              "commit": "b76e60fab2d08092a880f6e69589d45cb111e5f5",
+              "start": "2026-11-08T18:50:36.703000-03:00",
+              "end": "2026-11-08T18:52:27.453000-03:00"
+            },
+            {
+              "id": "151",
+              "status": "SUCCEED",
+              "commit": "53c73cf8f962ea338b7d10b1223aedb18e5a2f48",
+              "start": "2026-11-08T18:25:04.628000-03:00",
+              "end": "2026-11-08T18:27:11.207000-03:00"
+            },
+            {
+              "id": "150",
+              "status": "SUCCEED",
+              "commit": "a704575868258de0c6e4f2e974c6aac4fa1c043c",
+              "start": "2026-11-08T17:41:05.636000-03:00",
+              "end": "2026-11-08T17:43:09.395000-03:00"
+            },
+            {
+              "id": "149",
+              "status": "SUCCEED",
+              "commit": "c1227d430a549f88858d2a57ac15e2cae2d1eb2d",
+              "start": "2026-11-08T16:56:15.147000-03:00",
+              "end": "2026-11-08T16:58:05.197000-03:00"
+            },
+            {
+              "id": "148",
+              "status": "SUCCEED",
+              "commit": "50b6909abf7d041941767507871bb5e3fd60eb52",
+              "start": "2026-11-08T10:23:52.643000-03:00",
+              "end": "2026-11-08T10:25:43.801000-03:00"
+            },
+            {
+              "id": "147",
+              "status": "SUCCEED",
+              "commit": "fd6db320c2a76969b349daee81e5aba274d3458a",
+              "start": "2026-11-07T23:33:31.548000-03:00",
+              "end": "2026-11-07T23:35:19.609000-03:00"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "pwa",
+      "id": "d312p1jp7kl7kp",
+      "repository": "https://github.com/r-fsena/faith-hub-pwa",
+      "autoBuild": false,
+      "autoBranchCreation": false,
+      "customRulesCount": 1,
+      "customRulesSha256": "57de9cf203235fd281308cf41f903c5ca09ac810ea555b6d497d3ee02e9d9590",
+      "buildSpec": "version: 1\nfrontend:\n  phases:\n    preBuild:\n      commands:\n        - npm ci\n    build:\n      commands:\n        - npm run build\n  artifacts:\n    baseDirectory: dist\n    files:\n      - '**/*'\n  cache:\n    paths:\n      - node_modules/**/*\n",
+      "environmentSha256": "b5d2c245902326d9478e0fa8d6d58f572e7e158df6d0976405a8bc1c98eb671c",
+      "branches": [
+        {
+          "name": "main",
+          "stage": "PRODUCTION",
+          "autoBuild": true,
+          "preview": false,
+          "environmentSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+          "jobs": [
+            {
+              "id": "214",
+              "status": "SUCCEED",
+              "commit": "855f108c0b4c6d79ef667b854d015dbcd3300800",
+              "start": "2026-11-09T18:01:55.766000-03:00",
+              "end": "2026-11-09T18:03:21.985000-03:00"
+            },
+            {
+              "id": "213",
+              "status": "SUCCEED",
+              "commit": "1ec00b186873c11e99cc9aaced92e1e4f6a7bc7d",
+              "start": "2026-11-09T12:56:16.243000-03:00",
+              "end": "2026-11-09T12:57:37.401000-03:00"
+            },
+            {
+              "id": "212",
+              "status": "SUCCEED",
+              "commit": "bb76b301089e41269e1880a6cbd6b2d5b42e625a",
+              "start": "2026-11-09T12:15:59.837000-03:00",
+              "end": "2026-11-09T12:17:23.886000-03:00"
+            },
+            {
+              "id": "211",
+              "status": "SUCCEED",
+              "commit": "4942a9cc4493bf82a1771ad82c965ef655255d66",
+              "start": "2026-11-09T12:07:32.557000-03:00",
+              "end": "2026-11-09T12:08:55.786000-03:00"
+            },
+            {
+              "id": "210",
+              "status": "SUCCEED",
+              "commit": "1463de079a554b693febd5ba5ee151988b62f52f",
+              "start": "2026-11-08T22:37:33.815000-03:00",
+              "end": "2026-11-08T22:38:56.725000-03:00"
+            },
+            {
+              "id": "209",
+              "status": "SUCCEED",
+              "commit": "1d27a8830dde350eac1c1205e789a5683192a989",
+              "start": "2026-11-08T21:49:57.506000-03:00",
+              "end": "2026-11-08T21:51:20.255000-03:00"
+            },
+            {
+              "id": "208",
+              "status": "SUCCEED",
+              "commit": "a86b0d3154321b59d9f5ef1597220e046e2c9530",
+              "start": "2026-11-08T21:44:51.314000-03:00",
+              "end": "2026-11-08T21:46:07.242000-03:00"
+            },
+            {
+              "id": "207",
+              "status": "SUCCEED",
+              "commit": "9f28f49e3c6cccded74a04d850255775adc875d5",
+              "start": "2026-11-08T21:31:32.620000-03:00",
+              "end": "2026-11-08T21:32:56.189000-03:00"
+            },
+            {
+              "id": "206",
+              "status": "SUCCEED",
+              "commit": "ee979162ee5827b047f95a71ed50ff0bf9ebe022",
+              "start": "2026-11-08T20:02:55.928000-03:00",
+              "end": "2026-11-08T20:04:14.509000-03:00"
+            },
+            {
+              "id": "205",
+              "status": "SUCCEED",
+              "commit": "061256768087bd89fb9f87867f69a531faf05ae6",
+              "start": "2026-11-08T18:50:33.214000-03:00",
+              "end": "2026-11-08T18:51:53.169000-03:00"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "site",
+      "id": "dcd98qkjlz7f5",
+      "repository": "https://github.com/r-fsena/faith-hub-site",
+      "autoBuild": false,
+      "autoBranchCreation": false,
+      "customRulesCount": 35,
+      "customRulesSha256": "dbe00c1d732a0a8eb71e9dc7fc759e9d44de85185f03e48b482ecb64583e2235",
+      "buildSpec": "version: 1\nfrontend:\n  phases:\n    preBuild:\n      commands:\n        - npm ci --cache .npm --prefer-offline\n    build:\n      commands:\n        - npm run build\n  artifacts:\n    baseDirectory: dist\n    files:\n      - '**/*'\n  cache:\n    paths:\n      - .npm/**/*\n",
+      "environmentSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "branches": [
+        {
+          "name": "main",
+          "stage": "PRODUCTION",
+          "autoBuild": true,
+          "preview": false,
+          "environmentSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+          "jobs": [
+            {
+              "id": "23",
+              "status": "SUCCEED",
+              "commit": "HEAD",
+              "start": "2026-11-09T21:49:01.038000-03:00",
+              "end": "2026-11-09T21:50:51.280000-03:00"
+            },
+            {
+              "id": "22",
+              "status": "SUCCEED",
+              "commit": "0f5c53628da5428398ed4adb7855978f2d2bb1f4",
+              "start": "2026-11-03T16:41:47.269000-03:00",
+              "end": "2026-11-03T16:44:00.352000-03:00"
+            },
+            {
+              "id": "21",
+              "status": "SUCCEED",
+              "commit": "HEAD",
+              "start": "2026-11-03T16:35:30.121000-03:00",
+              "end": "2026-11-03T16:37:41.824000-03:00"
+            },
+            {
+              "id": "20",
+              "status": "SUCCEED",
+              "commit": "7e00a626684192678a908feaaecdf7254facfb5e",
+              "start": "2026-11-03T16:26:45.941000-03:00",
+              "end": "2026-11-03T16:29:22.377000-03:00"
+            },
+            {
+              "id": "19",
+              "status": "SUCCEED",
+              "commit": "6dc25bf7a269890e0ddb4ac153812b188c46f45c",
+              "start": "2026-10-26T16:47:40.361000-03:00",
+              "end": "2026-10-26T16:48:48.696000-03:00"
+            },
+            {
+              "id": "18",
+              "status": "SUCCEED",
+              "commit": "9e0fd57b805a6214f0ce2adb49a85252032af648",
+              "start": "2026-09-25T22:24:21.973000-03:00",
+              "end": "2026-09-25T22:25:42.040000-03:00"
+            },
+            {
+              "id": "17",
+              "status": "SUCCEED",
+              "commit": "81cbeb162454d08bb039f4ee2c4a23f8ea2dab9f",
+              "start": "2026-09-07T00:36:29.091000-03:00",
+              "end": "2026-09-07T00:37:41.969000-03:00"
+            },
+            {
+              "id": "16",
+              "status": "SUCCEED",
+              "commit": "7e57a960d235d0e5c04ddbe1200aa3ae923de3c0",
+              "start": "2026-09-06T18:33:37.972000-03:00",
+              "end": "2026-09-06T18:34:52.726000-03:00"
+            },
+            {
+              "id": "15",
+              "status": "SUCCEED",
+              "commit": "220528fa9ea22e8b2cf61289dd69eaba7c90d210",
+              "start": "2026-09-06T18:16:29.136000-03:00",
+              "end": "2026-09-06T18:17:44.824000-03:00"
+            },
+            {
+              "id": "14",
+              "status": "SUCCEED",
+              "commit": "4a7b47b844c4932c7260ffc026940169e5cbbfdc",
+              "start": "2026-09-06T18:02:52.410000-03:00",
+              "end": "2026-09-06T18:04:09.861000-03:00"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "functions": [
+    {
+      "name": "faith-hub-backend-prod-deleteDevotional",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-deleteDevotional",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/devotionals.deleteDevotional",
+      "codeSha256": "N9JQ/ekN1cUOPy430JqziSUM9ZtEBsYFHOcVMiFlTig=",
+      "revisionId": "afe296ae-71c5-42c3-b576-b237b1dd0c0b",
+      "lastModified": "2026-11-08T14:02:26.000+0000",
+      "environmentSha256": "61f6fe2f41954c4d2f89b32b2d4015e369591545c31c4f3e940ec30eef87dc11",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-prod-listSaasPlans",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-listSaasPlans",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/saasPlans.listPlans",
+      "codeSha256": "N9JQ/ekN1cUOPy430JqziSUM9ZtEBsYFHOcVMiFlTig=",
+      "revisionId": "4e457813-44b6-4179-8e05-9f466ffb17e1",
+      "lastModified": "2026-11-08T14:02:31.000+0000",
+      "environmentSha256": "61f6fe2f41954c4d2f89b32b2d4015e369591545c31c4f3e940ec30eef87dc11",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-prod-trackContentEngagement",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-trackContentEngagement",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/contentAnalytics.trackContentEngagement",
+      "codeSha256": "N9JQ/ekN1cUOPy430JqziSUM9ZtEBsYFHOcVMiFlTig=",
+      "revisionId": "a4c49902-50ef-437d-9cd0-8a3b3f0883df",
+      "lastModified": "2026-11-08T14:02:26.000+0000",
+      "environmentSha256": "61f6fe2f41954c4d2f89b32b2d4015e369591545c31c4f3e940ec30eef87dc11",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-prod-getMember",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-getMember",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/members.get",
+      "codeSha256": "N9JQ/ekN1cUOPy430JqziSUM9ZtEBsYFHOcVMiFlTig=",
+      "revisionId": "a067f881-3f4f-4d94-8fd3-ee49550d80eb",
+      "lastModified": "2026-11-08T14:02:26.000+0000",
+      "environmentSha256": "61f6fe2f41954c4d2f89b32b2d4015e369591545c31c4f3e940ec30eef87dc11",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-prod-saveStudyChapter",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-saveStudyChapter",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/studies.saveStudyChapter",
+      "codeSha256": "N9JQ/ekN1cUOPy430JqziSUM9ZtEBsYFHOcVMiFlTig=",
+      "revisionId": "c06fd799-51aa-4e0e-b4cb-52d0e727dad9",
+      "lastModified": "2026-11-08T14:02:26.000+0000",
+      "environmentSha256": "61f6fe2f41954c4d2f89b32b2d4015e369591545c31c4f3e940ec30eef87dc11",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-prod-toggleChapterCompletion",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-toggleChapterCompletion",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/studies.toggleChapterCompletion",
+      "codeSha256": "N9JQ/ekN1cUOPy430JqziSUM9ZtEBsYFHOcVMiFlTig=",
+      "revisionId": "16fafd24-92e7-4757-a358-d8ce23ef5d76",
+      "lastModified": "2026-11-08T14:02:59.000+0000",
+      "environmentSha256": "61f6fe2f41954c4d2f89b32b2d4015e369591545c31c4f3e940ec30eef87dc11",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-prod-deletePost",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-deletePost",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/posts.deletePost",
+      "codeSha256": "N9JQ/ekN1cUOPy430JqziSUM9ZtEBsYFHOcVMiFlTig=",
+      "revisionId": "85adb4f9-4995-4ee1-afc7-1236dd378769",
+      "lastModified": "2026-11-08T14:02:53.000+0000",
+      "environmentSha256": "61f6fe2f41954c4d2f89b32b2d4015e369591545c31c4f3e940ec30eef87dc11",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-prod-listSaasSubscriptions",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-listSaasSubscriptions",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/proposals.listSubscriptions",
+      "codeSha256": "N9JQ/ekN1cUOPy430JqziSUM9ZtEBsYFHOcVMiFlTig=",
+      "revisionId": "42ca47df-0b09-447f-add3-51b3a88921bb",
+      "lastModified": "2026-11-08T14:02:26.000+0000",
+      "environmentSha256": "61f6fe2f41954c4d2f89b32b2d4015e369591545c31c4f3e940ec30eef87dc11",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-prod-getStudyBooks",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-getStudyBooks",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/studies.getStudyBooks",
+      "codeSha256": "N9JQ/ekN1cUOPy430JqziSUM9ZtEBsYFHOcVMiFlTig=",
+      "revisionId": "cfae2b21-4924-4038-a77e-e9d73476e77a",
+      "lastModified": "2026-11-08T14:02:54.000+0000",
+      "environmentSha256": "61f6fe2f41954c4d2f89b32b2d4015e369591545c31c4f3e940ec30eef87dc11",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-dev-intelligenceWorker",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-dev-intelligenceWorker",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/intelligence.intelligenceWorker",
+      "codeSha256": "bWkqif016PWmAZYUcd4Ga8IziXzs4UBWfWNmZlg858c=",
+      "revisionId": "65285d7a-ca76-40f7-bb7c-e568fffc7786",
+      "lastModified": "2026-11-08T13:58:43.000+0000",
+      "environmentSha256": "c4202b69cbb9712a00be5125fbb71149ed7f9ce8310e0b9c80c4b95a4dd89392",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-prod-deleteGroup",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-deleteGroup",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/cellGroups.deleteGroup",
+      "codeSha256": "N9JQ/ekN1cUOPy430JqziSUM9ZtEBsYFHOcVMiFlTig=",
+      "revisionId": "a4d12368-5391-4a49-a075-30cdb1b6d453",
+      "lastModified": "2026-11-08T14:02:34.000+0000",
+      "environmentSha256": "61f6fe2f41954c4d2f89b32b2d4015e369591545c31c4f3e940ec30eef87dc11",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-prod-kidsHandler",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-kidsHandler",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/kids.kidsHandler",
+      "codeSha256": "N9JQ/ekN1cUOPy430JqziSUM9ZtEBsYFHOcVMiFlTig=",
+      "revisionId": "868978e4-0dac-4512-98e4-ea48e767e1cc",
+      "lastModified": "2026-11-08T14:03:00.000+0000",
+      "environmentSha256": "61f6fe2f41954c4d2f89b32b2d4015e369591545c31c4f3e940ec30eef87dc11",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-prod-getPagarmeSettings",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-getPagarmeSettings",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/pagarmeSettings.getGatewayConfig",
+      "codeSha256": "N9JQ/ekN1cUOPy430JqziSUM9ZtEBsYFHOcVMiFlTig=",
+      "revisionId": "e9d3fdf1-b7f0-4bad-a83d-f24556bec89b",
+      "lastModified": "2026-11-08T14:02:26.000+0000",
+      "environmentSha256": "61f6fe2f41954c4d2f89b32b2d4015e369591545c31c4f3e940ec30eef87dc11",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-prod-getCellMeetings",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-getCellMeetings",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/cellGroups.getCellMeetings",
+      "codeSha256": "N9JQ/ekN1cUOPy430JqziSUM9ZtEBsYFHOcVMiFlTig=",
+      "revisionId": "e0d33c0d-d45b-4738-b844-1f15ea6ed841",
+      "lastModified": "2026-11-08T14:02:56.000+0000",
+      "environmentSha256": "61f6fe2f41954c4d2f89b32b2d4015e369591545c31c4f3e940ec30eef87dc11",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-prod-getContentAnalytics",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-getContentAnalytics",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/contentAnalytics.getContentAnalytics",
+      "codeSha256": "N9JQ/ekN1cUOPy430JqziSUM9ZtEBsYFHOcVMiFlTig=",
+      "revisionId": "835a6f27-6cad-4b80-8ea6-b664a420d228",
+      "lastModified": "2026-11-08T14:02:26.000+0000",
+      "environmentSha256": "61f6fe2f41954c4d2f89b32b2d4015e369591545c31c4f3e940ec30eef87dc11",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-prod-deleteBroadcast",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-deleteBroadcast",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/broadcasts.deleteBroadcast",
+      "codeSha256": "N9JQ/ekN1cUOPy430JqziSUM9ZtEBsYFHOcVMiFlTig=",
+      "revisionId": "9603c933-97a1-4b04-af75-9da4c23051b1",
+      "lastModified": "2026-11-08T14:02:27.000+0000",
+      "environmentSha256": "61f6fe2f41954c4d2f89b32b2d4015e369591545c31c4f3e940ec30eef87dc11",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-prod-deleteEvent",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-deleteEvent",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/events.deleteEvent",
+      "codeSha256": "N9JQ/ekN1cUOPy430JqziSUM9ZtEBsYFHOcVMiFlTig=",
+      "revisionId": "70dc52e4-1958-4ce7-aca0-cc7af877d913",
+      "lastModified": "2026-11-08T14:02:26.000+0000",
+      "environmentSha256": "61f6fe2f41954c4d2f89b32b2d4015e369591545c31c4f3e940ec30eef87dc11",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-prod-ministriesHandler",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-ministriesHandler",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/ministries.ministriesHandler",
+      "codeSha256": "vR1CaIdYI9wK737yL/hv46a2E8hLylvwNbPVPsQ3mag=",
+      "revisionId": "db809a58-9ff2-4519-beb5-c56b84f2cc9a",
+      "lastModified": "2026-11-09T01:36:59.000+0000",
+      "environmentSha256": "61f6fe2f41954c4d2f89b32b2d4015e369591545c31c4f3e940ec30eef87dc11",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-prod-getDevotionals",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-getDevotionals",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/devotionals.getDevotionals",
+      "codeSha256": "N9JQ/ekN1cUOPy430JqziSUM9ZtEBsYFHOcVMiFlTig=",
+      "revisionId": "4d7b8c58-74a0-4024-9bb8-79a9116c3374",
+      "lastModified": "2026-11-08T14:02:57.000+0000",
+      "environmentSha256": "61f6fe2f41954c4d2f89b32b2d4015e369591545c31c4f3e940ec30eef87dc11",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-prod-createPdvProduct",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-createPdvProduct",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/pdv_products.createOrUpdateProduct",
+      "codeSha256": "N9JQ/ekN1cUOPy430JqziSUM9ZtEBsYFHOcVMiFlTig=",
+      "revisionId": "80ff427e-932c-488f-bac1-d82716b9fc85",
+      "lastModified": "2026-11-08T14:02:26.000+0000",
+      "environmentSha256": "61f6fe2f41954c4d2f89b32b2d4015e369591545c31c4f3e940ec30eef87dc11",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-prod-getPartilhas",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-getPartilhas",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/partilhas.getPartilhas",
+      "codeSha256": "N9JQ/ekN1cUOPy430JqziSUM9ZtEBsYFHOcVMiFlTig=",
+      "revisionId": "8536a4ad-6e68-4ee5-b5ac-966694f06d00",
+      "lastModified": "2026-11-08T14:02:44.000+0000",
+      "environmentSha256": "61f6fe2f41954c4d2f89b32b2d4015e369591545c31c4f3e940ec30eef87dc11",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-prod-getPdvProducts",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-getPdvProducts",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/pdv_products.getProducts",
+      "codeSha256": "N9JQ/ekN1cUOPy430JqziSUM9ZtEBsYFHOcVMiFlTig=",
+      "revisionId": "cf9a1bc4-4fe1-4431-af00-f116ea3590bf",
+      "lastModified": "2026-11-08T14:02:26.000+0000",
+      "environmentSha256": "61f6fe2f41954c4d2f89b32b2d4015e369591545c31c4f3e940ec30eef87dc11",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-prod-updatePrayerStatus",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-updatePrayerStatus",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/prayers.updatePrayerStatus",
+      "codeSha256": "N9JQ/ekN1cUOPy430JqziSUM9ZtEBsYFHOcVMiFlTig=",
+      "revisionId": "8fc6c6c7-f937-4e8a-8a47-0a8c32d5f4cc",
+      "lastModified": "2026-11-08T14:02:52.000+0000",
+      "environmentSha256": "61f6fe2f41954c4d2f89b32b2d4015e369591545c31c4f3e940ec30eef87dc11",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-prod-corsPreflight",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-corsPreflight",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/corsPreflight.corsPreflight",
+      "codeSha256": "N9JQ/ekN1cUOPy430JqziSUM9ZtEBsYFHOcVMiFlTig=",
+      "revisionId": "ccacd428-144e-48a4-a05d-2d47d22d2df7",
+      "lastModified": "2026-11-08T14:02:26.000+0000",
+      "environmentSha256": "61f6fe2f41954c4d2f89b32b2d4015e369591545c31c4f3e940ec30eef87dc11",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-prod-updatePdvOrderStatus",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-updatePdvOrderStatus",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/pdv_orders.updateOrderStatus",
+      "codeSha256": "N9JQ/ekN1cUOPy430JqziSUM9ZtEBsYFHOcVMiFlTig=",
+      "revisionId": "0916189f-b31d-4b0d-b115-154bf35be611",
+      "lastModified": "2026-11-08T14:02:44.000+0000",
+      "environmentSha256": "61f6fe2f41954c4d2f89b32b2d4015e369591545c31c4f3e940ec30eef87dc11",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-prod-getGroups",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-getGroups",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/cellGroups.getGroups",
+      "codeSha256": "N9JQ/ekN1cUOPy430JqziSUM9ZtEBsYFHOcVMiFlTig=",
+      "revisionId": "6e7ae79f-f584-4b97-a438-c1fd8f48158c",
+      "lastModified": "2026-11-08T14:02:26.000+0000",
+      "environmentSha256": "61f6fe2f41954c4d2f89b32b2d4015e369591545c31c4f3e940ec30eef87dc11",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-prod-pwaExperience",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-pwaExperience",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/pwaExperience.pwaExperienceHandler",
+      "codeSha256": "N9JQ/ekN1cUOPy430JqziSUM9ZtEBsYFHOcVMiFlTig=",
+      "revisionId": "20693f29-d2d4-465b-ac7a-54c5545df9ab",
+      "lastModified": "2026-11-08T14:02:51.000+0000",
+      "environmentSha256": "61f6fe2f41954c4d2f89b32b2d4015e369591545c31c4f3e940ec30eef87dc11",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-prod-publicJourney",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-publicJourney",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/publicJourney.publicJourneyHandler",
+      "codeSha256": "N9JQ/ekN1cUOPy430JqziSUM9ZtEBsYFHOcVMiFlTig=",
+      "revisionId": "dd2d0e4f-cdd6-4e99-bd9b-9133ada570be",
+      "lastModified": "2026-11-08T14:02:55.000+0000",
+      "environmentSha256": "61f6fe2f41954c4d2f89b32b2d4015e369591545c31c4f3e940ec30eef87dc11",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-prod-updateMemberStatus",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-updateMemberStatus",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/members.updateStatus",
+      "codeSha256": "N9JQ/ekN1cUOPy430JqziSUM9ZtEBsYFHOcVMiFlTig=",
+      "revisionId": "ec6b2c78-aab2-485c-ae4e-43b6229902f6",
+      "lastModified": "2026-11-08T14:02:56.000+0000",
+      "environmentSha256": "61f6fe2f41954c4d2f89b32b2d4015e369591545c31c4f3e940ec30eef87dc11",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-prod-updatePagarmeSettings",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-updatePagarmeSettings",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/pagarmeSettings.updateGatewayConfig",
+      "codeSha256": "N9JQ/ekN1cUOPy430JqziSUM9ZtEBsYFHOcVMiFlTig=",
+      "revisionId": "4d856c7a-50d3-4b60-8a67-d872fba61930",
+      "lastModified": "2026-11-08T14:02:43.000+0000",
+      "environmentSha256": "61f6fe2f41954c4d2f89b32b2d4015e369591545c31c4f3e940ec30eef87dc11",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-prod-getPosts",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-getPosts",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/posts.getPosts",
+      "codeSha256": "N9JQ/ekN1cUOPy430JqziSUM9ZtEBsYFHOcVMiFlTig=",
+      "revisionId": "b76795db-f416-4eb8-abe9-19933578b6ac",
+      "lastModified": "2026-11-08T14:02:59.000+0000",
+      "environmentSha256": "61f6fe2f41954c4d2f89b32b2d4015e369591545c31c4f3e940ec30eef87dc11",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-prod-publicDocumentVerification",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-publicDocumentVerification",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/publicDocumentVerification.verifyDocument",
+      "codeSha256": "N9JQ/ekN1cUOPy430JqziSUM9ZtEBsYFHOcVMiFlTig=",
+      "revisionId": "fa4f38e6-92d4-4dbe-bf2c-b297834d90fb",
+      "lastModified": "2026-11-08T14:03:02.000+0000",
+      "environmentSha256": "61f6fe2f41954c4d2f89b32b2d4015e369591545c31c4f3e940ec30eef87dc11",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-prod-updateStudioPreferences",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-updateStudioPreferences",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/studioExperience.updatePreferences",
+      "codeSha256": "N9JQ/ekN1cUOPy430JqziSUM9ZtEBsYFHOcVMiFlTig=",
+      "revisionId": "8fc4197f-dfac-40ab-89da-dfb5ce1992e6",
+      "lastModified": "2026-11-08T14:03:02.000+0000",
+      "environmentSha256": "61f6fe2f41954c4d2f89b32b2d4015e369591545c31c4f3e940ec30eef87dc11",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-dev-updateStudioPreferences",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-dev-updateStudioPreferences",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/studioExperience.updatePreferences",
+      "codeSha256": "bWkqif016PWmAZYUcd4Ga8IziXzs4UBWfWNmZlg858c=",
+      "revisionId": "ff5e76f7-28a9-45f2-997a-7668c2301d9d",
+      "lastModified": "2026-11-08T13:58:48.000+0000",
+      "environmentSha256": "c4202b69cbb9712a00be5125fbb71149ed7f9ce8310e0b9c80c4b95a4dd89392",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-prod-recordMeeting",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-recordMeeting",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/cellGroups.recordMeeting",
+      "codeSha256": "N9JQ/ekN1cUOPy430JqziSUM9ZtEBsYFHOcVMiFlTig=",
+      "revisionId": "2a37da62-bc5b-41ab-9d1a-01ea2c14cc89",
+      "lastModified": "2026-11-08T14:02:34.000+0000",
+      "environmentSha256": "61f6fe2f41954c4d2f89b32b2d4015e369591545c31c4f3e940ec30eef87dc11",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-prod-submitTestimony",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-submitTestimony",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/prayers.submitTestimony",
+      "codeSha256": "N9JQ/ekN1cUOPy430JqziSUM9ZtEBsYFHOcVMiFlTig=",
+      "revisionId": "c11b4925-d21a-4c6b-8ee4-5f7acd2fb076",
+      "lastModified": "2026-11-08T14:02:26.000+0000",
+      "environmentSha256": "61f6fe2f41954c4d2f89b32b2d4015e369591545c31c4f3e940ec30eef87dc11",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-prod-getActiveBroadcast",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-getActiveBroadcast",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/broadcasts.getActiveBroadcast",
+      "codeSha256": "N9JQ/ekN1cUOPy430JqziSUM9ZtEBsYFHOcVMiFlTig=",
+      "revisionId": "48426cbf-8368-4728-b159-df3be3292b6c",
+      "lastModified": "2026-11-08T14:02:34.000+0000",
+      "environmentSha256": "61f6fe2f41954c4d2f89b32b2d4015e369591545c31c4f3e940ec30eef87dc11",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-prod-updateChurchSettings",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-updateChurchSettings",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/churchSettings.updateSettings",
+      "codeSha256": "jylM4FFsiaDKSh+ZGG0VLJyaXYRtvCIDHpM41Q/IBKU=",
+      "revisionId": "946b65a0-eebe-4ba7-a199-fa530cb25ae9",
+      "lastModified": "2026-11-08T20:45:10.000+0000",
+      "environmentSha256": "61f6fe2f41954c4d2f89b32b2d4015e369591545c31c4f3e940ec30eef87dc11",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-prod-studioGlobalSearch",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-studioGlobalSearch",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/studioExperience.globalSearch",
+      "codeSha256": "N9JQ/ekN1cUOPy430JqziSUM9ZtEBsYFHOcVMiFlTig=",
+      "revisionId": "86ba2a61-657b-4a98-9621-c402d60e974e",
+      "lastModified": "2026-11-08T14:03:01.000+0000",
+      "environmentSha256": "61f6fe2f41954c4d2f89b32b2d4015e369591545c31c4f3e940ec30eef87dc11",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-prod-resetPassword",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-resetPassword",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/members.resetPassword",
+      "codeSha256": "N9JQ/ekN1cUOPy430JqziSUM9ZtEBsYFHOcVMiFlTig=",
+      "revisionId": "4a273513-dd98-468f-839a-9df8b70a444f",
+      "lastModified": "2026-11-08T14:02:34.000+0000",
+      "environmentSha256": "61f6fe2f41954c4d2f89b32b2d4015e369591545c31c4f3e940ec30eef87dc11",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-prod-getFeatureFlags",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-getFeatureFlags",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/featureFlags.getFeatureFlags",
+      "codeSha256": "N9JQ/ekN1cUOPy430JqziSUM9ZtEBsYFHOcVMiFlTig=",
+      "revisionId": "efc56fe6-9d46-4631-a38d-a1369604d1fb",
+      "lastModified": "2026-11-08T14:02:47.000+0000",
+      "environmentSha256": "61f6fe2f41954c4d2f89b32b2d4015e369591545c31c4f3e940ec30eef87dc11",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-prod-listAuditLogs",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-listAuditLogs",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/auditLogs.listAuditLogs",
+      "codeSha256": "N9JQ/ekN1cUOPy430JqziSUM9ZtEBsYFHOcVMiFlTig=",
+      "revisionId": "862052e8-e30c-4a80-a7f3-2783c69e7a4c",
+      "lastModified": "2026-11-08T14:02:45.000+0000",
+      "environmentSha256": "61f6fe2f41954c4d2f89b32b2d4015e369591545c31c4f3e940ec30eef87dc11",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-prod-listCampuses",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-listCampuses",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/campuses.listCampuses",
+      "codeSha256": "f+f0pcjrcin7hLFYvc0Tf69MVVB8W0CHGz2kGceYKKM=",
+      "revisionId": "a3fb7c00-318e-4f00-bebe-b6f0ee3703c1",
+      "lastModified": "2026-11-09T15:12:41.000+0000",
+      "environmentSha256": "61f6fe2f41954c4d2f89b32b2d4015e369591545c31c4f3e940ec30eef87dc11",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-prod-pastoralHandler",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-pastoralHandler",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/pastoralCare.pastoralHandler",
+      "codeSha256": "N9JQ/ekN1cUOPy430JqziSUM9ZtEBsYFHOcVMiFlTig=",
+      "revisionId": "6519b8fa-da97-4723-b69a-e8e788069997",
+      "lastModified": "2026-11-08T14:02:49.000+0000",
+      "environmentSha256": "61f6fe2f41954c4d2f89b32b2d4015e369591545c31c4f3e940ec30eef87dc11",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-prod-deletePrayer",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-deletePrayer",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/prayers.deletePrayer",
+      "codeSha256": "N9JQ/ekN1cUOPy430JqziSUM9ZtEBsYFHOcVMiFlTig=",
+      "revisionId": "d442d4a1-f0d6-4f91-86c4-4ac96b4f72e3",
+      "lastModified": "2026-11-08T14:02:26.000+0000",
+      "environmentSha256": "61f6fe2f41954c4d2f89b32b2d4015e369591545c31c4f3e940ec30eef87dc11",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-prod-getPrayers",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-getPrayers",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/prayers.getPrayers",
+      "codeSha256": "N9JQ/ekN1cUOPy430JqziSUM9ZtEBsYFHOcVMiFlTig=",
+      "revisionId": "89ad0dcd-a956-4aa4-9677-2834692b9359",
+      "lastModified": "2026-11-08T14:02:26.000+0000",
+      "environmentSha256": "61f6fe2f41954c4d2f89b32b2d4015e369591545c31c4f3e940ec30eef87dc11",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-dev-financialHandler",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-dev-financialHandler",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/financial.financialHandler",
+      "codeSha256": "NtPZoFd4istcW1ZkfQ7wFKhPmEAszP25dI/DIDLW3rs=",
+      "revisionId": "b8838191-4688-4c40-b0f0-9d929082d5b5",
+      "lastModified": "2026-11-08T20:05:44.000+0000",
+      "environmentSha256": "c4202b69cbb9712a00be5125fbb71149ed7f9ce8310e0b9c80c4b95a4dd89392",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-prod-getCellMeetingDetails",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-getCellMeetingDetails",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/cellGroups.getCellMeetingDetails",
+      "codeSha256": "N9JQ/ekN1cUOPy430JqziSUM9ZtEBsYFHOcVMiFlTig=",
+      "revisionId": "31e85595-dee1-4209-be21-90d37cbd9a33",
+      "lastModified": "2026-11-08T14:02:26.000+0000",
+      "environmentSha256": "61f6fe2f41954c4d2f89b32b2d4015e369591545c31c4f3e940ec30eef87dc11",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-prod-selfRegisterMember",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-selfRegisterMember",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/members.selfRegister",
+      "codeSha256": "N9JQ/ekN1cUOPy430JqziSUM9ZtEBsYFHOcVMiFlTig=",
+      "revisionId": "708a7520-e644-4df7-8961-94010b3bad19",
+      "lastModified": "2026-11-08T14:02:31.000+0000",
+      "environmentSha256": "61f6fe2f41954c4d2f89b32b2d4015e369591545c31c4f3e940ec30eef87dc11",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-prod-createOrUpdateBroadcast",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-createOrUpdateBroadcast",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/broadcasts.createOrUpdateBroadcast",
+      "codeSha256": "N9JQ/ekN1cUOPy430JqziSUM9ZtEBsYFHOcVMiFlTig=",
+      "revisionId": "1a23f6cd-dde8-4778-a37e-30d3c4c22370",
+      "lastModified": "2026-11-08T14:02:34.000+0000",
+      "environmentSha256": "61f6fe2f41954c4d2f89b32b2d4015e369591545c31c4f3e940ec30eef87dc11",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-prod-getEvents",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-getEvents",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/events.getEvents",
+      "codeSha256": "N9JQ/ekN1cUOPy430JqziSUM9ZtEBsYFHOcVMiFlTig=",
+      "revisionId": "26b3ae65-fec9-4f9c-9f3f-cd427ed5c428",
+      "lastModified": "2026-11-08T14:02:26.000+0000",
+      "environmentSha256": "61f6fe2f41954c4d2f89b32b2d4015e369591545c31c4f3e940ec30eef87dc11",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-prod-getUploadUrl",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-getUploadUrl",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/uploads.getUploadUrl",
+      "codeSha256": "hzNG2RQYYgKjfd24X540l0tNeCQ/k9C6cBraOBfBb/0=",
+      "revisionId": "8552838d-849b-41e6-8e97-ff906e20c1a4",
+      "lastModified": "2026-11-08T20:51:52.000+0000",
+      "environmentSha256": "61f6fe2f41954c4d2f89b32b2d4015e369591545c31c4f3e940ec30eef87dc11",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-prod-getStudyBookById",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-getStudyBookById",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/studies.getStudyBookById",
+      "codeSha256": "N9JQ/ekN1cUOPy430JqziSUM9ZtEBsYFHOcVMiFlTig=",
+      "revisionId": "283b5136-5842-41f5-9b12-ec1e70b95a18",
+      "lastModified": "2026-11-08T14:02:56.000+0000",
+      "environmentSha256": "61f6fe2f41954c4d2f89b32b2d4015e369591545c31c4f3e940ec30eef87dc11",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-prod-toggleFeatureFlag",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-toggleFeatureFlag",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/featureFlags.toggleFeatureFlag",
+      "codeSha256": "N9JQ/ekN1cUOPy430JqziSUM9ZtEBsYFHOcVMiFlTig=",
+      "revisionId": "aa5b6d57-9d69-4426-a7c9-1b0260c8f752",
+      "lastModified": "2026-11-08T14:02:55.000+0000",
+      "environmentSha256": "61f6fe2f41954c4d2f89b32b2d4015e369591545c31c4f3e940ec30eef87dc11",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-prod-batchImportMembers",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-batchImportMembers",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/members.batchImport",
+      "codeSha256": "N9JQ/ekN1cUOPy430JqziSUM9ZtEBsYFHOcVMiFlTig=",
+      "revisionId": "b0d95564-c42f-46de-882b-9d0e874533c1",
+      "lastModified": "2026-11-08T14:02:27.000+0000",
+      "environmentSha256": "61f6fe2f41954c4d2f89b32b2d4015e369591545c31c4f3e940ec30eef87dc11",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-prod-batchUpdateFeatureFlags",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-batchUpdateFeatureFlags",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/featureFlags.batchUpdateFeatureFlags",
+      "codeSha256": "N9JQ/ekN1cUOPy430JqziSUM9ZtEBsYFHOcVMiFlTig=",
+      "revisionId": "9c711577-87e1-444c-bdcf-3423640923d3",
+      "lastModified": "2026-11-08T14:02:31.000+0000",
+      "environmentSha256": "61f6fe2f41954c4d2f89b32b2d4015e369591545c31c4f3e940ec30eef87dc11",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-prod-createPartilha",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-createPartilha",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/partilhas.createPartilha",
+      "codeSha256": "N9JQ/ekN1cUOPy430JqziSUM9ZtEBsYFHOcVMiFlTig=",
+      "revisionId": "52b0c552-458b-4ccc-afa4-cc8784eb229b",
+      "lastModified": "2026-11-08T14:03:03.000+0000",
+      "environmentSha256": "61f6fe2f41954c4d2f89b32b2d4015e369591545c31c4f3e940ec30eef87dc11",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-prod-inviteMember",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-inviteMember",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/members.invite",
+      "codeSha256": "N9JQ/ekN1cUOPy430JqziSUM9ZtEBsYFHOcVMiFlTig=",
+      "revisionId": "193a045b-aecb-417c-a63d-ceb8b634c81c",
+      "lastModified": "2026-11-08T14:02:26.000+0000",
+      "environmentSha256": "61f6fe2f41954c4d2f89b32b2d4015e369591545c31c4f3e940ec30eef87dc11",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-dev-pdvInventory",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-dev-pdvInventory",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/pdvApi.pdvApiHandler",
+      "codeSha256": "bWkqif016PWmAZYUcd4Ga8IziXzs4UBWfWNmZlg858c=",
+      "revisionId": "41a6c901-1a71-4e49-8479-1e8f89d4f3dd",
+      "lastModified": "2026-11-08T13:58:43.000+0000",
+      "environmentSha256": "c4202b69cbb9712a00be5125fbb71149ed7f9ce8310e0b9c80c4b95a4dd89392",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-prod-acceptProposal",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-acceptProposal",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/proposals.acceptProposal",
+      "codeSha256": "N9JQ/ekN1cUOPy430JqziSUM9ZtEBsYFHOcVMiFlTig=",
+      "revisionId": "73258f72-772d-440d-8c12-93b8a4f37c9e",
+      "lastModified": "2026-11-08T14:02:55.000+0000",
+      "environmentSha256": "61f6fe2f41954c4d2f89b32b2d4015e369591545c31c4f3e940ec30eef87dc11",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-prod-deleteStudyBook",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-deleteStudyBook",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/studies.deleteStudyBook",
+      "codeSha256": "N9JQ/ekN1cUOPy430JqziSUM9ZtEBsYFHOcVMiFlTig=",
+      "revisionId": "b34bf273-e799-43c4-80e4-2c4c5fd761ec",
+      "lastModified": "2026-11-08T14:02:51.000+0000",
+      "environmentSha256": "61f6fe2f41954c4d2f89b32b2d4015e369591545c31c4f3e940ec30eef87dc11",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-prod-createOrUpdateOrganization",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-createOrUpdateOrganization",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/organizations.createOrUpdateOrganization",
+      "codeSha256": "N9JQ/ekN1cUOPy430JqziSUM9ZtEBsYFHOcVMiFlTig=",
+      "revisionId": "85644096-19a6-4003-a993-ef43b065888e",
+      "lastModified": "2026-11-08T14:02:31.000+0000",
+      "environmentSha256": "61f6fe2f41954c4d2f89b32b2d4015e369591545c31c4f3e940ec30eef87dc11",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-prod-getChurchSettings",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-getChurchSettings",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/churchSettings.getSettings",
+      "codeSha256": "IvHJE3U3KIQaz2Y1dSCvz8/z8el54XWanhi3lMzWv3k=",
+      "revisionId": "01e3de7b-3e94-42d5-bf75-fdbfff1b7dd1",
+      "lastModified": "2026-11-09T00:44:48.000+0000",
+      "environmentSha256": "61f6fe2f41954c4d2f89b32b2d4015e369591545c31c4f3e940ec30eef87dc11",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-dev-corsPreflight",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-dev-corsPreflight",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/corsPreflight.corsPreflight",
+      "codeSha256": "bWkqif016PWmAZYUcd4Ga8IziXzs4UBWfWNmZlg858c=",
+      "revisionId": "0755f73b-8d07-433b-8b78-593df3d1a243",
+      "lastModified": "2026-11-08T13:58:49.000+0000",
+      "environmentSha256": "c4202b69cbb9712a00be5125fbb71149ed7f9ce8310e0b9c80c4b95a4dd89392",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-prod-addCellMember",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-addCellMember",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/cellGroups.addMember",
+      "codeSha256": "N9JQ/ekN1cUOPy430JqziSUM9ZtEBsYFHOcVMiFlTig=",
+      "revisionId": "290645b5-2445-4246-ab66-e3eeb28e3763",
+      "lastModified": "2026-11-08T14:02:26.000+0000",
+      "environmentSha256": "61f6fe2f41954c4d2f89b32b2d4015e369591545c31c4f3e940ec30eef87dc11",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-prod-scanTicket",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-scanTicket",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/tickets.scanTicket",
+      "codeSha256": "N9JQ/ekN1cUOPy430JqziSUM9ZtEBsYFHOcVMiFlTig=",
+      "revisionId": "5e695b82-c409-474a-8163-6a1583b98bae",
+      "lastModified": "2026-11-08T14:02:52.000+0000",
+      "environmentSha256": "61f6fe2f41954c4d2f89b32b2d4015e369591545c31c4f3e940ec30eef87dc11",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-prod-checkoutTicket",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-checkoutTicket",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/tickets.checkout",
+      "codeSha256": "N9JQ/ekN1cUOPy430JqziSUM9ZtEBsYFHOcVMiFlTig=",
+      "revisionId": "40d23814-0aaf-4b98-812a-dbe03466c063",
+      "lastModified": "2026-11-08T14:02:26.000+0000",
+      "environmentSha256": "61f6fe2f41954c4d2f89b32b2d4015e369591545c31c4f3e940ec30eef87dc11",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-prod-removeCellMember",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-removeCellMember",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/cellGroups.removeMember",
+      "codeSha256": "N9JQ/ekN1cUOPy430JqziSUM9ZtEBsYFHOcVMiFlTig=",
+      "revisionId": "f19428f3-a3cb-4332-bf60-c9d53451cb42",
+      "lastModified": "2026-11-08T14:02:47.000+0000",
+      "environmentSha256": "61f6fe2f41954c4d2f89b32b2d4015e369591545c31c4f3e940ec30eef87dc11",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-dev-pastoralHandler",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-dev-pastoralHandler",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/pastoralCare.pastoralHandler",
+      "codeSha256": "bWkqif016PWmAZYUcd4Ga8IziXzs4UBWfWNmZlg858c=",
+      "revisionId": "995e1092-5fa6-4875-b34c-4a3d131b1cb7",
+      "lastModified": "2026-11-08T13:58:43.000+0000",
+      "environmentSha256": "c4202b69cbb9712a00be5125fbb71149ed7f9ce8310e0b9c80c4b95a4dd89392",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-dev-communityApi",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-dev-communityApi",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/communityApi.communityApiHandler",
+      "codeSha256": "bWkqif016PWmAZYUcd4Ga8IziXzs4UBWfWNmZlg858c=",
+      "revisionId": "04a71a8b-6c06-4718-aaba-39a6727df6d8",
+      "lastModified": "2026-11-08T13:58:47.000+0000",
+      "environmentSha256": "c4202b69cbb9712a00be5125fbb71149ed7f9ce8310e0b9c80c4b95a4dd89392",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-prod-createProposal",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-createProposal",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/proposals.createProposal",
+      "codeSha256": "N9JQ/ekN1cUOPy430JqziSUM9ZtEBsYFHOcVMiFlTig=",
+      "revisionId": "b59b4fbd-c72d-4eb4-ba79-5d6f236301eb",
+      "lastModified": "2026-11-08T14:02:26.000+0000",
+      "environmentSha256": "61f6fe2f41954c4d2f89b32b2d4015e369591545c31c4f3e940ec30eef87dc11",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-prod-togglePartilha",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-togglePartilha",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/partilhas.togglePartilha",
+      "codeSha256": "N9JQ/ekN1cUOPy430JqziSUM9ZtEBsYFHOcVMiFlTig=",
+      "revisionId": "c7151b1c-c228-4962-959b-4ca7cff85b0b",
+      "lastModified": "2026-11-08T14:02:29.000+0000",
+      "environmentSha256": "61f6fe2f41954c4d2f89b32b2d4015e369591545c31c4f3e940ec30eef87dc11",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-prod-deletePdvProduct",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-deletePdvProduct",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/pdv_products.deleteProduct",
+      "codeSha256": "N9JQ/ekN1cUOPy430JqziSUM9ZtEBsYFHOcVMiFlTig=",
+      "revisionId": "c72897e5-5a90-4d00-8f6b-06bd1361040c",
+      "lastModified": "2026-11-08T14:02:26.000+0000",
+      "environmentSha256": "61f6fe2f41954c4d2f89b32b2d4015e369591545c31c4f3e940ec30eef87dc11",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-dev-saasApi",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-dev-saasApi",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/saasApi.saasApiHandler",
+      "codeSha256": "bWkqif016PWmAZYUcd4Ga8IziXzs4UBWfWNmZlg858c=",
+      "revisionId": "e613d288-fe0b-4e03-baba-4c41553d8095",
+      "lastModified": "2026-11-08T13:58:47.000+0000",
+      "environmentSha256": "c4202b69cbb9712a00be5125fbb71149ed7f9ce8310e0b9c80c4b95a4dd89392",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-prod-resetTenantFlags",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-resetTenantFlags",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/featureFlags.resetTenantFlags",
+      "codeSha256": "N9JQ/ekN1cUOPy430JqziSUM9ZtEBsYFHOcVMiFlTig=",
+      "revisionId": "8de92fe0-74bf-40ea-ae60-7a192d0bb2af",
+      "lastModified": "2026-11-08T14:02:57.000+0000",
+      "environmentSha256": "61f6fe2f41954c4d2f89b32b2d4015e369591545c31c4f3e940ec30eef87dc11",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-prod-financialHandler",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-financialHandler",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/financial.financialHandler",
+      "codeSha256": "NtPZoFd4istcW1ZkfQ7wFKhPmEAszP25dI/DIDLW3rs=",
+      "revisionId": "cbfefbb5-1e44-42fb-8195-88459306a6d2",
+      "lastModified": "2026-11-08T20:06:33.000+0000",
+      "environmentSha256": "61f6fe2f41954c4d2f89b32b2d4015e369591545c31c4f3e940ec30eef87dc11",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-prod-createPdvOrder",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-createPdvOrder",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/pdv_orders.createOrder",
+      "codeSha256": "N9JQ/ekN1cUOPy430JqziSUM9ZtEBsYFHOcVMiFlTig=",
+      "revisionId": "25f4cd1b-f060-418b-9f0b-6bb19e962366",
+      "lastModified": "2026-11-08T14:02:26.000+0000",
+      "environmentSha256": "61f6fe2f41954c4d2f89b32b2d4015e369591545c31c4f3e940ec30eef87dc11",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-prod-evaluateJoinRequest",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-evaluateJoinRequest",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/cellGroups.evaluateJoinRequest",
+      "codeSha256": "N9JQ/ekN1cUOPy430JqziSUM9ZtEBsYFHOcVMiFlTig=",
+      "revisionId": "de6e799a-7df1-4379-90e8-70e4d5109c56",
+      "lastModified": "2026-11-08T14:02:26.000+0000",
+      "environmentSha256": "61f6fe2f41954c4d2f89b32b2d4015e369591545c31c4f3e940ec30eef87dc11",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-dev-processSaasBillingQueue",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-dev-processSaasBillingQueue",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/saasBillingWorker.handleSaasBillingQueue",
+      "codeSha256": "bWkqif016PWmAZYUcd4Ga8IziXzs4UBWfWNmZlg858c=",
+      "revisionId": "2a0dbb99-cdfb-4535-85a7-2d922eb58cf0",
+      "lastModified": "2026-11-08T13:58:43.000+0000",
+      "environmentSha256": "c4202b69cbb9712a00be5125fbb71149ed7f9ce8310e0b9c80c4b95a4dd89392",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-prod-createOrUpdateEvent",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-createOrUpdateEvent",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/events.createOrUpdateEvent",
+      "codeSha256": "N9JQ/ekN1cUOPy430JqziSUM9ZtEBsYFHOcVMiFlTig=",
+      "revisionId": "f5d1a837-948c-4e6d-a8c4-280f982f8428",
+      "lastModified": "2026-11-08T14:02:28.000+0000",
+      "environmentSha256": "61f6fe2f41954c4d2f89b32b2d4015e369591545c31c4f3e940ec30eef87dc11",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-dev-maintainIntelligence",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-dev-maintainIntelligence",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/intelligence.maintainIntelligence",
+      "codeSha256": "bWkqif016PWmAZYUcd4Ga8IziXzs4UBWfWNmZlg858c=",
+      "revisionId": "f010dc68-ab49-48bd-978b-cff43b874d9d",
+      "lastModified": "2026-11-08T13:58:43.000+0000",
+      "environmentSha256": "c4202b69cbb9712a00be5125fbb71149ed7f9ce8310e0b9c80c4b95a4dd89392",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-prod-getCampus",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-getCampus",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/campuses.getCampus",
+      "codeSha256": "N9JQ/ekN1cUOPy430JqziSUM9ZtEBsYFHOcVMiFlTig=",
+      "revisionId": "71314159-73f2-4044-830a-3111a58e8080",
+      "lastModified": "2026-11-08T14:02:26.000+0000",
+      "environmentSha256": "61f6fe2f41954c4d2f89b32b2d4015e369591545c31c4f3e940ec30eef87dc11",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-prod-getOrganization",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-getOrganization",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/organizations.getOrganization",
+      "codeSha256": "N9JQ/ekN1cUOPy430JqziSUM9ZtEBsYFHOcVMiFlTig=",
+      "revisionId": "ed6700a6-4e35-4a80-99fd-f4a526a4b621",
+      "lastModified": "2026-11-08T14:02:26.000+0000",
+      "environmentSha256": "61f6fe2f41954c4d2f89b32b2d4015e369591545c31c4f3e940ec30eef87dc11",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-prod-createOrUpdateDevotional",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-createOrUpdateDevotional",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/devotionals.createOrUpdateDevotional",
+      "codeSha256": "N9JQ/ekN1cUOPy430JqziSUM9ZtEBsYFHOcVMiFlTig=",
+      "revisionId": "567e898b-4036-4be6-ab1e-14dac3517677",
+      "lastModified": "2026-11-08T14:02:35.000+0000",
+      "environmentSha256": "61f6fe2f41954c4d2f89b32b2d4015e369591545c31c4f3e940ec30eef87dc11",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-prod-intelligenceWorker",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-intelligenceWorker",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/intelligence.intelligenceWorker",
+      "codeSha256": "N9JQ/ekN1cUOPy430JqziSUM9ZtEBsYFHOcVMiFlTig=",
+      "revisionId": "5ea1efa0-6891-4840-a2e4-411e174f0757",
+      "lastModified": "2026-11-08T14:02:56.000+0000",
+      "environmentSha256": "61f6fe2f41954c4d2f89b32b2d4015e369591545c31c4f3e940ec30eef87dc11",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-prod-getEventById",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-getEventById",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/events.getEventById",
+      "codeSha256": "N9JQ/ekN1cUOPy430JqziSUM9ZtEBsYFHOcVMiFlTig=",
+      "revisionId": "1dc146d3-cd67-4853-95b4-5f0696652f45",
+      "lastModified": "2026-11-08T14:02:46.000+0000",
+      "environmentSha256": "61f6fe2f41954c4d2f89b32b2d4015e369591545c31c4f3e940ec30eef87dc11",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-dev-kidsHandler",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-dev-kidsHandler",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/kids.kidsHandler",
+      "codeSha256": "bWkqif016PWmAZYUcd4Ga8IziXzs4UBWfWNmZlg858c=",
+      "revisionId": "011dfbb3-febc-4ffb-a490-de27d12b9964",
+      "lastModified": "2026-11-08T13:58:43.000+0000",
+      "environmentSha256": "c4202b69cbb9712a00be5125fbb71149ed7f9ce8310e0b9c80c4b95a4dd89392",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-dev-ministriesHandler",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-dev-ministriesHandler",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/ministries.ministriesHandler",
+      "codeSha256": "vR1CaIdYI9wK737yL/hv46a2E8hLylvwNbPVPsQ3mag=",
+      "revisionId": "877557bd-2a14-48ca-9d49-c797e587e9fb",
+      "lastModified": "2026-11-09T01:36:54.000+0000",
+      "environmentSha256": "c4202b69cbb9712a00be5125fbb71149ed7f9ce8310e0b9c80c4b95a4dd89392",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-prod-maintainIntelligence",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-maintainIntelligence",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/intelligence.maintainIntelligence",
+      "codeSha256": "N9JQ/ekN1cUOPy430JqziSUM9ZtEBsYFHOcVMiFlTig=",
+      "revisionId": "bbb5eb94-da59-4510-a3ea-bbede5f80876",
+      "lastModified": "2026-11-08T14:02:46.000+0000",
+      "environmentSha256": "61f6fe2f41954c4d2f89b32b2d4015e369591545c31c4f3e940ec30eef87dc11",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-prod-deleteSaasPlan",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-deleteSaasPlan",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/saasPlans.deletePlan",
+      "codeSha256": "N9JQ/ekN1cUOPy430JqziSUM9ZtEBsYFHOcVMiFlTig=",
+      "revisionId": "cb406222-c243-44b9-9cb2-b1aaf3dbcc06",
+      "lastModified": "2026-11-08T14:02:35.000+0000",
+      "environmentSha256": "61f6fe2f41954c4d2f89b32b2d4015e369591545c31c4f3e940ec30eef87dc11",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-prod-getTicketPass",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-getTicketPass",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/tickets.getTicketPass",
+      "codeSha256": "N9JQ/ekN1cUOPy430JqziSUM9ZtEBsYFHOcVMiFlTig=",
+      "revisionId": "55377fff-05d1-4868-a15b-68a1bfcdf579",
+      "lastModified": "2026-11-08T14:02:26.000+0000",
+      "environmentSha256": "61f6fe2f41954c4d2f89b32b2d4015e369591545c31c4f3e940ec30eef87dc11",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-prod-getTicketCalendar",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-getTicketCalendar",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/tickets.getTicketCalendar",
+      "codeSha256": "N9JQ/ekN1cUOPy430JqziSUM9ZtEBsYFHOcVMiFlTig=",
+      "revisionId": "07ef91b5-7288-4625-8620-50948930fa10",
+      "lastModified": "2026-11-08T14:02:59.000+0000",
+      "environmentSha256": "61f6fe2f41954c4d2f89b32b2d4015e369591545c31c4f3e940ec30eef87dc11",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-prod-getPdvAnalytics",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-getPdvAnalytics",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/pdv_analytics.getPdvAnalytics",
+      "codeSha256": "N9JQ/ekN1cUOPy430JqziSUM9ZtEBsYFHOcVMiFlTig=",
+      "revisionId": "25c6a5ec-2d11-42d0-88a7-44e594c949e6",
+      "lastModified": "2026-11-08T14:02:26.000+0000",
+      "environmentSha256": "61f6fe2f41954c4d2f89b32b2d4015e369591545c31c4f3e940ec30eef87dc11",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-prod-getBroadcasts",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-getBroadcasts",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/broadcasts.getBroadcasts",
+      "codeSha256": "N9JQ/ekN1cUOPy430JqziSUM9ZtEBsYFHOcVMiFlTig=",
+      "revisionId": "c803c9a4-a481-49e7-a86b-1eee27139458",
+      "lastModified": "2026-11-08T14:02:26.000+0000",
+      "environmentSha256": "61f6fe2f41954c4d2f89b32b2d4015e369591545c31c4f3e940ec30eef87dc11",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-prod-getPublicProposal",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-getPublicProposal",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/proposals.getPublicProposal",
+      "codeSha256": "N9JQ/ekN1cUOPy430JqziSUM9ZtEBsYFHOcVMiFlTig=",
+      "revisionId": "19172060-3a9f-4904-afb5-0e8cc1cd47d3",
+      "lastModified": "2026-11-08T14:02:51.000+0000",
+      "environmentSha256": "61f6fe2f41954c4d2f89b32b2d4015e369591545c31c4f3e940ec30eef87dc11",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-prod-deleteStudy",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-deleteStudy",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/studies.deleteStudy",
+      "codeSha256": "N9JQ/ekN1cUOPy430JqziSUM9ZtEBsYFHOcVMiFlTig=",
+      "revisionId": "cdc9a057-6b2f-47e1-a1ca-86671afbcd2e",
+      "lastModified": "2026-11-08T14:02:30.000+0000",
+      "environmentSha256": "61f6fe2f41954c4d2f89b32b2d4015e369591545c31c4f3e940ec30eef87dc11",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-prod-createOrUpdateStudyBook",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-createOrUpdateStudyBook",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/studies.createOrUpdateStudyBook",
+      "codeSha256": "N9JQ/ekN1cUOPy430JqziSUM9ZtEBsYFHOcVMiFlTig=",
+      "revisionId": "f7da00ec-05d6-48b4-896d-2385a43f3ba5",
+      "lastModified": "2026-11-08T14:02:31.000+0000",
+      "environmentSha256": "61f6fe2f41954c4d2f89b32b2d4015e369591545c31c4f3e940ec30eef87dc11",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-dev-contentApi",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-dev-contentApi",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/contentApi.contentApiHandler",
+      "codeSha256": "Mu2XT6aDjiM6D6/zxMt2UkWBe9AsSwYhECu3m1QrInc=",
+      "revisionId": "4f4d6522-68a1-4324-a186-1faccbc634ea",
+      "lastModified": "2026-11-08T20:51:47.000+0000",
+      "environmentSha256": "c4202b69cbb9712a00be5125fbb71149ed7f9ce8310e0b9c80c4b95a4dd89392",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-prod-getTodayDevotional",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-getTodayDevotional",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/devotionals.getTodayDevotional",
+      "codeSha256": "N9JQ/ekN1cUOPy430JqziSUM9ZtEBsYFHOcVMiFlTig=",
+      "revisionId": "4920fc5f-4fb5-43cf-bc12-aad4c94a8a37",
+      "lastModified": "2026-11-08T14:02:26.000+0000",
+      "environmentSha256": "61f6fe2f41954c4d2f89b32b2d4015e369591545c31c4f3e940ec30eef87dc11",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-prod-createOrUpdateSaasPlan",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-createOrUpdateSaasPlan",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/saasPlans.createOrUpdatePlan",
+      "codeSha256": "N9JQ/ekN1cUOPy430JqziSUM9ZtEBsYFHOcVMiFlTig=",
+      "revisionId": "6a0886bd-d7d0-4c79-8091-5e76a4a8d34c",
+      "lastModified": "2026-11-08T14:02:27.000+0000",
+      "environmentSha256": "61f6fe2f41954c4d2f89b32b2d4015e369591545c31c4f3e940ec30eef87dc11",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-prod-evaluateRequest",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-evaluateRequest",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/cellGroups.evaluateRequest",
+      "codeSha256": "N9JQ/ekN1cUOPy430JqziSUM9ZtEBsYFHOcVMiFlTig=",
+      "revisionId": "97d2a3de-fa74-42f2-9b33-c33e34dd53b3",
+      "lastModified": "2026-11-08T14:02:26.000+0000",
+      "environmentSha256": "61f6fe2f41954c4d2f89b32b2d4015e369591545c31c4f3e940ec30eef87dc11",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-prod-createPost",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-createPost",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/posts.createPost",
+      "codeSha256": "N9JQ/ekN1cUOPy430JqziSUM9ZtEBsYFHOcVMiFlTig=",
+      "revisionId": "ce9840ed-bb84-4484-ba3b-6af8f8cdcb13",
+      "lastModified": "2026-11-08T14:02:26.000+0000",
+      "environmentSha256": "61f6fe2f41954c4d2f89b32b2d4015e369591545c31c4f3e940ec30eef87dc11",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-prod-reactPost",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-reactPost",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/posts.reactPost",
+      "codeSha256": "N9JQ/ekN1cUOPy430JqziSUM9ZtEBsYFHOcVMiFlTig=",
+      "revisionId": "e9a8771c-00e4-4e24-993e-61ec90e5a9b2",
+      "lastModified": "2026-11-08T14:02:26.000+0000",
+      "environmentSha256": "61f6fe2f41954c4d2f89b32b2d4015e369591545c31c4f3e940ec30eef87dc11",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-dev-tenantApi",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-dev-tenantApi",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/tenantApi.tenantApiHandler",
+      "codeSha256": "/aiUJE+fKw4xt/aA2tje751loznOL8jdFgoFQ0OhhK8=",
+      "revisionId": "c68f5619-c560-4afa-8909-7c8c1a80d0e0",
+      "lastModified": "2026-11-09T15:12:36.000+0000",
+      "environmentSha256": "c4202b69cbb9712a00be5125fbb71149ed7f9ce8310e0b9c80c4b95a4dd89392",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-prod-listOrganizations",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-listOrganizations",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/organizations.listOrganizations",
+      "codeSha256": "N9JQ/ekN1cUOPy430JqziSUM9ZtEBsYFHOcVMiFlTig=",
+      "revisionId": "8b9232d4-3881-4918-9e9c-73a98a0cf388",
+      "lastModified": "2026-11-08T14:02:55.000+0000",
+      "environmentSha256": "61f6fe2f41954c4d2f89b32b2d4015e369591545c31c4f3e940ec30eef87dc11",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-dev-studioGlobalSearch",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-dev-studioGlobalSearch",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/studioExperience.globalSearch",
+      "codeSha256": "bWkqif016PWmAZYUcd4Ga8IziXzs4UBWfWNmZlg858c=",
+      "revisionId": "6a6c7673-37de-44d3-b944-ef8d81938394",
+      "lastModified": "2026-11-08T13:58:48.000+0000",
+      "environmentSha256": "c4202b69cbb9712a00be5125fbb71149ed7f9ce8310e0b9c80c4b95a4dd89392",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-prod-pdvInventory",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-pdvInventory",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/pdv_inventory.inventoryHandler",
+      "codeSha256": "N9JQ/ekN1cUOPy430JqziSUM9ZtEBsYFHOcVMiFlTig=",
+      "revisionId": "b0147312-297c-44f1-9b69-40ce27e33eb8",
+      "lastModified": "2026-11-08T14:02:26.000+0000",
+      "environmentSha256": "61f6fe2f41954c4d2f89b32b2d4015e369591545c31c4f3e940ec30eef87dc11",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-prod-getPdvOrders",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-getPdvOrders",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/pdv_orders.getOrders",
+      "codeSha256": "N9JQ/ekN1cUOPy430JqziSUM9ZtEBsYFHOcVMiFlTig=",
+      "revisionId": "59a2d27d-d914-4aa2-ba2b-eb3a891b225f",
+      "lastModified": "2026-11-08T14:02:46.000+0000",
+      "environmentSha256": "61f6fe2f41954c4d2f89b32b2d4015e369591545c31c4f3e940ec30eef87dc11",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-prod-secretariatHandler",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-secretariatHandler",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/secretariat.secretariatHandler",
+      "codeSha256": "N9JQ/ekN1cUOPy430JqziSUM9ZtEBsYFHOcVMiFlTig=",
+      "revisionId": "9b6e7a59-b17b-43ff-ad18-5aec7c431d00",
+      "lastModified": "2026-11-08T14:03:01.000+0000",
+      "environmentSha256": "61f6fe2f41954c4d2f89b32b2d4015e369591545c31c4f3e940ec30eef87dc11",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-prod-intelligence",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-intelligence",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/intelligence.intelligenceHandler",
+      "codeSha256": "N9JQ/ekN1cUOPy430JqziSUM9ZtEBsYFHOcVMiFlTig=",
+      "revisionId": "bf274b08-6be3-4d45-980d-1e97c2004672",
+      "lastModified": "2026-11-08T14:02:59.000+0000",
+      "environmentSha256": "61f6fe2f41954c4d2f89b32b2d4015e369591545c31c4f3e940ec30eef87dc11",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-dev-publicDocumentVerification",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-dev-publicDocumentVerification",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/publicDocumentVerification.verifyDocument",
+      "codeSha256": "bWkqif016PWmAZYUcd4Ga8IziXzs4UBWfWNmZlg858c=",
+      "revisionId": "ed3bd3b9-3726-4223-804e-0f1ae683cec7",
+      "lastModified": "2026-11-08T13:58:49.000+0000",
+      "environmentSha256": "c4202b69cbb9712a00be5125fbb71149ed7f9ce8310e0b9c80c4b95a4dd89392",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-prod-listProposals",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-listProposals",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/proposals.listProposals",
+      "codeSha256": "N9JQ/ekN1cUOPy430JqziSUM9ZtEBsYFHOcVMiFlTig=",
+      "revisionId": "674f83b3-e36f-4bc4-9e5d-988e583279c7",
+      "lastModified": "2026-11-08T14:02:35.000+0000",
+      "environmentSha256": "61f6fe2f41954c4d2f89b32b2d4015e369591545c31c4f3e940ec30eef87dc11",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-prod-processSaasBillingQueue",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-processSaasBillingQueue",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/saasBillingWorker.handleSaasBillingQueue",
+      "codeSha256": "N9JQ/ekN1cUOPy430JqziSUM9ZtEBsYFHOcVMiFlTig=",
+      "revisionId": "16b1677e-96af-4ca4-b3e6-d060f110c46a",
+      "lastModified": "2026-11-08T14:02:55.000+0000",
+      "environmentSha256": "61f6fe2f41954c4d2f89b32b2d4015e369591545c31c4f3e940ec30eef87dc11",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-prod-listMembers",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-listMembers",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/members.list",
+      "codeSha256": "N9JQ/ekN1cUOPy430JqziSUM9ZtEBsYFHOcVMiFlTig=",
+      "revisionId": "80b72fc5-5fcf-49b8-a53f-e3dae8a6f7b9",
+      "lastModified": "2026-11-08T14:02:34.000+0000",
+      "environmentSha256": "61f6fe2f41954c4d2f89b32b2d4015e369591545c31c4f3e940ec30eef87dc11",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-prod-createOrUpdateGroup",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-createOrUpdateGroup",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/cellGroups.createOrUpdateGroup",
+      "codeSha256": "N9JQ/ekN1cUOPy430JqziSUM9ZtEBsYFHOcVMiFlTig=",
+      "revisionId": "71e91141-5143-49cf-8f0b-365615bca30c",
+      "lastModified": "2026-11-08T14:02:34.000+0000",
+      "environmentSha256": "61f6fe2f41954c4d2f89b32b2d4015e369591545c31c4f3e940ec30eef87dc11",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-prod-createPrayer",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-createPrayer",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/prayers.createPrayer",
+      "codeSha256": "N9JQ/ekN1cUOPy430JqziSUM9ZtEBsYFHOcVMiFlTig=",
+      "revisionId": "4833c5f5-89bf-4c33-bbaf-ef2aaeb19401",
+      "lastModified": "2026-11-08T14:02:26.000+0000",
+      "environmentSha256": "61f6fe2f41954c4d2f89b32b2d4015e369591545c31c4f3e940ec30eef87dc11",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-prod-prayForRequest",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-prayForRequest",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/prayers.prayForRequest",
+      "codeSha256": "N9JQ/ekN1cUOPy430JqziSUM9ZtEBsYFHOcVMiFlTig=",
+      "revisionId": "7a369c02-972c-4c79-b7ef-5d9b86d9962e",
+      "lastModified": "2026-11-08T14:02:34.000+0000",
+      "environmentSha256": "61f6fe2f41954c4d2f89b32b2d4015e369591545c31c4f3e940ec30eef87dc11",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-dev-membersApi",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-dev-membersApi",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/membersApi.membersApiHandler",
+      "codeSha256": "bWkqif016PWmAZYUcd4Ga8IziXzs4UBWfWNmZlg858c=",
+      "revisionId": "dc0069b7-d64f-44ab-b1e4-0b07cd116aae",
+      "lastModified": "2026-11-08T13:58:47.000+0000",
+      "environmentSha256": "c4202b69cbb9712a00be5125fbb71149ed7f9ce8310e0b9c80c4b95a4dd89392",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-prod-handleAsaasWebhook",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-handleAsaasWebhook",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/asaasWebhook.handleAsaasWebhook",
+      "codeSha256": "N9JQ/ekN1cUOPy430JqziSUM9ZtEBsYFHOcVMiFlTig=",
+      "revisionId": "ecd18e9f-bb48-4806-a522-ebc1a385d1ef",
+      "lastModified": "2026-11-08T14:02:31.000+0000",
+      "environmentSha256": "61f6fe2f41954c4d2f89b32b2d4015e369591545c31c4f3e940ec30eef87dc11",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-prod-createOrUpdateStudy",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-createOrUpdateStudy",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/studies.createOrUpdateStudy",
+      "codeSha256": "N9JQ/ekN1cUOPy430JqziSUM9ZtEBsYFHOcVMiFlTig=",
+      "revisionId": "fd86bd82-9556-4d62-9d19-be013c875166",
+      "lastModified": "2026-11-08T14:02:26.000+0000",
+      "environmentSha256": "61f6fe2f41954c4d2f89b32b2d4015e369591545c31c4f3e940ec30eef87dc11",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-prod-saveUserNote",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-saveUserNote",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/devotionals.saveUserNote",
+      "codeSha256": "N9JQ/ekN1cUOPy430JqziSUM9ZtEBsYFHOcVMiFlTig=",
+      "revisionId": "b57320af-3e2b-417a-972c-cb7e8467da45",
+      "lastModified": "2026-11-08T14:02:26.000+0000",
+      "environmentSha256": "61f6fe2f41954c4d2f89b32b2d4015e369591545c31c4f3e940ec30eef87dc11",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-prod-createOrUpdateCampus",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-createOrUpdateCampus",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/campuses.createOrUpdateCampus",
+      "codeSha256": "f+f0pcjrcin7hLFYvc0Tf69MVVB8W0CHGz2kGceYKKM=",
+      "revisionId": "d42e396b-53c5-4c27-bd24-d1e56c3cc9fa",
+      "lastModified": "2026-11-09T15:12:48.000+0000",
+      "environmentSha256": "61f6fe2f41954c4d2f89b32b2d4015e369591545c31c4f3e940ec30eef87dc11",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-prod-myTickets",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-myTickets",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/tickets.myTickets",
+      "codeSha256": "N9JQ/ekN1cUOPy430JqziSUM9ZtEBsYFHOcVMiFlTig=",
+      "revisionId": "2ef55d01-d0dd-46bd-92de-b180c172531b",
+      "lastModified": "2026-11-08T14:02:51.000+0000",
+      "environmentSha256": "61f6fe2f41954c4d2f89b32b2d4015e369591545c31c4f3e940ec30eef87dc11",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-prod-requestCell",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-requestCell",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/members.requestCell",
+      "codeSha256": "N9JQ/ekN1cUOPy430JqziSUM9ZtEBsYFHOcVMiFlTig=",
+      "revisionId": "270ebc94-9f16-46fd-af1c-333c1b6f6155",
+      "lastModified": "2026-11-08T14:02:26.000+0000",
+      "environmentSha256": "61f6fe2f41954c4d2f89b32b2d4015e369591545c31c4f3e940ec30eef87dc11",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-dev-getStudioPreferences",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-dev-getStudioPreferences",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/studioExperience.getPreferences",
+      "codeSha256": "bWkqif016PWmAZYUcd4Ga8IziXzs4UBWfWNmZlg858c=",
+      "revisionId": "2f6f5e77-adc8-427a-976c-4feb714777d0",
+      "lastModified": "2026-11-08T13:58:48.000+0000",
+      "environmentSha256": "c4202b69cbb9712a00be5125fbb71149ed7f9ce8310e0b9c80c4b95a4dd89392",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-prod-deleteCampus",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-deleteCampus",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/campuses.deleteCampus",
+      "codeSha256": "N9JQ/ekN1cUOPy430JqziSUM9ZtEBsYFHOcVMiFlTig=",
+      "revisionId": "bb98ccf3-f778-4a34-994c-fc01449dff10",
+      "lastModified": "2026-11-08T14:02:44.000+0000",
+      "environmentSha256": "61f6fe2f41954c4d2f89b32b2d4015e369591545c31c4f3e940ec30eef87dc11",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-prod-getGroup",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-getGroup",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/cellGroups.getGroup",
+      "codeSha256": "N9JQ/ekN1cUOPy430JqziSUM9ZtEBsYFHOcVMiFlTig=",
+      "revisionId": "ffbd90e1-8764-4ad0-9eb1-16a7448fee78",
+      "lastModified": "2026-11-08T14:02:26.000+0000",
+      "environmentSha256": "61f6fe2f41954c4d2f89b32b2d4015e369591545c31c4f3e940ec30eef87dc11",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-prod-getStudies",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-getStudies",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/studies.getStudies",
+      "codeSha256": "N9JQ/ekN1cUOPy430JqziSUM9ZtEBsYFHOcVMiFlTig=",
+      "revisionId": "bead3002-f68c-400b-917b-116faabb06dc",
+      "lastModified": "2026-11-08T14:02:34.000+0000",
+      "environmentSha256": "61f6fe2f41954c4d2f89b32b2d4015e369591545c31c4f3e940ec30eef87dc11",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-prod-getStudioPreferences",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-getStudioPreferences",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/studioExperience.getPreferences",
+      "codeSha256": "N9JQ/ekN1cUOPy430JqziSUM9ZtEBsYFHOcVMiFlTig=",
+      "revisionId": "6a63bbf9-dc47-4c19-8129-d2fc53d73034",
+      "lastModified": "2026-11-08T14:03:01.000+0000",
+      "environmentSha256": "61f6fe2f41954c4d2f89b32b2d4015e369591545c31c4f3e940ec30eef87dc11",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-prod-deleteStudyChapter",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-deleteStudyChapter",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/studies.deleteStudyChapter",
+      "codeSha256": "N9JQ/ekN1cUOPy430JqziSUM9ZtEBsYFHOcVMiFlTig=",
+      "revisionId": "9978319f-cbd5-4a52-a59c-7e02d2031d4d",
+      "lastModified": "2026-11-08T14:02:26.000+0000",
+      "environmentSha256": "61f6fe2f41954c4d2f89b32b2d4015e369591545c31c4f3e940ec30eef87dc11",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-prod-respondPrayerPastoral",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-respondPrayerPastoral",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/prayers.respondPrayerPastoral",
+      "codeSha256": "N9JQ/ekN1cUOPy430JqziSUM9ZtEBsYFHOcVMiFlTig=",
+      "revisionId": "8369aa06-914d-4296-8566-6e9eb29ce617",
+      "lastModified": "2026-11-08T14:02:34.000+0000",
+      "environmentSha256": "61f6fe2f41954c4d2f89b32b2d4015e369591545c31c4f3e940ec30eef87dc11",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-prod-updateMember",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-updateMember",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/members.update",
+      "codeSha256": "N9JQ/ekN1cUOPy430JqziSUM9ZtEBsYFHOcVMiFlTig=",
+      "revisionId": "91f32854-1313-4d67-9269-96e415b02efb",
+      "lastModified": "2026-11-08T14:02:26.000+0000",
+      "environmentSha256": "61f6fe2f41954c4d2f89b32b2d4015e369591545c31c4f3e940ec30eef87dc11",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-dev-secretariatHandler",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-dev-secretariatHandler",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/secretariat.secretariatHandler",
+      "codeSha256": "bWkqif016PWmAZYUcd4Ga8IziXzs4UBWfWNmZlg858c=",
+      "revisionId": "ec48f964-6d90-4efa-9a63-81f3aa6ecd49",
+      "lastModified": "2026-11-08T13:58:49.000+0000",
+      "environmentSha256": "c4202b69cbb9712a00be5125fbb71149ed7f9ce8310e0b9c80c4b95a4dd89392",
+      "layers": []
+    },
+    {
+      "name": "faith-hub-backend-prod-deletePartilha",
+      "arn": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-deletePartilha",
+      "runtime": "nodejs22.x",
+      "handler": "src/functions/partilhas.deletePartilha",
+      "codeSha256": "N9JQ/ekN1cUOPy430JqziSUM9ZtEBsYFHOcVMiFlTig=",
+      "revisionId": "f1ca23f0-42a6-4bcb-a024-9421507fa73b",
+      "lastModified": "2026-11-08T14:02:51.000+0000",
+      "environmentSha256": "61f6fe2f41954c4d2f89b32b2d4015e369591545c31c4f3e940ec30eef87dc11",
+      "layers": []
+    }
+  ],
+  "limitations": [
+    "Backend source HEAD does not attest deployed function source; per-function CodeSha256 is the baseline.",
+    "No database schema inventory or migration application in this stage.",
+    "Both dev and prod backend stages serve production."
+  ],
+  "apis": [
+    {
+      "id": "usl72lj2m5",
+      "endpoint": "https://usl72lj2m5.execute-api.us-east-2.amazonaws.com",
+      "routes": [
+        {
+          "key": "POST /pagarme-settings",
+          "target": "integrations/4ya3dyo"
+        },
+        {
+          "key": "POST /events",
+          "target": "integrations/cznt6xg"
+        },
+        {
+          "key": "POST /prayers",
+          "target": "integrations/uecvlqj"
+        },
+        {
+          "key": "OPTIONS /secretariat/{proxy+}",
+          "target": "integrations/ut7cu5a"
+        },
+        {
+          "key": "ANY /saas/invoices/{proxy+}",
+          "target": "integrations/vbwcla5"
+        },
+        {
+          "key": "DELETE /events/{id}",
+          "target": "integrations/cznt6xg"
+        },
+        {
+          "key": "GET /feature-flags",
+          "target": "integrations/4ya3dyo"
+        },
+        {
+          "key": "GET /upload-url",
+          "target": "integrations/uecvlqj"
+        },
+        {
+          "key": "GET /studies",
+          "target": "integrations/uecvlqj"
+        },
+        {
+          "key": "POST /broadcasts",
+          "target": "integrations/uecvlqj"
+        },
+        {
+          "key": "GET /saas-subscriptions",
+          "target": "integrations/vefuesh"
+        },
+        {
+          "key": "GET /studio/search",
+          "target": "integrations/pg9wgms"
+        },
+        {
+          "key": "POST /cell-groups/{id}/join-requests/{userId}",
+          "target": "integrations/cznt6xg"
+        },
+        {
+          "key": "PATCH /prayers/{id}/status",
+          "target": "integrations/uecvlqj"
+        },
+        {
+          "key": "GET /members/{id}",
+          "target": "integrations/0fiseme"
+        },
+        {
+          "key": "POST /tickets/scan",
+          "target": "integrations/cznt6xg"
+        },
+        {
+          "key": "GET /broadcasts/active",
+          "target": "integrations/uecvlqj"
+        },
+        {
+          "key": "DELETE /pdv/products/{id}",
+          "target": "integrations/esizx1q"
+        },
+        {
+          "key": "GET /proposals/public/{token}",
+          "target": "integrations/vefuesh"
+        },
+        {
+          "key": "ANY /kids",
+          "target": "integrations/egh1zbv"
+        },
+        {
+          "key": "POST /church-settings",
+          "target": "integrations/4ya3dyo"
+        },
+        {
+          "key": "POST /feature-flags/batch",
+          "target": "integrations/4ya3dyo"
+        },
+        {
+          "key": "POST /pdv/products",
+          "target": "integrations/esizx1q"
+        },
+        {
+          "key": "GET /cell-groups/{id}",
+          "target": "integrations/cznt6xg"
+        },
+        {
+          "key": "GET /study-books",
+          "target": "integrations/uecvlqj"
+        },
+        {
+          "key": "GET /security/audit-logs",
+          "target": "integrations/4ya3dyo"
+        },
+        {
+          "key": "GET /proposals",
+          "target": "integrations/vefuesh"
+        },
+        {
+          "key": "GET /events",
+          "target": "integrations/cznt6xg"
+        },
+        {
+          "key": "POST /feature-flags/toggle",
+          "target": "integrations/4ya3dyo"
+        },
+        {
+          "key": "OPTIONS /volunteers",
+          "target": "integrations/ut7cu5a"
+        },
+        {
+          "key": "PUT /members/{id}",
+          "target": "integrations/0fiseme"
+        },
+        {
+          "key": "GET /events/{id}",
+          "target": "integrations/cznt6xg"
+        },
+        {
+          "key": "OPTIONS /financial/{proxy+}",
+          "target": "integrations/ut7cu5a"
+        },
+        {
+          "key": "ANY /pwa-experience/{proxy+}",
+          "target": "integrations/4ya3dyo"
+        },
+        {
+          "key": "ANY /ministries/{proxy+}",
+          "target": "integrations/ctbvbmg"
+        },
+        {
+          "key": "POST /cell-groups",
+          "target": "integrations/cznt6xg"
+        },
+        {
+          "key": "ANY /saas/invoices",
+          "target": "integrations/vbwcla5"
+        },
+        {
+          "key": "DELETE /prayers/{id}",
+          "target": "integrations/uecvlqj"
+        },
+        {
+          "key": "ANY /secretariat/{proxy+}",
+          "target": "integrations/c2ltwin"
+        },
+        {
+          "key": "POST /tickets/checkout",
+          "target": "integrations/cznt6xg"
+        },
+        {
+          "key": "DELETE /feature-flags/tenant/{id}",
+          "target": "integrations/4ya3dyo"
+        },
+        {
+          "key": "POST /members/reset-password",
+          "target": "integrations/0fiseme"
+        },
+        {
+          "key": "ANY /public/journey/{proxy+}",
+          "target": "integrations/vefuesh"
+        },
+        {
+          "key": "GET /tickets/{id}/pass",
+          "target": "integrations/cznt6xg"
+        },
+        {
+          "key": "POST /partilhas",
+          "target": "integrations/uecvlqj"
+        },
+        {
+          "key": "GET /pdv/orders",
+          "target": "integrations/esizx1q"
+        },
+        {
+          "key": "OPTIONS /ministries",
+          "target": "integrations/ut7cu5a"
+        },
+        {
+          "key": "OPTIONS /kids",
+          "target": "integrations/ut7cu5a"
+        },
+        {
+          "key": "ANY /volunteers",
+          "target": "integrations/ctbvbmg"
+        },
+        {
+          "key": "GET /study-books/{id}",
+          "target": "integrations/uecvlqj"
+        },
+        {
+          "key": "GET /tickets/{id}/calendar.ics",
+          "target": "integrations/cznt6xg"
+        },
+        {
+          "key": "POST /organizations",
+          "target": "integrations/4ya3dyo"
+        },
+        {
+          "key": "OPTIONS /kids/{proxy+}",
+          "target": "integrations/ut7cu5a"
+        },
+        {
+          "key": "POST /proposals",
+          "target": "integrations/vefuesh"
+        },
+        {
+          "key": "DELETE /devotionals/{id}",
+          "target": "integrations/uecvlqj"
+        },
+        {
+          "key": "PUT /pdv/inventory/{productId}/settings",
+          "target": "integrations/esizx1q"
+        },
+        {
+          "key": "POST /studies",
+          "target": "integrations/uecvlqj"
+        },
+        {
+          "key": "POST /pdv/inventory/movements",
+          "target": "integrations/esizx1q"
+        },
+        {
+          "key": "ANY /pastoral/{proxy+}",
+          "target": "integrations/7vedx9o"
+        },
+        {
+          "key": "GET /saas-plans",
+          "target": "integrations/vefuesh"
+        },
+        {
+          "key": "POST /cell-groups/{id}/evaluate-request",
+          "target": "integrations/cznt6xg"
+        },
+        {
+          "key": "POST /posts",
+          "target": "integrations/uecvlqj"
+        },
+        {
+          "key": "POST /prayers/{id}/pray",
+          "target": "integrations/uecvlqj"
+        },
+        {
+          "key": "OPTIONS /ministries/{proxy+}",
+          "target": "integrations/ut7cu5a"
+        },
+        {
+          "key": "OPTIONS /saas/invoices/{proxy+}",
+          "target": "integrations/ut7cu5a"
+        },
+        {
+          "key": "POST /posts/{id}/react",
+          "target": "integrations/uecvlqj"
+        },
+        {
+          "key": "POST /pdv/orders",
+          "target": "integrations/esizx1q"
+        },
+        {
+          "key": "DELETE /partilhas/{id}",
+          "target": "integrations/uecvlqj"
+        },
+        {
+          "key": "DELETE /posts/{id}",
+          "target": "integrations/uecvlqj"
+        },
+        {
+          "key": "OPTIONS /saas/invoices",
+          "target": "integrations/ut7cu5a"
+        },
+        {
+          "key": "POST /cell-groups/{id}/members",
+          "target": "integrations/cznt6xg"
+        },
+        {
+          "key": "DELETE /broadcasts/{id}",
+          "target": "integrations/uecvlqj"
+        },
+        {
+          "key": "POST /cell-groups/{id}/meetings",
+          "target": "integrations/cznt6xg"
+        },
+        {
+          "key": "DELETE /cell-groups/{id}",
+          "target": "integrations/cznt6xg"
+        },
+        {
+          "key": "GET /public/secretariat/documents/{token}",
+          "target": "integrations/aq6czon"
+        },
+        {
+          "key": "OPTIONS /financial",
+          "target": "integrations/ut7cu5a"
+        },
+        {
+          "key": "POST /study-books/{id}/chapters",
+          "target": "integrations/uecvlqj"
+        },
+        {
+          "key": "ANY /kids/{proxy+}",
+          "target": "integrations/egh1zbv"
+        },
+        {
+          "key": "GET /pdv/products",
+          "target": "integrations/esizx1q"
+        },
+        {
+          "key": "GET /devotionals/today",
+          "target": "integrations/uecvlqj"
+        },
+        {
+          "key": "GET /prayers",
+          "target": "integrations/uecvlqj"
+        },
+        {
+          "key": "POST /devotionals/notes",
+          "target": "integrations/uecvlqj"
+        },
+        {
+          "key": "ANY /financial/{proxy+}",
+          "target": "integrations/vbwcla5"
+        },
+        {
+          "key": "PUT /studio/preferences",
+          "target": "integrations/ojggjcr"
+        },
+        {
+          "key": "GET /tickets/me",
+          "target": "integrations/cznt6xg"
+        },
+        {
+          "key": "POST /webhooks/asaas",
+          "target": "integrations/vefuesh"
+        },
+        {
+          "key": "GET /pagarme-settings",
+          "target": "integrations/4ya3dyo"
+        },
+        {
+          "key": "OPTIONS /studio/{proxy+}",
+          "target": "integrations/ut7cu5a"
+        },
+        {
+          "key": "POST /members/self-register",
+          "target": "integrations/0fiseme"
+        },
+        {
+          "key": "GET /pdv/analytics",
+          "target": "integrations/esizx1q"
+        },
+        {
+          "key": "GET /organizations",
+          "target": "integrations/4ya3dyo"
+        },
+        {
+          "key": "POST /devotionals",
+          "target": "integrations/uecvlqj"
+        },
+        {
+          "key": "GET /content/analytics",
+          "target": "integrations/uecvlqj"
+        },
+        {
+          "key": "POST /prayers/{id}/respond",
+          "target": "integrations/uecvlqj"
+        },
+        {
+          "key": "GET /cell-groups",
+          "target": "integrations/cznt6xg"
+        },
+        {
+          "key": "POST /members/invite",
+          "target": "integrations/0fiseme"
+        },
+        {
+          "key": "DELETE /studies/{id}",
+          "target": "integrations/uecvlqj"
+        },
+        {
+          "key": "GET /pdv/inventory/movements",
+          "target": "integrations/esizx1q"
+        },
+        {
+          "key": "ANY /intelligence/{proxy+}",
+          "target": "integrations/4ya3dyo"
+        },
+        {
+          "key": "OPTIONS /pastoral",
+          "target": "integrations/ut7cu5a"
+        },
+        {
+          "key": "ANY /volunteers/{proxy+}",
+          "target": "integrations/ctbvbmg"
+        },
+        {
+          "key": "DELETE /saas-plans/{id}",
+          "target": "integrations/vefuesh"
+        },
+        {
+          "key": "OPTIONS /volunteers/{proxy+}",
+          "target": "integrations/ut7cu5a"
+        },
+        {
+          "key": "GET /organizations/{id}",
+          "target": "integrations/4ya3dyo"
+        },
+        {
+          "key": "POST /saas-plans",
+          "target": "integrations/vefuesh"
+        },
+        {
+          "key": "DELETE /study-books/{id}/chapters/{chapterId}",
+          "target": "integrations/uecvlqj"
+        },
+        {
+          "key": "GET /pdv/inventory",
+          "target": "integrations/esizx1q"
+        },
+        {
+          "key": "POST /campuses",
+          "target": "integrations/4ya3dyo"
+        },
+        {
+          "key": "GET /cell-groups/{id}/meetings/{meetingId}",
+          "target": "integrations/cznt6xg"
+        },
+        {
+          "key": "DELETE /cell-groups/{id}/members/{memberId}",
+          "target": "integrations/cznt6xg"
+        },
+        {
+          "key": "POST /content/engagement",
+          "target": "integrations/uecvlqj"
+        },
+        {
+          "key": "PUT /members/status",
+          "target": "integrations/0fiseme"
+        },
+        {
+          "key": "ANY /ministries",
+          "target": "integrations/ctbvbmg"
+        },
+        {
+          "key": "GET /devotionals",
+          "target": "integrations/uecvlqj"
+        },
+        {
+          "key": "ANY /pastoral",
+          "target": "integrations/7vedx9o"
+        },
+        {
+          "key": "ANY /financial",
+          "target": "integrations/vbwcla5"
+        },
+        {
+          "key": "GET /church-settings",
+          "target": "integrations/4ya3dyo"
+        },
+        {
+          "key": "GET /campuses",
+          "target": "integrations/4ya3dyo"
+        },
+        {
+          "key": "OPTIONS /pastoral/{proxy+}",
+          "target": "integrations/ut7cu5a"
+        },
+        {
+          "key": "POST /proposals/public/{token}/accept",
+          "target": "integrations/vefuesh"
+        },
+        {
+          "key": "GET /members",
+          "target": "integrations/0fiseme"
+        },
+        {
+          "key": "GET /cell-groups/{id}/meetings",
+          "target": "integrations/cznt6xg"
+        },
+        {
+          "key": "DELETE /campuses/{id}",
+          "target": "integrations/4ya3dyo"
+        },
+        {
+          "key": "GET /broadcasts",
+          "target": "integrations/uecvlqj"
+        },
+        {
+          "key": "POST /study-books",
+          "target": "integrations/uecvlqj"
+        },
+        {
+          "key": "GET /campuses/{id}",
+          "target": "integrations/4ya3dyo"
+        },
+        {
+          "key": "POST /prayers/{id}/testimony",
+          "target": "integrations/uecvlqj"
+        },
+        {
+          "key": "DELETE /study-books/{id}",
+          "target": "integrations/uecvlqj"
+        },
+        {
+          "key": "GET /studio/preferences",
+          "target": "integrations/5vpkxgr"
+        },
+        {
+          "key": "POST /members/{id}/request-cell",
+          "target": "integrations/0fiseme"
+        },
+        {
+          "key": "PUT /pdv/orders/{id}/status",
+          "target": "integrations/esizx1q"
+        },
+        {
+          "key": "GET /partilhas",
+          "target": "integrations/uecvlqj"
+        },
+        {
+          "key": "PUT /partilhas/{id}/toggle",
+          "target": "integrations/uecvlqj"
+        },
+        {
+          "key": "GET /posts",
+          "target": "integrations/uecvlqj"
+        },
+        {
+          "key": "POST /members/batch-import",
+          "target": "integrations/0fiseme"
+        },
+        {
+          "key": "POST /study-chapters/{id}/toggle-completion",
+          "target": "integrations/uecvlqj"
+        }
+      ],
+      "integrations": [
+        {
+          "id": "0fiseme",
+          "uri": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-dev-membersApi"
+        },
+        {
+          "id": "4ya3dyo",
+          "uri": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-dev-tenantApi"
+        },
+        {
+          "id": "5vpkxgr",
+          "uri": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-dev-getStudioPreferences"
+        },
+        {
+          "id": "7vedx9o",
+          "uri": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-dev-pastoralHandler"
+        },
+        {
+          "id": "aq6czon",
+          "uri": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-dev-publicDocumentVerification"
+        },
+        {
+          "id": "c2ltwin",
+          "uri": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-dev-secretariatHandler"
+        },
+        {
+          "id": "ctbvbmg",
+          "uri": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-dev-ministriesHandler"
+        },
+        {
+          "id": "cznt6xg",
+          "uri": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-dev-communityApi"
+        },
+        {
+          "id": "egh1zbv",
+          "uri": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-dev-kidsHandler"
+        },
+        {
+          "id": "esizx1q",
+          "uri": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-dev-pdvInventory"
+        },
+        {
+          "id": "ojggjcr",
+          "uri": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-dev-updateStudioPreferences"
+        },
+        {
+          "id": "pg9wgms",
+          "uri": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-dev-studioGlobalSearch"
+        },
+        {
+          "id": "uecvlqj",
+          "uri": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-dev-contentApi"
+        },
+        {
+          "id": "ut7cu5a",
+          "uri": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-dev-corsPreflight"
+        },
+        {
+          "id": "vbwcla5",
+          "uri": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-dev-financialHandler"
+        },
+        {
+          "id": "vefuesh",
+          "uri": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-dev-saasApi"
+        }
+      ]
+    },
+    {
+      "id": "566n5qz7te",
+      "endpoint": "https://566n5qz7te.execute-api.us-east-2.amazonaws.com",
+      "routes": [
+        {
+          "key": "POST /feature-flags/batch",
+          "target": "integrations/vnuvys8"
+        },
+        {
+          "key": "DELETE /feature-flags/tenant/{id}",
+          "target": "integrations/vp0n7e9"
+        },
+        {
+          "key": "GET /events",
+          "target": "integrations/k3290u5"
+        },
+        {
+          "key": "DELETE /saas-plans/{id}",
+          "target": "integrations/ufz6xon"
+        },
+        {
+          "key": "DELETE /devotionals/{id}",
+          "target": "integrations/hiav082"
+        },
+        {
+          "key": "GET /broadcasts/active",
+          "target": "integrations/qykc6ok"
+        },
+        {
+          "key": "GET /posts",
+          "target": "integrations/vq867ll"
+        },
+        {
+          "key": "ANY /kids/{proxy+}",
+          "target": "integrations/4ucmdz8"
+        },
+        {
+          "key": "GET /proposals",
+          "target": "integrations/xgd7rnn"
+        },
+        {
+          "key": "GET /security/audit-logs",
+          "target": "integrations/a8jled7"
+        },
+        {
+          "key": "OPTIONS /volunteers/{proxy+}",
+          "target": "integrations/3ipj5m8"
+        },
+        {
+          "key": "PUT /studio/preferences",
+          "target": "integrations/p7auu2s"
+        },
+        {
+          "key": "GET /church-settings",
+          "target": "integrations/3p30l30"
+        },
+        {
+          "key": "DELETE /studies/{id}",
+          "target": "integrations/zuezl5a"
+        },
+        {
+          "key": "OPTIONS /secretariat/{proxy+}",
+          "target": "integrations/3ipj5m8"
+        },
+        {
+          "key": "GET /members",
+          "target": "integrations/dxuahwr"
+        },
+        {
+          "key": "POST /cell-groups/{id}/join-requests/{userId}",
+          "target": "integrations/kh2tio0"
+        },
+        {
+          "key": "GET /feature-flags",
+          "target": "integrations/6ocidok"
+        },
+        {
+          "key": "GET /studies",
+          "target": "integrations/eti6juq"
+        },
+        {
+          "key": "ANY /saas/invoices/{proxy+}",
+          "target": "integrations/ao44veo"
+        },
+        {
+          "key": "OPTIONS /kids/{proxy+}",
+          "target": "integrations/3ipj5m8"
+        },
+        {
+          "key": "OPTIONS /kids",
+          "target": "integrations/3ipj5m8"
+        },
+        {
+          "key": "PATCH /prayers/{id}/status",
+          "target": "integrations/9k1mdxl"
+        },
+        {
+          "key": "POST /proposals",
+          "target": "integrations/y6933ys"
+        },
+        {
+          "key": "DELETE /cell-groups/{id}/members/{memberId}",
+          "target": "integrations/cv8rxg8"
+        },
+        {
+          "key": "GET /saas-subscriptions",
+          "target": "integrations/7kbyqh0"
+        },
+        {
+          "key": "DELETE /partilhas/{id}",
+          "target": "integrations/34lk3o3"
+        },
+        {
+          "key": "POST /proposals/public/{token}/accept",
+          "target": "integrations/cpopije"
+        },
+        {
+          "key": "ANY /pastoral",
+          "target": "integrations/122ozul"
+        },
+        {
+          "key": "ANY /financial",
+          "target": "integrations/ao44veo"
+        },
+        {
+          "key": "GET /pdv/analytics",
+          "target": "integrations/6jw4qq2"
+        },
+        {
+          "key": "GET /organizations/{id}",
+          "target": "integrations/oih7i9s"
+        },
+        {
+          "key": "ANY /financial/{proxy+}",
+          "target": "integrations/ao44veo"
+        },
+        {
+          "key": "GET /events/{id}",
+          "target": "integrations/4o0mhyq"
+        },
+        {
+          "key": "POST /cell-groups/{id}/meetings",
+          "target": "integrations/edw5p7f"
+        },
+        {
+          "key": "GET /prayers",
+          "target": "integrations/uimiqkq"
+        },
+        {
+          "key": "OPTIONS /financial",
+          "target": "integrations/3ipj5m8"
+        },
+        {
+          "key": "PUT /members/{id}",
+          "target": "integrations/yrusamc"
+        },
+        {
+          "key": "GET /devotionals/today",
+          "target": "integrations/s9gm5hr"
+        },
+        {
+          "key": "POST /study-books/{id}/chapters",
+          "target": "integrations/1v914h6"
+        },
+        {
+          "key": "ANY /ministries",
+          "target": "integrations/ou0ctma"
+        },
+        {
+          "key": "POST /organizations",
+          "target": "integrations/wdc2oap"
+        },
+        {
+          "key": "GET /broadcasts",
+          "target": "integrations/z0whjd2"
+        },
+        {
+          "key": "ANY /volunteers/{proxy+}",
+          "target": "integrations/ou0ctma"
+        },
+        {
+          "key": "OPTIONS /saas/invoices/{proxy+}",
+          "target": "integrations/3ipj5m8"
+        },
+        {
+          "key": "DELETE /study-books/{id}",
+          "target": "integrations/i587mza"
+        },
+        {
+          "key": "POST /devotionals/notes",
+          "target": "integrations/0d1s3dk"
+        },
+        {
+          "key": "GET /study-books/{id}",
+          "target": "integrations/2rk329q"
+        },
+        {
+          "key": "OPTIONS /volunteers",
+          "target": "integrations/3ipj5m8"
+        },
+        {
+          "key": "POST /members/invite",
+          "target": "integrations/l9xwv7t"
+        },
+        {
+          "key": "ANY /pwa-experience/{proxy+}",
+          "target": "integrations/jzks486"
+        },
+        {
+          "key": "GET /pdv/products",
+          "target": "integrations/6fhr4ee"
+        },
+        {
+          "key": "ANY /public/journey/{proxy+}",
+          "target": "integrations/q26k6mm"
+        },
+        {
+          "key": "PUT /pdv/inventory/{productId}/settings",
+          "target": "integrations/w1082tl"
+        },
+        {
+          "key": "POST /campuses",
+          "target": "integrations/95hxzn9"
+        },
+        {
+          "key": "GET /content/analytics",
+          "target": "integrations/dvir61n"
+        },
+        {
+          "key": "POST /tickets/checkout",
+          "target": "integrations/rpe0hgd"
+        },
+        {
+          "key": "DELETE /campuses/{id}",
+          "target": "integrations/fng9i7e"
+        },
+        {
+          "key": "POST /prayers/{id}/testimony",
+          "target": "integrations/yt9w8nr"
+        },
+        {
+          "key": "GET /campuses",
+          "target": "integrations/703nbi6"
+        },
+        {
+          "key": "DELETE /broadcasts/{id}",
+          "target": "integrations/zfpv602"
+        },
+        {
+          "key": "PUT /partilhas/{id}/toggle",
+          "target": "integrations/ldd04q9"
+        },
+        {
+          "key": "GET /pdv/orders",
+          "target": "integrations/bsvjoil"
+        },
+        {
+          "key": "GET /organizations",
+          "target": "integrations/5acse99"
+        },
+        {
+          "key": "POST /study-chapters/{id}/toggle-completion",
+          "target": "integrations/sp38ibc"
+        },
+        {
+          "key": "OPTIONS /saas/invoices",
+          "target": "integrations/3ipj5m8"
+        },
+        {
+          "key": "POST /broadcasts",
+          "target": "integrations/5sruu3c"
+        },
+        {
+          "key": "ANY /kids",
+          "target": "integrations/4ucmdz8"
+        },
+        {
+          "key": "GET /cell-groups/{id}/meetings",
+          "target": "integrations/2qa0ev9"
+        },
+        {
+          "key": "GET /tickets/{id}/pass",
+          "target": "integrations/blci60c"
+        },
+        {
+          "key": "POST /study-books",
+          "target": "integrations/jv310h8"
+        },
+        {
+          "key": "POST /prayers",
+          "target": "integrations/i9bibi5"
+        },
+        {
+          "key": "OPTIONS /pastoral",
+          "target": "integrations/3ipj5m8"
+        },
+        {
+          "key": "ANY /volunteers",
+          "target": "integrations/ou0ctma"
+        },
+        {
+          "key": "DELETE /cell-groups/{id}",
+          "target": "integrations/5omixo9"
+        },
+        {
+          "key": "POST /cell-groups/{id}/members",
+          "target": "integrations/q7ndcdv"
+        },
+        {
+          "key": "POST /partilhas",
+          "target": "integrations/b8h8hv4"
+        },
+        {
+          "key": "GET /studio/search",
+          "target": "integrations/sc19t99"
+        },
+        {
+          "key": "GET /partilhas",
+          "target": "integrations/s2sd5im"
+        },
+        {
+          "key": "GET /pdv/inventory/movements",
+          "target": "integrations/w1082tl"
+        },
+        {
+          "key": "POST /prayers/{id}/pray",
+          "target": "integrations/40xgxyu"
+        },
+        {
+          "key": "GET /proposals/public/{token}",
+          "target": "integrations/verwyzc"
+        },
+        {
+          "key": "GET /tickets/me",
+          "target": "integrations/1jiim56"
+        },
+        {
+          "key": "POST /cell-groups/{id}/evaluate-request",
+          "target": "integrations/u6s40ia"
+        },
+        {
+          "key": "GET /devotionals",
+          "target": "integrations/xudv6kr"
+        },
+        {
+          "key": "POST /pdv/inventory/movements",
+          "target": "integrations/w1082tl"
+        },
+        {
+          "key": "POST /tickets/scan",
+          "target": "integrations/st843th"
+        },
+        {
+          "key": "GET /study-books",
+          "target": "integrations/0emeeum"
+        },
+        {
+          "key": "GET /upload-url",
+          "target": "integrations/hr71p6f"
+        },
+        {
+          "key": "GET /pagarme-settings",
+          "target": "integrations/btlihp8"
+        },
+        {
+          "key": "POST /members/{id}/request-cell",
+          "target": "integrations/cw932pn"
+        },
+        {
+          "key": "POST /members/batch-import",
+          "target": "integrations/lgzoml9"
+        },
+        {
+          "key": "DELETE /pdv/products/{id}",
+          "target": "integrations/s8fvugh"
+        },
+        {
+          "key": "OPTIONS /ministries/{proxy+}",
+          "target": "integrations/3ipj5m8"
+        },
+        {
+          "key": "POST /webhooks/asaas",
+          "target": "integrations/0jewswf"
+        },
+        {
+          "key": "DELETE /prayers/{id}",
+          "target": "integrations/26cgtv0"
+        },
+        {
+          "key": "POST /members/self-register",
+          "target": "integrations/hg38nnc"
+        },
+        {
+          "key": "GET /cell-groups/{id}/meetings/{meetingId}",
+          "target": "integrations/hus3jhe"
+        },
+        {
+          "key": "GET /saas-plans",
+          "target": "integrations/0jorrqn"
+        },
+        {
+          "key": "GET /campuses/{id}",
+          "target": "integrations/v6nwnp9"
+        },
+        {
+          "key": "GET /members/{id}",
+          "target": "integrations/r9elceq"
+        },
+        {
+          "key": "ANY /intelligence/{proxy+}",
+          "target": "integrations/wjoxto3"
+        },
+        {
+          "key": "POST /devotionals",
+          "target": "integrations/rzdk6oc"
+        },
+        {
+          "key": "OPTIONS /studio/{proxy+}",
+          "target": "integrations/3ipj5m8"
+        },
+        {
+          "key": "OPTIONS /pastoral/{proxy+}",
+          "target": "integrations/3ipj5m8"
+        },
+        {
+          "key": "POST /members/reset-password",
+          "target": "integrations/knro92q"
+        },
+        {
+          "key": "POST /posts/{id}/react",
+          "target": "integrations/n7u1gda"
+        },
+        {
+          "key": "PUT /pdv/orders/{id}/status",
+          "target": "integrations/mon9s3g"
+        },
+        {
+          "key": "POST /cell-groups",
+          "target": "integrations/ik13qds"
+        },
+        {
+          "key": "DELETE /study-books/{id}/chapters/{chapterId}",
+          "target": "integrations/8r5vb2i"
+        },
+        {
+          "key": "GET /public/secretariat/documents/{token}",
+          "target": "integrations/cjhhjya"
+        },
+        {
+          "key": "POST /posts",
+          "target": "integrations/89x7f71"
+        },
+        {
+          "key": "GET /studio/preferences",
+          "target": "integrations/0dqv8ts"
+        },
+        {
+          "key": "GET /cell-groups/{id}",
+          "target": "integrations/uj5cpqa"
+        },
+        {
+          "key": "POST /events",
+          "target": "integrations/tnlj0bn"
+        },
+        {
+          "key": "DELETE /posts/{id}",
+          "target": "integrations/qw1ov83"
+        },
+        {
+          "key": "POST /pagarme-settings",
+          "target": "integrations/befkc5v"
+        },
+        {
+          "key": "OPTIONS /financial/{proxy+}",
+          "target": "integrations/3ipj5m8"
+        },
+        {
+          "key": "PUT /members/status",
+          "target": "integrations/htphr5a"
+        },
+        {
+          "key": "POST /content/engagement",
+          "target": "integrations/n86pqbm"
+        },
+        {
+          "key": "POST /pdv/orders",
+          "target": "integrations/32j0tdj"
+        },
+        {
+          "key": "POST /pdv/products",
+          "target": "integrations/we57745"
+        },
+        {
+          "key": "GET /cell-groups",
+          "target": "integrations/1d5bu3r"
+        },
+        {
+          "key": "POST /feature-flags/toggle",
+          "target": "integrations/x054qnl"
+        },
+        {
+          "key": "DELETE /events/{id}",
+          "target": "integrations/1dcpu5p"
+        },
+        {
+          "key": "OPTIONS /ministries",
+          "target": "integrations/3ipj5m8"
+        },
+        {
+          "key": "POST /saas-plans",
+          "target": "integrations/ue8slyf"
+        },
+        {
+          "key": "ANY /secretariat/{proxy+}",
+          "target": "integrations/cq1zdcg"
+        },
+        {
+          "key": "POST /studies",
+          "target": "integrations/9bphd09"
+        },
+        {
+          "key": "ANY /saas/invoices",
+          "target": "integrations/ao44veo"
+        },
+        {
+          "key": "GET /tickets/{id}/calendar.ics",
+          "target": "integrations/6x24nwn"
+        },
+        {
+          "key": "POST /church-settings",
+          "target": "integrations/x8eu4zq"
+        },
+        {
+          "key": "ANY /pastoral/{proxy+}",
+          "target": "integrations/122ozul"
+        },
+        {
+          "key": "ANY /ministries/{proxy+}",
+          "target": "integrations/ou0ctma"
+        },
+        {
+          "key": "POST /prayers/{id}/respond",
+          "target": "integrations/atp23oh"
+        },
+        {
+          "key": "GET /pdv/inventory",
+          "target": "integrations/w1082tl"
+        }
+      ],
+      "integrations": [
+        {
+          "id": "0d1s3dk",
+          "uri": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-saveUserNote"
+        },
+        {
+          "id": "0dqv8ts",
+          "uri": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-getStudioPreferences"
+        },
+        {
+          "id": "0emeeum",
+          "uri": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-getStudyBooks"
+        },
+        {
+          "id": "0jewswf",
+          "uri": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-handleAsaasWebhook"
+        },
+        {
+          "id": "0jorrqn",
+          "uri": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-listSaasPlans"
+        },
+        {
+          "id": "122ozul",
+          "uri": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-pastoralHandler"
+        },
+        {
+          "id": "1d5bu3r",
+          "uri": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-getGroups"
+        },
+        {
+          "id": "1dcpu5p",
+          "uri": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-deleteEvent"
+        },
+        {
+          "id": "1jiim56",
+          "uri": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-myTickets"
+        },
+        {
+          "id": "1v914h6",
+          "uri": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-saveStudyChapter"
+        },
+        {
+          "id": "26cgtv0",
+          "uri": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-deletePrayer"
+        },
+        {
+          "id": "2qa0ev9",
+          "uri": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-getCellMeetings"
+        },
+        {
+          "id": "2rk329q",
+          "uri": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-getStudyBookById"
+        },
+        {
+          "id": "32j0tdj",
+          "uri": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-createPdvOrder"
+        },
+        {
+          "id": "34lk3o3",
+          "uri": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-deletePartilha"
+        },
+        {
+          "id": "3ipj5m8",
+          "uri": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-corsPreflight"
+        },
+        {
+          "id": "3p30l30",
+          "uri": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-getChurchSettings"
+        },
+        {
+          "id": "40xgxyu",
+          "uri": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-prayForRequest"
+        },
+        {
+          "id": "4o0mhyq",
+          "uri": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-getEventById"
+        },
+        {
+          "id": "4ucmdz8",
+          "uri": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-kidsHandler"
+        },
+        {
+          "id": "5acse99",
+          "uri": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-listOrganizations"
+        },
+        {
+          "id": "5omixo9",
+          "uri": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-deleteGroup"
+        },
+        {
+          "id": "5sruu3c",
+          "uri": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-createOrUpdateBroadcast"
+        },
+        {
+          "id": "6fhr4ee",
+          "uri": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-getPdvProducts"
+        },
+        {
+          "id": "6jw4qq2",
+          "uri": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-getPdvAnalytics"
+        },
+        {
+          "id": "6ocidok",
+          "uri": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-getFeatureFlags"
+        },
+        {
+          "id": "6x24nwn",
+          "uri": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-getTicketCalendar"
+        },
+        {
+          "id": "703nbi6",
+          "uri": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-listCampuses"
+        },
+        {
+          "id": "7kbyqh0",
+          "uri": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-listSaasSubscriptions"
+        },
+        {
+          "id": "89x7f71",
+          "uri": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-createPost"
+        },
+        {
+          "id": "8r5vb2i",
+          "uri": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-deleteStudyChapter"
+        },
+        {
+          "id": "95hxzn9",
+          "uri": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-createOrUpdateCampus"
+        },
+        {
+          "id": "9bphd09",
+          "uri": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-createOrUpdateStudy"
+        },
+        {
+          "id": "9k1mdxl",
+          "uri": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-updatePrayerStatus"
+        },
+        {
+          "id": "a8jled7",
+          "uri": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-listAuditLogs"
+        },
+        {
+          "id": "ao44veo",
+          "uri": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-financialHandler"
+        },
+        {
+          "id": "atp23oh",
+          "uri": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-respondPrayerPastoral"
+        },
+        {
+          "id": "b8h8hv4",
+          "uri": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-createPartilha"
+        },
+        {
+          "id": "befkc5v",
+          "uri": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-updatePagarmeSettings"
+        },
+        {
+          "id": "blci60c",
+          "uri": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-getTicketPass"
+        },
+        {
+          "id": "bsvjoil",
+          "uri": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-getPdvOrders"
+        },
+        {
+          "id": "btlihp8",
+          "uri": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-getPagarmeSettings"
+        },
+        {
+          "id": "cjhhjya",
+          "uri": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-publicDocumentVerification"
+        },
+        {
+          "id": "cpopije",
+          "uri": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-acceptProposal"
+        },
+        {
+          "id": "cq1zdcg",
+          "uri": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-secretariatHandler"
+        },
+        {
+          "id": "cv8rxg8",
+          "uri": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-removeCellMember"
+        },
+        {
+          "id": "cw932pn",
+          "uri": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-requestCell"
+        },
+        {
+          "id": "dvir61n",
+          "uri": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-getContentAnalytics"
+        },
+        {
+          "id": "dxuahwr",
+          "uri": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-listMembers"
+        },
+        {
+          "id": "edw5p7f",
+          "uri": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-recordMeeting"
+        },
+        {
+          "id": "eti6juq",
+          "uri": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-getStudies"
+        },
+        {
+          "id": "fng9i7e",
+          "uri": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-deleteCampus"
+        },
+        {
+          "id": "hg38nnc",
+          "uri": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-selfRegisterMember"
+        },
+        {
+          "id": "hiav082",
+          "uri": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-deleteDevotional"
+        },
+        {
+          "id": "hr71p6f",
+          "uri": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-getUploadUrl"
+        },
+        {
+          "id": "htphr5a",
+          "uri": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-updateMemberStatus"
+        },
+        {
+          "id": "hus3jhe",
+          "uri": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-getCellMeetingDetails"
+        },
+        {
+          "id": "i587mza",
+          "uri": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-deleteStudyBook"
+        },
+        {
+          "id": "i9bibi5",
+          "uri": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-createPrayer"
+        },
+        {
+          "id": "ik13qds",
+          "uri": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-createOrUpdateGroup"
+        },
+        {
+          "id": "jv310h8",
+          "uri": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-createOrUpdateStudyBook"
+        },
+        {
+          "id": "jzks486",
+          "uri": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-pwaExperience"
+        },
+        {
+          "id": "k3290u5",
+          "uri": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-getEvents"
+        },
+        {
+          "id": "kh2tio0",
+          "uri": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-evaluateJoinRequest"
+        },
+        {
+          "id": "knro92q",
+          "uri": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-resetPassword"
+        },
+        {
+          "id": "l9xwv7t",
+          "uri": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-inviteMember"
+        },
+        {
+          "id": "ldd04q9",
+          "uri": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-togglePartilha"
+        },
+        {
+          "id": "lgzoml9",
+          "uri": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-batchImportMembers"
+        },
+        {
+          "id": "mon9s3g",
+          "uri": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-updatePdvOrderStatus"
+        },
+        {
+          "id": "n7u1gda",
+          "uri": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-reactPost"
+        },
+        {
+          "id": "n86pqbm",
+          "uri": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-trackContentEngagement"
+        },
+        {
+          "id": "oih7i9s",
+          "uri": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-getOrganization"
+        },
+        {
+          "id": "ou0ctma",
+          "uri": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-ministriesHandler"
+        },
+        {
+          "id": "p7auu2s",
+          "uri": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-updateStudioPreferences"
+        },
+        {
+          "id": "q26k6mm",
+          "uri": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-publicJourney"
+        },
+        {
+          "id": "q7ndcdv",
+          "uri": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-addCellMember"
+        },
+        {
+          "id": "qw1ov83",
+          "uri": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-deletePost"
+        },
+        {
+          "id": "qykc6ok",
+          "uri": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-getActiveBroadcast"
+        },
+        {
+          "id": "r9elceq",
+          "uri": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-getMember"
+        },
+        {
+          "id": "rpe0hgd",
+          "uri": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-checkoutTicket"
+        },
+        {
+          "id": "rzdk6oc",
+          "uri": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-createOrUpdateDevotional"
+        },
+        {
+          "id": "s2sd5im",
+          "uri": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-getPartilhas"
+        },
+        {
+          "id": "s8fvugh",
+          "uri": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-deletePdvProduct"
+        },
+        {
+          "id": "s9gm5hr",
+          "uri": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-getTodayDevotional"
+        },
+        {
+          "id": "sc19t99",
+          "uri": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-studioGlobalSearch"
+        },
+        {
+          "id": "sp38ibc",
+          "uri": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-toggleChapterCompletion"
+        },
+        {
+          "id": "st843th",
+          "uri": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-scanTicket"
+        },
+        {
+          "id": "tnlj0bn",
+          "uri": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-createOrUpdateEvent"
+        },
+        {
+          "id": "u6s40ia",
+          "uri": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-evaluateRequest"
+        },
+        {
+          "id": "ue8slyf",
+          "uri": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-createOrUpdateSaasPlan"
+        },
+        {
+          "id": "ufz6xon",
+          "uri": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-deleteSaasPlan"
+        },
+        {
+          "id": "uimiqkq",
+          "uri": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-getPrayers"
+        },
+        {
+          "id": "uj5cpqa",
+          "uri": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-getGroup"
+        },
+        {
+          "id": "v6nwnp9",
+          "uri": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-getCampus"
+        },
+        {
+          "id": "verwyzc",
+          "uri": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-getPublicProposal"
+        },
+        {
+          "id": "vnuvys8",
+          "uri": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-batchUpdateFeatureFlags"
+        },
+        {
+          "id": "vp0n7e9",
+          "uri": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-resetTenantFlags"
+        },
+        {
+          "id": "vq867ll",
+          "uri": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-getPosts"
+        },
+        {
+          "id": "w1082tl",
+          "uri": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-pdvInventory"
+        },
+        {
+          "id": "wdc2oap",
+          "uri": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-createOrUpdateOrganization"
+        },
+        {
+          "id": "we57745",
+          "uri": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-createPdvProduct"
+        },
+        {
+          "id": "wjoxto3",
+          "uri": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-intelligence"
+        },
+        {
+          "id": "x054qnl",
+          "uri": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-toggleFeatureFlag"
+        },
+        {
+          "id": "x8eu4zq",
+          "uri": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-updateChurchSettings"
+        },
+        {
+          "id": "xgd7rnn",
+          "uri": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-listProposals"
+        },
+        {
+          "id": "xudv6kr",
+          "uri": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-getDevotionals"
+        },
+        {
+          "id": "y6933ys",
+          "uri": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-createProposal"
+        },
+        {
+          "id": "yrusamc",
+          "uri": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-updateMember"
+        },
+        {
+          "id": "yt9w8nr",
+          "uri": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-submitTestimony"
+        },
+        {
+          "id": "z0whjd2",
+          "uri": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-getBroadcasts"
+        },
+        {
+          "id": "zfpv602",
+          "uri": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-deleteBroadcast"
+        },
+        {
+          "id": "zuezl5a",
+          "uri": "arn:aws:lambda:us-east-2:896884286429:function:faith-hub-backend-prod-deleteStudy"
+        }
+      ]
+    }
+  ]
+}

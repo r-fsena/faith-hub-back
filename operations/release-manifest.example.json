@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "environment": "production",
+  "account": "896884286429",
+  "region": "us-east-2",
+  "releaseId": "FH-AAAAMMDD-001",
+  "approvalReference": "PREENCHER: autorização explícita e escopo aprovado",
+  "ciReference": "PREENCHER: links dos checks CI dos SHAs",
+  "rollback": "PREENCHER: commits anteriores, compatibilidade e responsável",
+  "commits": {
+    "faith-hub-backend": "PREENCHER_SHA_COMPLETO_DE_40_CARACTERES",
+    "faith-hub-web": "PREENCHER_SHA_COMPLETO_DE_40_CARACTERES",
+    "faith-hub-pwa": "PREENCHER_SHA_COMPLETO_DE_40_CARACTERES",
+    "faith-hub-site": "PREENCHER_SHA_COMPLETO_DE_40_CARACTERES"
+  },
+  "targets": [
+    "studio"
+  ]
+}

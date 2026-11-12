@@ -1,0 +1,97 @@
+{
+  "capturedAt": "2026-11-12T13:17:28.455Z",
+  "operator": "arn:aws:iam::896884286429:user/antigravity-bot",
+  "account": "896884286429",
+  "region": "us-east-2",
+  "mode": "APPLY",
+  "apps": [
+    {
+      "name": "studio",
+      "before": {
+        "appId": "d2lyt83fsceg0b",
+        "autoBuild": false,
+        "autoBranchCreation": false,
+        "webhooks": [],
+        "branches": [
+          {
+            "name": "main",
+            "autoBuild": true,
+            "preview": false
+          }
+        ]
+      },
+      "after": {
+        "appId": "d2lyt83fsceg0b",
+        "autoBuild": false,
+        "autoBranchCreation": false,
+        "webhooks": [],
+        "branches": [
+          {
+            "name": "main",
+            "autoBuild": false,
+            "preview": false
+          }
+        ]
+      }
+    },
+    {
+      "name": "pwa",
+      "before": {
+        "appId": "d312p1jp7kl7kp",
+        "autoBuild": false,
+        "autoBranchCreation": false,
+        "webhooks": [],
+        "branches": [
+          {
+            "name": "main",
+            "autoBuild": true,
+            "preview": false
+          }
+        ]
+      },
+      "after": {
+        "appId": "d312p1jp7kl7kp",
+        "autoBuild": false,
+        "autoBranchCreation": false,
+        "webhooks": [],
+        "branches": [
+          {
+            "name": "main",
+            "autoBuild": false,
+            "preview": false
+          }
+        ]
+      }
+    },
+    {
+      "name": "site",
+      "before": {
+        "appId": "dcd98qkjlz7f5",
+        "autoBuild": false,
+        "autoBranchCreation": false,
+        "webhooks": [],
+        "branches": [
+          {
+            "name": "main",
+            "autoBuild": true,
+            "preview": false
+          }
+        ]
+      },
+      "after": {
+        "appId": "dcd98qkjlz7f5",
+        "autoBuild": false,
+        "autoBranchCreation": false,
+        "webhooks": [],
+        "branches": [
+          {
+            "name": "main",
+            "autoBuild": false,
+            "preview": false
+          }
+        ]
+      }
+    }
+  ],
+  "status": "VERIFIED"
+}

@@ -130,35 +130,22 @@ test('Studio phases 3 and 4 stay tenant-scoped, authorized and feature-gated', (
   assert.match(onboarding, /setStepCompleted/);
 });
 
-test('Studio V2 is opt-in, feature-gated and keeps contextual navigation accessible', () => {
+test('Studio standard V2 preserves contextual navigation and module authorization', () => {
   const app = read('faith-hub-web/src/App.tsx');
   const navigation = read('faith-hub-web/src/v2/StudioContextNavigationV2.tsx');
-  const resolver = read('faith-hub-web/src/v2/StudioVersionResolver.tsx');
-  const migration = read('faith-hub-backend/migrate_studio_navigation_v2.js');
-  const tenantDefaultMigration = read('faith-hub-backend/migrate_studio_v2_default_tenant.js');
-  const defaults = read('faith-hub-backend/src/services/featureFlagService.ts');
-
-  assert.match(app, /requested === 'v1' \|\| requested === 'v2'/);
-  assert.match(app, /studioVersion === 'v2'/);
+  const version = read('faith-hub-web/src/services/studioNavigation.ts');
+  assert.match(version, /STUDIO_VERSION = 'v2'/);
+  assert.match(version, /searchParams.delete\('studio'\)/);
   assert.match(app, /StudioContextNavigationV2/);
-  assert.match(app, /StudioVersionResolver/);
+  assert.match(app, /data-studio-version=\{STUDIO_VERSION\}/);
   assert.match(app, /history\.pushState/);
   assert.match(app, /addEventListener\('popstate'/);
-  assert.match(navigation, /studio\.context_navigation_v2/);
+  assert.doesNotMatch(app, /StudioVersionResolver|studioVersion === 'v2'/);
+  assert.match(navigation, /canDisplay\(destination, normalizedRole, isFeatureEnabled, isDemo\)/);
   assert.match(navigation, /Voltar para/);
   assert.match(navigation, /aria-current=/);
   assert.match(navigation, /Navegar nesta área/);
-  assert.match(navigation, /Usar versão atual/);
-  assert.match(defaults, /'studio\.context_navigation_v2': false/);
-  assert.match(migration, /'global', NULL, 'all', \?, 0/);
-  assert.match(migration, /'org_default', NULL, 'production', \?, 1/);
-  assert.match(migration, /ENABLE_STUDIO_NAVIGATION_V2_PILOT/);
-  assert.match(resolver, /config\?\.default_version === 'v2'/);
-  assert.match(resolver, /requestedVersion === 'v1'/);
-  assert.match(resolver, /requestedVersion === 'v2'/);
-  assert.match(tenantDefaultMigration, /id: 'org_default', name: 'Igreja Viva'/);
-  assert.match(tenantDefaultMigration, /default_version: 'v2'/);
-  assert.match(tenantDefaultMigration, /ENABLE_STUDIO_V2_DEFAULT_FOR_TENANT/);
+  assert.doesNotMatch(navigation, /Usar versão atual|studio\.context_navigation_v2/);
 });
 
 test('Studio groups prayer care with people and separates ministries from schedules', () => {

@@ -4,6 +4,7 @@ node_modules/
 .serverless-*/
 dist/
 coverage/
+.release-evidence/
 .DS_Store
 
 # Duplicatas locais geradas por sincronização; preservar no disco e nunca versionar.

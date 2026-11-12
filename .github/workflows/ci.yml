@@ -12,12 +12,37 @@ jobs:
   validate:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: faith-hub-backend
     steps:
       - uses: actions/checkout@v4
+        with:
+          path: faith-hub-backend
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: r-fsena/faith-hub-web
+          ref: e38c6e55246575cc4be417993f5bbdadb5ff6e6e
+          path: faith-hub-web
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: r-fsena/faith-hub-pwa
+          ref: 9d35438e71448c28fd629d6cc837c56c1dc5531b
+          path: faith-hub-pwa
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: r-fsena/faith-hub-site
+          ref: d1cbce5f02508ea5a890ef830ff1581725b5e67b
+          path: faith-hub-site
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
+          cache-dependency-path: faith-hub-backend/package-lock.json
       - run: npm ci
       - run: npm audit --omit=dev --audit-level=high
       - run: npm run typecheck
