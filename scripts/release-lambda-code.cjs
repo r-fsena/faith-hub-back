@@ -45,6 +45,11 @@ async function main() {
   try {
     // Obtain and verify ALL rollback packages before the first mutation.
     const copies = new Map();
+    for (const archive of m.backupArchives || []) {
+      ensure(m.targets.some(t => t.codeSha256 === archive.codeSha256), 'Cache de backup fora do baseline.');
+      ensure(crypto.createHash('sha256').update(fs.readFileSync(archive.file)).digest('base64') === archive.codeSha256, 'Checksum do backup local divergente.');
+      copies.set(archive.codeSha256, archive.file);
+    }
     for (const t of m.targets) {
       check(t);
       const destination = path.join(dir, t.name + '.zip');
