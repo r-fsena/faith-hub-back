@@ -54,7 +54,7 @@ async function main() {
         ensure(fn.Code.Location.startsWith('https://'), 'Origem de backup inválida.');
         // Signed URL is sent on stdin, never printed or exposed in process arguments.
         const config = 'url = ' + JSON.stringify(fn.Code.Location) + '\noutput = ' + JSON.stringify(destination) + '\n';
-        try { execFileSync('curl', ['--config','-','--proto','=https','--fail','--silent','--show-error','--retry','3','--retry-all-errors','--retry-delay','2','--connect-timeout','15','--max-time','120'], { input: config, timeout: 520000, stdio: ['pipe','pipe','pipe'] }); }
+        try { execFileSync('curl', ['--config','-','--proto','=https','--fail','--silent','--show-error','--retry','3','--retry-all-errors','--retry-delay','2','--connect-timeout','15','--max-time','300'], { input: config, timeout: 1240000, stdio: ['pipe','pipe','pipe'] }); }
         catch { throw new Error('Falha ao baixar backup de ' + t.name + '; nenhuma atualização deve iniciar sem todos os backups.'); }
         copies.set(t.codeSha256, destination);
       }
