@@ -35,7 +35,11 @@ async function main() {
       const env = { ...process.env, npm_config_audit: 'false', npm_config_fund: 'false' };
       for (const key of ['AWS_ACCESS_KEY_ID','AWS_SECRET_ACCESS_KEY','AWS_SESSION_TOKEN','DB_PASSWORD','ASAAS_API_KEY']) delete env[key];
       execFileSync('npm', ['install','--prefix',dir,'--no-save','--ignore-scripts','--package-lock=false','--os=linux','--cpu=x64','--libc=glibc','--include=optional','sharp@0.35.5'], { env, stdio: ['ignore', 'pipe', 'pipe'] });
-      ensure(fs.existsSync(path.join(dir, 'node_modules/@img/sharp-linux-x64/lib/sharp-linux-x64.node')), 'Sharp Linux ausente.');
+      const nativeDir = path.join(dir, 'node_modules/@img/sharp-linux-x64/lib');
+      const native = fs.existsSync(nativeDir) && fs.readdirSync(nativeDir).find(name => /^sharp-linux-x64(?:-[\d.]+)?\.node$/.test(name));
+      ensure(native, 'Sharp Linux ausente.');
+      const elf = fs.readFileSync(path.join(nativeDir, native));
+      ensure(elf.subarray(0, 4).equals(Buffer.from([0x7f, 0x45, 0x4c, 0x46])) && elf[4] === 2 && elf[5] === 1 && elf.readUInt16LE(18) === 62, 'Sharp deve ser ELF Linux x86_64.');
     }
     const artifact = dir + '.zip';
     execFileSync('zip', ['-qr', artifact, 'src', ...(needsSharp ? ['node_modules'] : [])], { cwd: dir, stdio: ['ignore','pipe','pipe'] });
