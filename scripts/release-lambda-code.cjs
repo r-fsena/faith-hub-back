@@ -40,15 +40,27 @@ async function main() {
   for (const t of m.targets) check(t);
   if (!args.includes('--apply')) { console.log(JSON.stringify({ mode: 'PLAN', release: m.releaseId, functions: m.targets.length, configurationChanges: false })); return; }
   const dir = path.join(cwd, '.release-evidence', m.releaseId); ensure(!fs.existsSync(dir), 'Release já iniciada; consultar evidência antes de repetir.'); fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
-  const journal = { startedAt: new Date().toISOString(), actor: actor.Arn, commit: m.commit, release: m.releaseId, functions: [], status: 'BACKING_UP' };
+  const journal = { startedAt: new Date().toISOString(), actor: actor.Arn, commit: m.commit, release: m.releaseId, backups: [], functions: [], status: 'BACKING_UP' };
   const save = () => fs.writeFileSync(path.join(dir, 'release.json'), JSON.stringify(journal, null, 2) + '\n', { mode: 0o600 }); save();
   try {
     // Obtain and verify ALL rollback packages before the first mutation.
+    const copies = new Map();
     for (const t of m.targets) {
-      check(t); const fn = aws('lambda', 'get-function', { FunctionName: t.name });
-      const response = await fetch(fn.Code.Location); ensure(response.ok, 'Falha ao recuperar pacote anterior.');
-      const bytes = Buffer.from(await response.arrayBuffer()); ensure(crypto.createHash('sha256').update(bytes).digest('base64') === t.codeSha256, 'Backup não corresponde ao baseline.');
-      fs.writeFileSync(path.join(dir, t.name + '.zip'), bytes, { mode: 0o600 });
+      check(t);
+      const destination = path.join(dir, t.name + '.zip');
+      if (copies.has(t.codeSha256)) fs.copyFileSync(copies.get(t.codeSha256), destination);
+      else {
+        const fn = aws('lambda', 'get-function', { FunctionName: t.name });
+        ensure(fn.Code.Location.startsWith('https://'), 'Origem de backup inválida.');
+        // Signed URL is sent on stdin, never printed or exposed in process arguments.
+        const config = 'url = ' + JSON.stringify(fn.Code.Location) + '\noutput = ' + JSON.stringify(destination) + '\n';
+        try { execFileSync('curl', ['--config','-','--proto','=https','--fail','--silent','--show-error','--retry','3','--retry-all-errors','--retry-delay','2','--connect-timeout','15','--max-time','120'], { input: config, timeout: 520000, stdio: ['pipe','pipe','pipe'] }); }
+        catch { throw new Error('Falha ao baixar backup de ' + t.name + '; nenhuma atualização deve iniciar sem todos os backups.'); }
+        copies.set(t.codeSha256, destination);
+      }
+      fs.chmodSync(destination, 0o600);
+      ensure(crypto.createHash('sha256').update(fs.readFileSync(destination)).digest('base64') === t.codeSha256, 'Backup não corresponde ao baseline.');
+      journal.backups.push({ name: t.name, codeSha256: t.codeSha256, verified: true }); save();
     }
     journal.status = 'UPDATING'; save();
     for (const t of m.targets) {
