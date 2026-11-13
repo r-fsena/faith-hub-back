@@ -269,3 +269,19 @@ Quem possui administração AWS/GitHub ainda consegue alterar configurações ou
 - [GitHub: ambientes e disponibilidade de proteções](https://docs.github.com/en/actions/reference/workflows-and-actions/deployments-and-environments).
 - [CodePipeline: aprovação manual](https://docs.aws.amazon.com/codepipeline/latest/userguide/approvals.html).
 - [RDS: recuperação para ponto no tempo](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_PIT.html).
+
+## 14. Publicação de código de Lambdas existentes — Histórico e Contas
+
+Quando a entrega altera apenas código e usa as rotas já existentes, o caminho controlado é `scripts/release-lambda-code.cjs`. Ele evita reconciliar os stacks legados chamados `dev` e `prod`, ambos com recursos de produção. Não usar `serverless deploy` completo para esta entrega.
+
+1. Homologar a migração em schema descartável do RDS com dados sintéticos. Verificar o pré-requisito de triggers; `scripts/prepare-foundations-rds.cjs` permite somente o parâmetro dinâmico necessário, exige snapshot e nunca reinicia a instância.
+2. Aplicar `node migrate_intelligence_foundations.js --schema-only`. A estrutura é aditiva; os módulos continuam ocultos. Não alterar depois os arquivos que compõem o checksum da migração.
+3. Versionar os arquivos revisados, passar CI e criar checkout limpo dos SHAs aprovados. Inventariar handlers, revisões e checksums atuais das funções sem registrar variáveis de ambiente em texto.
+4. Executar `node scripts/build-foundations-artifacts.cjs --inventory inventario.json --output diretorio-novo`. O build seleciona os handlers que dependem das fontes alteradas, produz bundles Node 22 e, quando necessário, Sharp Linux x64. Não inclui `.env` nem dependências da máquina local.
+5. Criar manifesto `schemaVersion: 1`, `kind: lambda-code-only`, `environment: production`, conta/região, commit completo, releaseId, aprovação, CI, rollback, buildReport e targets. Cada target fixa nome, handler, artefato/checksum, CodeSha256 e RevisionId anteriores e o hash da configuração calculado por `configurationHash` do publicador.
+6. Executar `node scripts/release-lambda-code.cjs --manifest manifesto.json` para revisar o plano. Adicionar `--apply` somente dentro do escopo autorizado. A ferramenta exige checkout limpo e main remota no SHA, preserva e verifica todos os ZIPs anteriores antes da primeira atualização e usa RevisionId para impedir sobrescrita concorrente. Confere depois checksum e preservação de configuração. Nenhuma rota, IAM, secret, variável ou stack é alterada. Evidências privadas ficam em `.release-evidence/RELEASE_ID/`.
+7. Publicar apenas o Studio pelo fluxo Amplify já descrito e acompanhar até `SUCCEED`. Manter todos os autobuilds desligados. O PWA não precisa de publicação quando não há mudança nele.
+8. Aplicar a migração completa para ativar somente o piloto `org_default`, estabelecer a cobertura inicial observada do histórico e estender os direitos dos planos sem mudar preços/cobranças. Os demais tenants continuam desativados; direitos contratados e rollout são controles distintos.
+9. Homologar APIs autenticadas e interface, consultar checksum/flags/auditoria/cobertura e registrar o resultado. Não gerar recebimentos ou pagamentos reais para testar. Os testes financeiros de escrita pertencem ao schema sintético.
+
+Se houver falha, conter a liberação e registrar o ponto exato. Os ZIPs privados permitem recuperar código anterior, mas a reversão precisa ser compatível com a estrutura e os registros já gravados. Depois da ativação, nunca remover histórico, contas, liquidações ou colunas para desfazer uma publicação; preferir correção compatível ou desativação controlada. Uma falha parcial do publicador exige comparar o diário com a AWS antes de retomar, com novo manifesto e baseline.

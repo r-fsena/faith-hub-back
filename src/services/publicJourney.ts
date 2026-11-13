@@ -1,3 +1,4 @@
+import {memberStatement} from './memberHistoryWrite';
 import { randomBytes, createHash } from "crypto";
 import { v4 as uuid } from "uuid";
 import { query, getConnection } from "../db";
@@ -383,10 +384,7 @@ export async function approveTrial(id: string, executorEmail: string) {
         campus,
       ],
     );
-    await db.query(
-      `INSERT INTO members (id,name,email,role,status,organization_id,campus_id,campus_ids) VALUES (?,?,?,'ADMIN','ACTIVE',?,?,'["all"]')`,
-      [row.owner_sub, row.contact_name, row.owner_email, org, campus],
-    );
+    await memberStatement(db,`INSERT INTO members (id,name,email,role,status,organization_id,campus_id,campus_ids) VALUES (?,?,?,'ADMIN','ACTIVE',?,?,'["all"]')`, [row.owner_sub, row.contact_name, row.owner_email, org, campus], {organizationId:org,source:'PUBLIC_JOURNEY'});
     await initializePlanEntitlements(org, contract, (sql, params) =>
       db.query(sql, params),
     );

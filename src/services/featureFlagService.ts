@@ -146,7 +146,9 @@ export async function evaluateTenantFlags(
     'intelligence.goals': false,
     'intelligence.finance': false,
     'intelligence.operations': false,
-    'intelligence.multicampus': false
+    'intelligence.multicampus': false,
+    'intelligence.history': false,
+    'financial.accounts_ledger': false
   };
   if (contract) {
     for (const key of ENTITLEMENT_KEYS) flagsMap[key] = contract.entitlements[key];

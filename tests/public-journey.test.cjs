@@ -35,6 +35,7 @@ const { buildPlanContract } = require("../src/services/planCatalog.ts");
 const plan = (id) => structuredClone(catalog.plans.find((p) => p.id === id));
 async function dbQuery(sql, params = []) {
   assert.equal((sql.match(/\?/g) || []).length, params.length, sql);
+      if (/^SET @fh_history_/.test(sql)) return [[],[]];
   state.calls.push({ sql, params });
   if (sql.includes("FROM members")) return { rows: state.members };
   if (sql.includes("FROM saas_acquisitions"))
@@ -67,6 +68,7 @@ mock("../src/db/index.ts", {
     release: () => {},
     query: async (sql, params = []) => {
       assert.equal((sql.match(/\?/g) || []).length, params.length, sql);
+      if (/^SET @fh_history_/.test(sql)) return [[],[]];
       state.calls.push({ sql, params });
       if (sql.includes("FROM saas_acquisitions"))
         return [state.row ? [state.row] : []];

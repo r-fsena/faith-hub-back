@@ -1,3 +1,4 @@
+import {memberStatement} from './memberHistoryWrite';
 import crypto from 'crypto';
 import { CognitoIdentityProviderClient, AdminCreateUserCommand, AdminGetUserCommand } from '@aws-sdk/client-cognito-identity-provider';
 import { v4 as uuidv4 } from 'uuid';
@@ -148,12 +149,12 @@ export class ProvisioningService {
         proposal.contact_phone || '', proposal.contact_phone || '', proposal.contact_email,
         proposal.church_name.slice(0, 12), finalSlug, orgId, campusId
       ]);
-      await connection.query(`INSERT INTO members
+      await memberStatement(connection,`INSERT INTO members
         (id, name, email, role, status, phone, organization_id, campus_id, campus_ids)
         VALUES (?, ?, ?, 'ADMIN', 'ACTIVE', ?, ?, ?, ?)`, [
         cognitoUserId, proposal.contact_name, proposal.contact_email, proposal.contact_phone || null,
         orgId, campusId, JSON.stringify(acquisition ? ['all'] : [campusId])
-      ]);
+      ], {organizationId:orgId,source:'PROVISIONING'});
       await connection.query(`UPDATE saas_subscriptions SET organization_id = ?, status = 'ACTIVE',
         updated_at = NOW() WHERE id = ? AND proposal_id = ?`, [
         orgId, proposal.asaas_subscription_id, proposal.id

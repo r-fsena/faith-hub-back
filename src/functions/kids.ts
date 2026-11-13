@@ -1,3 +1,4 @@
+import {memberStateWrite} from '../services/memberHistoryWrite';
 import { enforcePlanAccess } from '../services/planAccess';
 import { authorizeResource } from '../services/tenantResource';
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
@@ -549,12 +550,8 @@ export const doCheckin = async (event: APIGatewayProxyEvent): Promise<APIGateway
 
     if (is_visitor && register_as_member && parent_phone && parent_name) {
       const visitorMemberId = `mem_${randomUUID().substring(0, 8)}`;
-      await query(
-        `INSERT INTO members (id, name, email, phone, role, status, organization_id, campus_id)
-         VALUES (?, ?, ?, ?, 'Visitante', 'Ativo', ?, ?)
-         ON DUPLICATE KEY UPDATE name = VALUES(name), phone = VALUES(phone)`,
-        [visitorMemberId, parent_name, parent_email || `visitante_${Date.now()}@faithhub.temp`, parent_phone, finalOrgId, campus_id || null]
-      ).catch(() => {});
+      try {await memberStateWrite(`INSERT INTO members (id, name, email, phone, role, status, organization_id, campus_id)
+         VALUES (?, ?, ?, ?, 'Visitante', 'Ativo', ?, ?)`, [visitorMemberId, parent_name, parent_email || `${visitorMemberId}@faithhub.temp`, parent_phone, finalOrgId, campus_id || null], {organizationId:finalOrgId,user,event,source:'KIDS_PARENT',memberId:visitorMemberId});}catch(error:any){if(error.code==='ER_DUP_ENTRY')return apiResponse(409,{message:'Não foi possível criar o responsável com esses dados. Revise o cadastro existente antes do check-in.'});throw error;}
       finalParentMemberId = visitorMemberId;
     }
 

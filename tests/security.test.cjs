@@ -43,7 +43,7 @@ const sign = async (payload = {}, options = {}) => new jose.SignJWT({ token_use:
 function reset() {
   calls = [];
   member = { id: 'member-a', email: 'member@example.org', name: 'Membro', role: 'MEMBER', status: 'ACTIVE', organization_id: 'org-a', campus_id: 'campus_sede', operational_permissions: '[]' };
-  dbQuery = async sql => ({ rows: sql.includes('FROM members') ? [member] : [] });
+  dbQuery = async sql => ({ rows: sql.includes('FROM members') ? [member] : sql.includes('FROM campuses') ? [{id:'campus_sede'}] : [] });
 }
 function transaction(query) {
   const state = { commits: 0, rollbacks: 0, releases: 0, writes: [] };

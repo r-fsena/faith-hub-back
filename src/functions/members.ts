@@ -1,3 +1,4 @@
+import {memberStateWrite} from '../services/memberHistoryWrite';
 import { importMemberRows } from '../services/memberCsvImport';
 import { getVerifiedClaims } from '../services/tokenVerifier';
 import {
@@ -141,7 +142,7 @@ export const invite: APIGatewayProxyHandlerV2 = async (event) => {
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
-    await query(insertQuery, [
+    await memberStateWrite(insertQuery, [
       cognitoUserId,
       name,
       email,
@@ -165,7 +166,7 @@ export const invite: APIGatewayProxyHandlerV2 = async (event) => {
       primaryCampus,
       campusIdsJson,
       pOperational
-    ]);
+    ], {organizationId:orgValue,user:auth.user,event,source:'INVITE',memberId:cognitoUserId});
 
     const registrationTracked=await recordInvitationMilestone(orgValue,cognitoUserId,'INVITE','REGISTERED',event);
     const invitationTracked=await recordInvitationMilestone(orgValue,cognitoUserId,'INVITE','REQUESTED',event);
@@ -222,7 +223,7 @@ export const updateStatus: APIGatewayProxyHandlerV2 = async (event) => {
     const scope = enforceTenant(auth.user, event.headers?.['x-organization-id'] || event.queryStringParameters?.organization_id);
     if (!scope.allowed) return scope.errorResponse!;
     const { rows: memberRows } = await query(
-      `SELECT id, organization_id, email, status FROM members WHERE LOWER(TRIM(email)) = ? AND organization_id = ? LIMIT 1`,
+      `SELECT id, organization_id, email, status, role, campus_id FROM members WHERE LOWER(TRIM(email)) = ? AND organization_id = ? LIMIT 1`,
       [cleanEmail, scope.effectiveOrgId]
     );
 
@@ -230,6 +231,10 @@ export const updateStatus: APIGatewayProxyHandlerV2 = async (event) => {
       return { statusCode: 404, headers, body: JSON.stringify({ error: "Membro não encontrado no banco de dados" }) };
     }
 
+    const statusScope=await intelligenceScope(event as any,auth.user);if('statusCode' in statusScope)return statusScope;
+    if(statusScope.campusIds&&!statusScope.campusIds.includes(memberRows[0].campus_id||'campus_sede'))return {statusCode:403,headers,body:JSON.stringify({error:'Perfil fora das suas unidades.'})};
+    const targetRank=['MEMBER','VOLUNTEER','LEADER','TREASURER','ADMIN','PASTOR','SUPERADMIN'];
+    if(!auth.user.isSuperAdmin&&targetRank.indexOf(normalizeRole(memberRows[0].role))>targetRank.indexOf(auth.user.role))return {statusCode:403,headers,body:JSON.stringify({error:'Sem permissão para alterar este perfil.'})};
     const targetOrgId = memberRows[0].organization_id;
     // Master admins/Superadmins can manage any member, including other master users
     const isMasterTarget = targetOrgId === 'org_master';
@@ -270,7 +275,7 @@ export const updateStatus: APIGatewayProxyHandlerV2 = async (event) => {
     // 2. Atualiza no MySQL DB
     const statusValue = action === 'disable' ? 'INACTIVE' : 'ACTIVE';
     const updateQuery = `UPDATE members SET status = ?, updated_at = NOW() WHERE LOWER(TRIM(email)) = ? AND organization_id = ?`;
-    await query(updateQuery, [statusValue, cleanEmail, scope.effectiveOrgId]);
+    await memberStateWrite(updateQuery, [statusValue, cleanEmail, scope.effectiveOrgId], {organizationId:scope.effectiveOrgId,user:auth.user,event,source:'STATUS'});
 
     await logSecurityEvent({
       organizationId: tenantCheck.effectiveOrgId,
@@ -566,7 +571,7 @@ export const update: APIGatewayProxyHandlerV2 = async (event) => {
     const scope = enforceTenant(auth.user, event.headers?.['x-organization-id'] || event.queryStringParameters?.organization_id);
     if (!scope.allowed) return scope.errorResponse!;
     let { rows: existingRows } = await query(
-      `SELECT id, organization_id, email, role FROM members WHERE organization_id = ? AND ((id = ? AND id != '') OR (email IS NOT NULL AND LOWER(email) = LOWER(?))) LIMIT 1`,
+      `SELECT id, organization_id, email, role, campus_id, campus_ids, cell_group_id FROM members WHERE organization_id = ? AND ((id = ? AND id != '') OR (email IS NOT NULL AND LOWER(email) = LOWER(?))) LIMIT 1`,
       [scope.effectiveOrgId, effectiveId, effectiveEmail || effectiveId]
     );
 
@@ -613,6 +618,28 @@ export const update: APIGatewayProxyHandlerV2 = async (event) => {
     if (role && isEscalatingToMaster && !auth.user.isSuperAdmin) {
       return { statusCode: 403, headers, body: JSON.stringify({ error: "Apenas SuperAdmins podem conceder permissão Master" }) };
     }
+    const current = existingRows[0];
+    const profileScope = await intelligenceScope(event as any, auth.user);
+    if ('statusCode' in profileScope) return profileScope;
+    const currentCampus = current.campus_id || 'campus_sede';
+    if (!isSelf && profileScope.campusIds && !profileScope.campusIds.includes(currentCampus)) return {statusCode:403,headers,body:JSON.stringify({error:'Perfil fora das suas unidades.'})};
+    if (!isSelf && profileScope.cellIds && !profileScope.cellIds.includes(current.cell_group_id)) return {statusCode:403,headers,body:JSON.stringify({error:'Perfil fora dos seus grupos.'})};
+    const primary = campus_id === undefined ? currentCampus : campus_id;
+    if (campus_id !== undefined || campus_ids !== undefined) {
+      const ids = campus_ids === undefined ? [primary] : campus_ids;
+      if (!Array.isArray(ids) || !ids.length || ids.length > 100 || !safeIdentifier(primary) || !ids.includes(primary) && !ids.includes('all')) return {statusCode:400,headers,body:JSON.stringify({error:'Confira a unidade principal e os acessos.'})};
+      if (ids.some((id:any)=>!safeIdentifier(id)) || ids.includes('all') && !auth.user.isSuperAdmin && !auth.user.campusIds.includes('all')) return {statusCode:403,headers,body:JSON.stringify({error:'Sem permissão para conceder este acesso.'})};
+      const specific = [...new Set([primary,...ids.filter((id:string)=>id!=='all')])];
+      if (profileScope.campusIds && specific.some(id=>!profileScope.campusIds!.includes(id))) return {statusCode:403,headers,body:JSON.stringify({error:'Unidade fora do seu acesso.'})};
+      const {rows:valid} = await query(`SELECT id FROM campuses WHERE organization_id = ? AND id IN (${specific.map(()=>'?').join(',')})`,[scope.effectiveOrgId,...specific]);
+      if (valid.length!==specific.length) return {statusCode:400,headers,body:JSON.stringify({error:'Unidade não encontrada nesta igreja.'})};
+    }
+    const nextCell = cellGroupId === undefined ? current.cell_group_id : cellGroupId;
+    if (cellGroupId !== undefined && nextCell !== current.cell_group_id && !isLeadership) return {statusCode:403,headers,body:JSON.stringify({error:'A liderança aprova o vínculo de célula.'})};
+    if (nextCell && (cellGroupId !== undefined || campus_id !== undefined)) {
+      const {rows:cells} = await query("SELECT id,leader_id FROM cell_groups WHERE organization_id = ? AND id = ? AND COALESCE(campus_id,'campus_sede') = ?",[scope.effectiveOrgId,nextCell,primary]);
+      if (!cells.length || profileScope.cellIds && !profileScope.cellIds.includes(nextCell)) return {statusCode:400,headers,body:JSON.stringify({error:'Selecione uma célula da mesma unidade dentro do seu acesso, ou remova o vínculo.'})};
+    }
     const pRole = isLeadership && role !== undefined ? requestedRole : null;
 
     const pName = name !== undefined ? name : null;
@@ -623,7 +650,7 @@ export const update: APIGatewayProxyHandlerV2 = async (event) => {
     const pAddress = address !== undefined ? address : null;
     const pAvatar = avatar_url !== undefined ? avatar_url : null;
     const pCampus = campus_id !== undefined ? campus_id : null;
-    const pCampusIds = campus_ids !== undefined ? JSON.stringify(campus_ids) : null;
+    const pCampusIds = campus_ids !== undefined ? JSON.stringify(campus_ids) : campus_id !== undefined && campus_id !== currentCampus ? JSON.stringify([primary]) : null;
 
     const pBirthDate = birth_date !== undefined ? birth_date : (birthDate !== undefined ? birthDate : null);
     const pStreet = address_street !== undefined ? address_street : null;
@@ -643,7 +670,7 @@ export const update: APIGatewayProxyHandlerV2 = async (event) => {
         name = COALESCE(?, name),
         cpf = COALESCE(?, cpf),
         baptism_date = COALESCE(?, baptism_date),
-        cell_group_id = COALESCE(?, cell_group_id),
+        cell_group_id = IF(?, ?, cell_group_id),
         role = COALESCE(?, role),
         phone = COALESCE(?, phone),
         address = COALESCE(?, address),
@@ -663,12 +690,12 @@ export const update: APIGatewayProxyHandlerV2 = async (event) => {
       WHERE id = ? AND organization_id = ?
     `;
 
-    await query(updateQuery, [
-      pName, pCpf, pBaptism, pCell, pRole, pPhone, pAddress, pAvatar, pCampus, pCampusIds,
+    await memberStateWrite(updateQuery, [
+      pName, pCpf, pBaptism, cellGroupId !== undefined, pCell || null, pRole, pPhone, pAddress, pAvatar, pCampus, pCampusIds,
       pBirthDate, pStreet, pNumber, pComplement, pNeighborhood, pCity, pState, pZip,
       pOperational,
       targetMemberId, scope.effectiveOrgId
-    ]);
+    ], {organizationId:scope.effectiveOrgId,user:auth.user,event,source:'PROFILE',memberId:targetMemberId});
 
     await logSecurityEvent({
       organizationId: existingRows[0].organization_id,
@@ -760,11 +787,11 @@ export const selfRegister: APIGatewayProxyHandlerV2 = async (event) => {
         )
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Membro', 'Ativo', ?, ?, ?)
       `;
-      await query(insertSql, [
+      await memberStateWrite(insertSql, [
         memberId, memberName, email, phone || null, effectiveBirthDate,
         pStreet, pNumber, pComplement, pNeighborhood, pCity, pState, pZip, pAddressFull,
         pAvatar, orgValue, primaryCampus, campusIdsJson
-      ]);
+      ], {organizationId:orgValue,actorId:memberId,event,source:'SELF_REGISTER',memberId});
     } else {
       const existingId = checkRes.rows[0].id;
       const updateSql = `
@@ -785,12 +812,12 @@ export const selfRegister: APIGatewayProxyHandlerV2 = async (event) => {
           updated_at = NOW()
         WHERE id = ? AND organization_id = ?
       `;
-      await query(updateSql, [
+      await memberStateWrite(updateSql, [
         name || null, phone || null, effectiveBirthDate,
         pStreet, pNumber, pComplement, pNeighborhood, pCity, pState, pZip, pAddressFull,
         pAvatar,
         existingId, orgValue
-      ]);
+      ], {organizationId:orgValue,actorId:memberId,event,source:'SELF_REGISTER',memberId});
     }
 
     return {

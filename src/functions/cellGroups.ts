@@ -1,11 +1,28 @@
+import {memberStateWrite,memberStatement} from '../services/memberHistoryWrite';
 import { authorizeResource } from '../services/tenantResource';
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { v4 as uuidv4 } from 'uuid';
-import { query, apiResponse } from '../db';
+import { query, apiResponse, getConnection } from '../db';
 import { requireAuth, enforceRole, enforceTenant, getAuthenticatedUser } from '../services/authMiddleware';
 import { logSecurityEvent } from '../services/auditLogService';
 
+import {IntelligenceError} from '../services/intelligenceUsage';
+
 const LEADERSHIP_ROLES = ['SUPERADMIN', 'PASTOR', 'ADMIN', 'LEADER'];
+
+
+async function membershipTarget(scope:any, identifier:string, attaching:boolean):Promise<string> {
+  if (scope.user.role==='LEADER' && scope.record.leader_id!==scope.user.userId) throw new IntelligenceError(403,'Somente o líder deste grupo pode alterar seus vínculos.');
+  const campus=scope.record.campus_id||'campus_sede';
+  if (!scope.user.isSuperAdmin && !scope.user.campusIds.includes('all') && !scope.user.campusIds.includes(campus)) throw new IntelligenceError(403,'Unidade fora do seu acesso.');
+  const {rows}=await query('SELECT id,campus_id,cell_group_id,pending_cell_group_id FROM members WHERE organization_id = ? AND (id = ? OR LOWER(email) = LOWER(?)) LIMIT 2',[scope.organizationId,identifier,identifier]);
+  if(rows.length!==1)throw new IntelligenceError(404,'Membro não encontrado de forma única nesta igreja.');
+  const member=rows[0];
+  if ((member.campus_id||'campus_sede')!==campus)throw new IntelligenceError(400,'A célula e o membro precisam pertencer à mesma unidade.');
+  if(scope.user.role==='LEADER' && member.cell_group_id!==scope.record.id && member.pending_cell_group_id!==scope.record.id) throw new IntelligenceError(403,'O membro precisa solicitar entrada neste grupo.');
+  if(!attaching && member.cell_group_id!==scope.record.id && member.pending_cell_group_id!==scope.record.id)throw new IntelligenceError(404,'Vínculo não encontrado neste grupo.');
+  return member.id;
+}
 
 // POST /cell-groups -> Criar ou Atualizar
 export const createOrUpdateGroup = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
@@ -80,6 +97,7 @@ export const createOrUpdateGroup = async (event: APIGatewayProxyEvent): Promise<
 
     return apiResponse(id ? 200 : 201, { message: 'Célula/Grupo salva com sucesso', id: finalId });
   } catch (err: any) {
+    if(err instanceof IntelligenceError)return apiResponse(err.status,{error:err.message});
     console.error('Erro ao salvar célula:', err);
     return apiResponse(500, { error: 'Erro ao salvar célula' });
   }
@@ -116,6 +134,7 @@ export const getGroups = async (event: APIGatewayProxyEvent): Promise<APIGateway
     const { rows } = await query(q, params);
     return apiResponse(200, rows);
   } catch (err: any) {
+    if(err instanceof IntelligenceError)return apiResponse(err.status,{error:err.message});
     console.error('Erro ao buscar células:', err);
     return apiResponse(500, { error: 'Erro ao listar células' });
   }
@@ -153,6 +172,7 @@ export const getGroup = async (event: APIGatewayProxyEvent): Promise<APIGatewayP
 
     return apiResponse(200, cellData);
   } catch (err: any) {
+    if(err instanceof IntelligenceError)return apiResponse(err.status,{error:err.message});
     return apiResponse(500, { error: 'Erro ao buscar detalhes da célula' });
   }
 };
@@ -169,28 +189,23 @@ export const deleteGroup = async (event: APIGatewayProxyEvent): Promise<APIGatew
     const id = event.pathParameters?.id;
     if (!id) return apiResponse(400, { error: 'ID faltante' });
 
-    const { rows } = await query(`SELECT organization_id, name FROM cell_groups WHERE id = ? LIMIT 1`, [id]);
-    if (rows.length === 0) return apiResponse(404, { message: 'Célula não encontrada' });
-
-    const tenantCheck = enforceTenant(auth.user, rows[0].organization_id);
-    if (!tenantCheck.allowed) return tenantCheck.errorResponse!;
-
-    await query(`UPDATE members SET cell_group_id = NULL WHERE cell_group_id = ?`, [id]);
-    await query(`UPDATE members SET pending_cell_group_id = NULL WHERE pending_cell_group_id = ?`, [id]);
-    await query(`DELETE FROM cell_groups WHERE id = ?`, [id]);
-
-    await logSecurityEvent({
-      organizationId: tenantCheck.effectiveOrgId,
-      user: auth.user,
-      action: 'DELETE_CELL_GROUP',
-      resource: 'cell_groups',
-      resourceId: id,
-      details: { name: rows[0].name },
-      event
-    });
+    const scope = await authorizeResource(event,'cell_groups',id,['SUPERADMIN','PASTOR','ADMIN']);
+    if ('errorResponse' in scope) return scope.errorResponse;
+    const db = await getConnection();
+    try {
+      await db.beginTransaction();
+      const [rows]:any = await db.query('SELECT id FROM cell_groups WHERE organization_id = ? AND id = ? FOR UPDATE',[scope.organizationId,id]);
+      if (!rows.length) throw new IntelligenceError(404,'Célula não encontrada.');
+      await memberStatement(db,'UPDATE members SET cell_group_id = NULL, pending_cell_group_id = IF(pending_cell_group_id = ?,NULL,pending_cell_group_id) WHERE organization_id = ? AND cell_group_id = ?',[id,scope.organizationId,id],{organizationId:scope.organizationId,user:auth.user,event,source:'CELL_REMOVED'});
+      await memberStatement(db,'UPDATE members SET pending_cell_group_id = NULL WHERE organization_id = ? AND pending_cell_group_id = ?',[scope.organizationId,id],{organizationId:scope.organizationId,user:auth.user,event,source:'CELL_REMOVED'});
+      await db.query('DELETE FROM cell_groups WHERE organization_id = ? AND id = ?',[scope.organizationId,id]);
+      await logSecurityEvent({organizationId:scope.organizationId,user:auth.user,action:'DELETE_CELL_GROUP',resource:'cell_groups',resourceId:id,event,strict:true,executor:(sql,params)=>db.query(sql,params)});
+      await db.commit();
+    } catch(error) {await db.rollback();throw error;} finally {db.release();}
 
     return apiResponse(200, { message: 'Célula deletada com sucesso' });
   } catch (err: any) {
+    if(err instanceof IntelligenceError)return apiResponse(err.status,{error:err.message});
     return apiResponse(500, { error: 'Erro ao deletar célula' });
   }
 };
@@ -216,16 +231,11 @@ export const evaluateRequest = async (event: APIGatewayProxyEvent): Promise<APIG
 
     if (!targetUserId) return apiResponse(400, { error: 'Identificação do membro (memberId/userId) faltante' });
 
+    const canonicalId = await membershipTarget(scope, String(targetUserId), isApproved);
     if (isApproved) {
-      await query(
-        `UPDATE members SET cell_group_id = ?, pending_cell_group_id = NULL WHERE organization_id = ? AND (id = ? OR LOWER(email) = LOWER(?))`,
-        [groupId, scope.organizationId, targetUserId, targetUserId]
-      );
+      await memberStateWrite(`UPDATE members SET cell_group_id = ?, pending_cell_group_id = NULL WHERE organization_id = ? AND id = ?`, [groupId, scope.organizationId, canonicalId], {organizationId:scope.organizationId,user:auth.user,event,source:'CELL_MEMBERSHIP'});
     } else {
-      await query(
-        `UPDATE members SET pending_cell_group_id = NULL WHERE organization_id = ? AND (id = ? OR LOWER(email) = LOWER(?))`,
-        [scope.organizationId, targetUserId, targetUserId]
-      );
+      await memberStateWrite(`UPDATE members SET pending_cell_group_id = NULL WHERE organization_id = ? AND id = ?`, [scope.organizationId, canonicalId], {organizationId:scope.organizationId,user:auth.user,event,source:'CELL_MEMBERSHIP'});
     }
 
     return apiResponse(200, {
@@ -235,6 +245,7 @@ export const evaluateRequest = async (event: APIGatewayProxyEvent): Promise<APIG
       status: isApproved ? 'APPROVED' : 'REJECTED'
     });
   } catch (err: any) {
+    if(err instanceof IntelligenceError)return apiResponse(err.status,{error:err.message});
     return apiResponse(500, { error: 'Erro ao avaliar solicitação de membro' });
   }
 };
@@ -258,16 +269,11 @@ export const evaluateJoinRequest = async (event: APIGatewayProxyEvent): Promise<
     const action = body.action || (body.status === 'APPROVED' ? 'approve' : 'reject');
     const isApproved = action === 'approve';
 
+    const canonicalId = await membershipTarget(scope, String(userId), isApproved);
     if (isApproved) {
-      await query(
-        `UPDATE members SET cell_group_id = ?, pending_cell_group_id = NULL WHERE organization_id = ? AND (id = ? OR LOWER(email) = LOWER(?))`,
-        [groupId, scope.organizationId, userId, userId]
-      );
+      await memberStateWrite(`UPDATE members SET cell_group_id = ?, pending_cell_group_id = NULL WHERE organization_id = ? AND id = ?`, [groupId, scope.organizationId, canonicalId], {organizationId:scope.organizationId,user:auth.user,event,source:'CELL_MEMBERSHIP'});
     } else {
-      await query(
-        `UPDATE members SET pending_cell_group_id = NULL WHERE organization_id = ? AND (id = ? OR LOWER(email) = LOWER(?))`,
-        [scope.organizationId, userId, userId]
-      );
+      await memberStateWrite(`UPDATE members SET pending_cell_group_id = NULL WHERE organization_id = ? AND id = ?`, [scope.organizationId, canonicalId], {organizationId:scope.organizationId,user:auth.user,event,source:'CELL_MEMBERSHIP'});
     }
 
     return apiResponse(200, {
@@ -277,6 +283,7 @@ export const evaluateJoinRequest = async (event: APIGatewayProxyEvent): Promise<
       status: isApproved ? 'APPROVED' : 'REJECTED'
     });
   } catch (err: any) {
+    if(err instanceof IntelligenceError)return apiResponse(err.status,{error:err.message});
     return apiResponse(500, { error: 'Erro ao processar solicitação de membro' });
   }
 };
@@ -299,13 +306,12 @@ export const addMember = async (event: APIGatewayProxyEvent): Promise<APIGateway
     const { member_id } = body;
     if (!member_id) return apiResponse(400, { error: 'member_id faltante' });
 
-    await query(
-      `UPDATE members SET cell_group_id = ?, pending_cell_group_id = NULL WHERE id = ? AND organization_id = ?`,
-      [groupId, member_id, scope.organizationId]
-    );
+    const canonicalId = await membershipTarget(scope,String(member_id),true);
+    await memberStateWrite(`UPDATE members SET cell_group_id = ?, pending_cell_group_id = NULL WHERE id = ? AND organization_id = ?`, [groupId, canonicalId, scope.organizationId], {organizationId:scope.organizationId,user:auth.user,event,source:'CELL_MEMBERSHIP'});
 
     return apiResponse(200, { message: 'Membro adicionado à célula com sucesso' });
   } catch (err: any) {
+    if(err instanceof IntelligenceError)return apiResponse(err.status,{error:err.message});
     return apiResponse(500, { error: 'Erro ao vincular membro à célula' });
   }
 };
@@ -325,13 +331,12 @@ export const removeMember = async (event: APIGatewayProxyEvent): Promise<APIGate
 
     const scope = await authorizeResource(event, 'cell_groups', groupId, LEADERSHIP_ROLES);
     if ('errorResponse' in scope) return scope.errorResponse;
-    await query(
-      `UPDATE members SET cell_group_id = NULL WHERE id = ? AND organization_id = ? AND cell_group_id = ?`,
-      [memberId, scope.organizationId, groupId]
-    );
+    await membershipTarget(scope,String(memberId),false);
+    await memberStateWrite(`UPDATE members SET cell_group_id = NULL WHERE id = ? AND organization_id = ? AND cell_group_id = ?`, [memberId, scope.organizationId, groupId], {organizationId:scope.organizationId,user:auth.user,event,source:'CELL_MEMBERSHIP'});
 
     return apiResponse(200, { message: 'Membro desvinculado da célula com sucesso' });
   } catch (err: any) {
+    if(err instanceof IntelligenceError)return apiResponse(err.status,{error:err.message});
     return apiResponse(500, { error: 'Erro ao remover membro da célula' });
   }
 };
@@ -441,6 +446,7 @@ export const recordMeeting = async (event: APIGatewayProxyEvent): Promise<APIGat
       visitor_count: visitorCount
     });
   } catch (err: any) {
+    if(err instanceof IntelligenceError)return apiResponse(err.status,{error:err.message});
     console.error('Erro ao registrar reunião da célula:', err);
     return apiResponse(500, { error: 'Erro ao registrar chamada da célula' });
   }
@@ -471,6 +477,7 @@ export const getCellMeetings = async (event: APIGatewayProxyEvent): Promise<APIG
     const { rows } = await query(q, [groupId, scope.organizationId]);
     return apiResponse(200, rows);
   } catch (err: any) {
+    if(err instanceof IntelligenceError)return apiResponse(err.status,{error:err.message});
     console.error('Erro ao buscar histórico de reuniões:', err);
     return apiResponse(500, { error: 'Erro ao listar histórico de reuniões' });
   }
@@ -512,6 +519,7 @@ export const getCellMeetingDetails = async (event: APIGatewayProxyEvent): Promis
       attendees
     });
   } catch (err: any) {
+    if(err instanceof IntelligenceError)return apiResponse(err.status,{error:err.message});
     console.error('Erro ao buscar detalhes da reunião:', err);
     return apiResponse(500, { error: 'Erro ao buscar detalhes da reunião' });
   }

@@ -131,7 +131,9 @@
         "intelligence.goals": true,
         "intelligence.finance": false,
         "intelligence.operations": false,
-        "intelligence.multicampus": false
+        "intelligence.multicampus": false,
+        "intelligence.history": true,
+        "financial.accounts_ledger": false
       },
       "status": "ACTIVE"
     },
@@ -249,7 +251,9 @@
         "intelligence.goals": true,
         "intelligence.finance": false,
         "intelligence.operations": true,
-        "intelligence.multicampus": false
+        "intelligence.multicampus": false,
+        "intelligence.history": true,
+        "financial.accounts_ledger": false
       },
       "status": "ACTIVE"
     },
@@ -372,7 +376,9 @@
         "intelligence.goals": true,
         "intelligence.finance": true,
         "intelligence.operations": true,
-        "intelligence.multicampus": true
+        "intelligence.multicampus": true,
+        "intelligence.history": true,
+        "financial.accounts_ledger": true
       },
       "status": "ACTIVE"
     },
@@ -495,7 +501,9 @@
         "intelligence.goals": true,
         "intelligence.finance": true,
         "intelligence.operations": true,
-        "intelligence.multicampus": true
+        "intelligence.multicampus": true,
+        "intelligence.history": true,
+        "financial.accounts_ledger": true
       },
       "status": "ACTIVE"
     }

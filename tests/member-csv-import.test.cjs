@@ -11,6 +11,8 @@ mock('../src/db/index.ts',{apiResponse:(statusCode,data)=>({statusCode,body:JSON
  if(sql.includes('FROM members'))return {rows:state.existing?[state.existing]:[]};
  if(/UPDATE|INSERT/.test(sql)){if(state.dbFailure)throw Error('DB failed');state.writes.push({sql,params});return {rows:[]};}throw Error(sql);
 }});
+// Exercise the transactional member writer with the same isolated SQL fixture.
+require('../src/db/index.ts').getConnection=async()=>({beginTransaction:async()=>{},commit:async()=>{},rollback:async()=>{},release:()=>{},destroy:()=>{},query:async(sql,params=[])=>{if(sql.startsWith('SET @fh_history_'))return[[],[]];const r=await require('../src/db/index.ts').query(sql,params);return[r.rows,[]];}});
 mock('../src/services/featureFlagService.ts',{evaluateTenantFlags:async(org)=>{assert.equal(org,'org-a');return {contract_version:'v',flags:{'system.saas_member_import_invitations':state.flag,'members.module_enabled':true}};}});
 mock('../src/services/auditLogService.ts',{logSecurityEvent:async entry=>state.audit.push(entry)});
 const {importMemberRows,resolveImportRecord}=require('../src/services/memberCsvImport.ts');

@@ -1,3 +1,4 @@
+import {memberStatement} from '../services/memberHistoryWrite';
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { createHash, randomBytes } from 'crypto';
 import { apiResponse, getConnection, query } from '../db';
@@ -291,8 +292,8 @@ export const updateMovementStatus = async (event: APIGatewayProxyEvent): Promise
             [scope.organizationId, movement.to_campus_id]
           );
           if (!campuses.length) throw new Error('DESTINATION_CAMPUS_NOT_FOUND');
-          await connection.query(`UPDATE members SET campus_id = ?, campus_ids = JSON_ARRAY(?), updated_at = NOW()
-            WHERE organization_id = ? AND id = ?`, [movement.to_campus_id, movement.to_campus_id, scope.organizationId, movement.member_id]);
+          await memberStatement(connection,`UPDATE members SET campus_id = ?, campus_ids = JSON_ARRAY(?), cell_group_id=NULL,pending_cell_group_id=NULL,updated_at = NOW()
+            WHERE organization_id = ? AND id = ?`, [movement.to_campus_id, movement.to_campus_id, scope.organizationId, movement.member_id], {organizationId:scope.organizationId,user:scope.user,event,source:'SECRETARIAT_TRANSFER'});
           await connection.query(`UPDATE member_ecclesiastical_records SET campus_id = ?, updated_by = ?, updated_at = NOW()
             WHERE organization_id = ? AND member_id = ?`, [movement.to_campus_id, scope.user.userId, scope.organizationId, movement.member_id]);
         } else {
@@ -448,8 +449,8 @@ export const createBaptism = async (event: APIGatewayProxyEvent): Promise<APIGat
         safeSecretariatText(body.baptism_location, 255), baptismCity, officiant,
         safeSecretariatText(body.ceremony_name, 255), safeSecretariatText(body.notes, 5000), scope.user.userId
       ]);
-      await connection.query(`UPDATE members SET baptism_date = ?, updated_at = NOW()
-        WHERE organization_id = ? AND id = ?`, [baptismDate, scope.organizationId, memberId]);
+      await memberStatement(connection,`UPDATE members SET baptism_date = ?, updated_at = NOW()
+        WHERE organization_id = ? AND id = ?`, [baptismDate, scope.organizationId, memberId], {organizationId:scope.organizationId,user:scope.user,event,source:'SECRETARIAT_BAPTISM'});
       await connection.query(`INSERT INTO member_ecclesiastical_records (
           id, organization_id, campus_id, member_id, baptism_date, baptism_church,
           baptism_city, baptism_officiant, created_by, updated_by

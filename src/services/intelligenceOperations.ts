@@ -94,9 +94,9 @@ export async function intelligenceOperations(scope:IntelligenceScope,preset:stri
    SUM(CASE WHEN t.status='PENDING' AND t.type='INCOME' THEN ROUND(t.amount*100) ELSE 0 END) AS pending_income,
    SUM(CASE WHEN t.status='PENDING' AND t.type='EXPENSE' THEN ROUND(t.amount*100) ELSE 0 END) AS pending_expense,
    SUM(t.status='CANCELLED') AS cancelled
-   FROM church_financial_transactions t WHERE t.organization_id = ? AND ${b.filter}${f.sql} GROUP BY campus_id,bucket`,[...b.params,scope.organizationId,...b.range,...f.params]);
-  const categories=await query(`SELECT t.type,t.category,SUM(ROUND(t.amount*100)) AS amount_cents,COUNT(*) AS records
-   FROM church_financial_transactions t WHERE t.organization_id = ? AND t.status='PAID' AND t.payment_date >= ? AND t.payment_date < ?${f.sql}
+   FROM church_financial_reporting_transactions t WHERE t.organization_id = ? AND ${b.filter}${f.sql} GROUP BY campus_id,bucket`,[...b.params,scope.organizationId,...b.range,...f.params]);
+  const categories=await query(`SELECT t.type,t.category,SUM(ROUND(t.amount*100)) AS amount_cents,COUNT(DISTINCT t.original_transaction_id) AS records
+   FROM church_financial_reporting_transactions t WHERE t.organization_id = ? AND t.status='PAID' AND t.payment_date >= ? AND t.payment_date < ?${f.sql}
    GROUP BY t.type,t.category ORDER BY amount_cents DESC,t.type,t.category LIMIT 21`,[scope.organizationId,period.start,period.end,...f.params]);
   financeDetails.categories=categories.rows.slice(0,20).map(r=>({...r,amount_cents:number(r.amount_cents),records:number(r.records)}));financeDetails.categories_has_more=categories.rows.length>20;
   return rows;

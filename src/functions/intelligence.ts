@@ -11,6 +11,7 @@ import { SAFE_ID, dayInSaoPaulo, subjectKey } from '../services/intelligenceMode
 import {activationFunnel,communityJourney} from '../services/intelligenceJourneys';
 import {listWelcomeVisitors,welcomeOptions,mutateWelcome} from '../services/intelligenceWelcome';
 import {actionOptions,listActions,saveAction,listGoals,saveGoal} from '../services/intelligenceActions';
+import {memberHistory,initializeMemberHistory} from '../services/memberHistory';
 import {intelligenceOperations,FINANCE_ROLES,OPERATIONS_ROLES} from '../services/intelligenceOperations';
 
 export async function intelligenceHandler(event:APIGatewayProxyEvent) {
@@ -58,6 +59,12 @@ export async function intelligenceHandler(event:APIGatewayProxyEvent) {
       }else if(view==='operations')enabled('intelligence.operations');
       else{enabled('intelligence.multicampus','system.multicampus_enabled');}
       return respond(await intelligenceOperations(scope,event.queryStringParameters?.period||'month',view));
+    }
+    if(route[0]==='history'){
+      const access=enforceRole(auth.user,['SUPERADMIN','PASTOR','ADMIN','LEADER']);if(!access.allowed)return access.errorResponse!;
+      enabled('intelligence.history','members.module_enabled');
+      if(method==='GET'&&route.length===1)return respond(await memberHistory(scope,event.queryStringParameters?.period||'month',event.queryStringParameters||{}));
+      if(method==='POST'&&route[1]==='initialize'&&route.length===2)return respond(await initializeMemberHistory(scope,event));
     }
     // Treasury access is restricted to its financial views, never the pastoral/member panels.
     if(auth.user.role==='TREASURER')return apiResponse(403,{message:'Seu perfil de tesouraria permite consultar somente Finanças e seu consolidado de unidades.'});

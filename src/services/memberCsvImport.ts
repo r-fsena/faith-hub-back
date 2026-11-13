@@ -1,3 +1,4 @@
+import {memberStateWrite} from './memberHistoryWrite';
 import { randomBytes } from 'crypto';
 import { AdminCreateUserCommand, AdminGetUserCommand, AdminDeleteUserCommand } from '@aws-sdk/client-cognito-identity-provider';
 import { query } from '../db';
@@ -95,18 +96,16 @@ export async function importMemberRows(body: any, user: AuthUser, orgId: string,
         try { linkedCampuses = typeof previous.campus_ids === 'string' ? JSON.parse(previous.campus_ids) : previous.campus_ids || []; } catch {}
         if (!Array.isArray(linkedCampuses)) linkedCampuses = [];
         const resultingCampuses = [...new Set([campus.id, previous.campus_id, ...linkedCampuses].filter(Boolean))];
-        await query(`UPDATE members SET name = ?, phone = COALESCE(?, phone), birth_date = COALESCE(?, birth_date), role = ?, cell_group_id = ?,
+        await memberStateWrite(`UPDATE members SET name = ?, phone = COALESCE(?, phone), birth_date = COALESCE(?, birth_date), role = ?, cell_group_id = ?,
           address_street = COALESCE(?, address_street), address_number = COALESCE(?, address_number), address_complement = COALESCE(?, address_complement),
           address_neighborhood = COALESCE(?, address_neighborhood), address_city = COALESCE(?, address_city), address_state = COALESCE(?, address_state), address_zip = COALESCE(?, address_zip),
-          campus_id = ?, campus_ids = ?, updated_at = NOW() WHERE id = ? AND organization_id = ?`,
-          [name, text(item.phone)||null, birthDate, role, cellId, ...address, campus.id,
-            move ? JSON.stringify(resultingCampuses) : typeof previous.campus_ids === 'string' ? previous.campus_ids : JSON.stringify(previous.campus_ids || [campus.id]), previous.id, orgId]);
+          campus_id = ?, campus_ids = ?, updated_at = NOW() WHERE id = ? AND organization_id = ?`, [name, text(item.phone)||null, birthDate, role, cellId, ...address, campus.id,
+            move ? JSON.stringify(resultingCampuses) : typeof previous.campus_ids === 'string' ? previous.campus_ids : JSON.stringify(previous.campus_ids || [campus.id]), previous.id, orgId], {organizationId:orgId,user,event,source:'CSV',memberId:cognitoId});
         results.updated++;
       } else {
-        await query(`INSERT INTO members (id, name, email, phone, birth_date, role, status, cell_group_id,
+        await memberStateWrite(`INSERT INTO members (id, name, email, phone, birth_date, role, status, cell_group_id,
           address_street, address_number, address_complement, address_neighborhood, address_city, address_state, address_zip,
-          organization_id, campus_id, campus_ids, invited_by) VALUES (?, ?, ?, ?, ?, ?, 'Ativo', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [cognitoId,name,email,text(item.phone)||null,birthDate,role,cellId,...address,orgId,campus.id,JSON.stringify([campus.id]),user.email]);
+          organization_id, campus_id, campus_ids, invited_by) VALUES (?, ?, ?, ?, ?, ?, 'Ativo', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, [cognitoId,name,email,text(item.phone)||null,birthDate,role,cellId,...address,orgId,campus.id,JSON.stringify([campus.id]),user.email], {organizationId:orgId,user,event,source:'CSV',memberId:cognitoId});
         results.created++;
       }
       saved = true;

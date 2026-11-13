@@ -38,7 +38,9 @@ export function normalizeEntitlements(value: unknown): Record<string, boolean> {
       ? !!base&&(key!=='intelligence.member_journey'||input['visitors.module_enabled']===true) : input[key]===undefined&&key==='intelligence.finance'
       ? !!base&&input['financial.cashflow_ledger']===true : input[key]===undefined&&key==='intelligence.operations'
       ? !!base&&['events.module_enabled','pdv.module_enabled','kids.module_enabled','volunteers.module_enabled'].some(k=>input[k]===true) : input[key]===undefined&&key==='intelligence.multicampus'
-      ? !!base&&input['system.multicampus_enabled']===true : input[key];
+      ? !!base&&input['system.multicampus_enabled']===true : input[key]===undefined&&key==='intelligence.history'
+      ? !!base&&input['members.module_enabled']===true : input[key]===undefined&&key==='financial.accounts_ledger'
+      ? input['financial.module_enabled']===true&&input['financial.cashflow_ledger']===true : input[key];
     if (typeof value !== 'boolean') throw new Error(`INVALID_PLAN_ENTITLEMENT:${key}`);
     flags[key] = value;
   }
