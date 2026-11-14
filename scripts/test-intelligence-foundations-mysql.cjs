@@ -81,6 +81,7 @@ const check=()=>count++;
   stage='calendar opportunities';console.log(JSON.stringify({stage:'calendar opportunities'}));count+=await require('./qa-calendar.cjs')(ctx);
   stage='actionable alerts';console.log(JSON.stringify({stage:'actionable alerts'}));count+=await require('./qa-alerts.cjs')(ctx);
   stage='private reports lifecycle';console.log(JSON.stringify({stage:'private reports lifecycle'}));count+=await require('./qa-reports.cjs')(ctx);
+  stage='general release provisioning';count+=await require('./qa-general-rollout.cjs')(ctx);
  }
  assert.equal(connections.size,0);console.log(JSON.stringify({result:'PASS',checks:count,disposableSchema:true,customerRecordsRead:0,customerRecordsChanged:0,historyTriggersValidated:!financialOnly,engineTarget:localPort?'localhost MySQL':'RDS disposable schema'}));
 })().catch(e=>{console.error(JSON.stringify({result:'FAIL',stage,code:e.code||e.name,message:String(e.message).slice(0,1500)}));process.exitCode=1;}).finally(async()=>{if(db){try{if(created&&/^faith_foundation_qa_[0-9a-f]{12}$/.test(qa)){await db.query(`DROP DATABASE \`${qa}\``);console.log('QA_SCHEMA_REMOVED');}}finally{await db.end();}}});

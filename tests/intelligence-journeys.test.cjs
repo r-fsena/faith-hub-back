@@ -129,12 +129,12 @@ test('new contract keys extend old snapshots without granting visitor analytics 
  const {normalizeEntitlements,COMMERCIAL_CATALOG}=require('../src/services/planCatalog.ts');const old={...COMMERCIAL_CATALOG.plans[0].entitlements};for(const key of Object.keys(require('../migrate_intelligence_journeys.js').additions))delete old[key];
  assert.equal(normalizeEntitlements(old)['intelligence.member_journey'],false);old['intelligence.actions']=false;assert.equal(normalizeEntitlements(old)['intelligence.actions'],false);
 });
-test('provisioning preserves contractual rights while keeping the next delivery in a tenant pilot',async()=>{
+test('general release provisioning enables only contracted intelligence rights',async()=>{
  const {initializePlanEntitlements}=require('../src/services/planProvisioning.ts');const {COMMERCIAL_CATALOG}=require('../src/services/planCatalog.ts');const writes=[];
  const contract={name:'Plano de teste',entitlements:COMMERCIAL_CATALOG.plans[1].entitlements};
  await initializePlanEntitlements('org-new',contract,async(sql,params)=>writes.push({sql,params}));
  for(const key of Object.keys(require('../migrate_intelligence_journeys.js').additions)){
-  assert.equal(contract.entitlements[key],true);assert.equal(writes.find(c=>c.params[2]===key).params[3],0);
+  assert.equal(contract.entitlements[key],true);assert.equal(writes.find(c=>c.params[2]===key).params[3],1);
  }
 });
 test('activation protects small complements and differences between otherwise large stages',async()=>{
