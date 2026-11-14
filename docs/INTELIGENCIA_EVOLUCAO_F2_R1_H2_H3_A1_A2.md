@@ -12,7 +12,7 @@ Implementação iniciada em 13/11/2026. Estado: **código no workspace; não pub
 | 4 · H3 | Inteligência → Capacidades históricas; Kids → salas/check-in | Referências de requisitos de escalas, capacidades de lotes e turnos Kids, sem reescrever o passado. |
 | 5 · A1/A2 inicial | Inteligência → Alertas → evidência → ação | Regras por unidade, deduplicação, responsável/prazo, revisão, adiamento, conclusão e descarte. |
 
-A inteligência comercial da área master, a revisão retroativa H1, conciliação F3, fechamento financeiro F4, relatórios agendados R2 e as regras avançadas de A2 não integram este pacote.
+A inteligência comercial da área master, a revisão retroativa H1, conciliação F3, custo histórico/margem da loja F4, relatórios agendados R2 e as regras avançadas de A2 não integram este pacote.
 
 ## Financeiro
 
