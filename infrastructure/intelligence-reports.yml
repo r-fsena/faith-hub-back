@@ -124,7 +124,6 @@ Resources:
       Role: !GetAtt WorkerRole.Arn
       Timeout: 120
       MemorySize: 1024
-      ReservedConcurrentExecutions: 2
       Code: {S3Bucket: !Ref CodeS3Bucket, S3Key: !Ref CodeS3Key}
       VpcConfig: !If
         - WorkerVpcEnabled
