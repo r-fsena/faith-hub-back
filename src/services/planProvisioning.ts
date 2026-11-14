@@ -12,7 +12,8 @@ export async function initializePlanEntitlements(
     // Rights and staged rollout are distinct. These additions start off outside
     // the initial pilot; an explicit production override can release a tenant.
     const pilotKeys=['intelligence.activation','intelligence.member_journey','intelligence.actions','intelligence.goals','intelligence.finance','intelligence.operations','intelligence.multicampus','intelligence.history','financial.accounts_ledger'];
-    const initiallyEnabled=enabled&&(!pilotKeys.includes(key)||organizationId==='org_default');
+    const evolutionKeys=['financial.transfers_reversals','intelligence.reports','intelligence.calendar','intelligence.capacities','intelligence.alerts'];
+    const initiallyEnabled=enabled&&!evolutionKeys.includes(key)&&(!pilotKeys.includes(key)||organizationId==='org_default');
     const id = createHash('sha256').update(`${organizationId}:plan:${key}`).digest('hex').slice(0, 36);
     await execute(`INSERT INTO tenant_feature_flags
       (id, organization_id, campus_id, environment, feature_key, is_enabled, category, description, updated_by)

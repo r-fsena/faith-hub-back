@@ -133,7 +133,12 @@
         "intelligence.operations": false,
         "intelligence.multicampus": false,
         "intelligence.history": true,
-        "financial.accounts_ledger": false
+        "financial.accounts_ledger": false,
+        "financial.transfers_reversals": false,
+        "intelligence.reports": true,
+        "intelligence.calendar": true,
+        "intelligence.capacities": false,
+        "intelligence.alerts": true
       },
       "status": "ACTIVE"
     },
@@ -253,7 +258,12 @@
         "intelligence.operations": true,
         "intelligence.multicampus": false,
         "intelligence.history": true,
-        "financial.accounts_ledger": false
+        "financial.accounts_ledger": false,
+        "financial.transfers_reversals": false,
+        "intelligence.reports": true,
+        "intelligence.calendar": true,
+        "intelligence.capacities": true,
+        "intelligence.alerts": true
       },
       "status": "ACTIVE"
     },
@@ -378,7 +388,12 @@
         "intelligence.operations": true,
         "intelligence.multicampus": true,
         "intelligence.history": true,
-        "financial.accounts_ledger": true
+        "financial.accounts_ledger": true,
+        "financial.transfers_reversals": true,
+        "intelligence.reports": true,
+        "intelligence.calendar": true,
+        "intelligence.capacities": true,
+        "intelligence.alerts": true
       },
       "status": "ACTIVE"
     },
@@ -503,7 +518,12 @@
         "intelligence.operations": true,
         "intelligence.multicampus": true,
         "intelligence.history": true,
-        "financial.accounts_ledger": true
+        "financial.accounts_ledger": true,
+        "financial.transfers_reversals": true,
+        "intelligence.reports": true,
+        "intelligence.calendar": true,
+        "intelligence.capacities": true,
+        "intelligence.alerts": true
       },
       "status": "ACTIVE"
     }

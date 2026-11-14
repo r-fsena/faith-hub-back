@@ -7,7 +7,7 @@ const { ensure, git } = require('./production-release-policy.cjs');
 const { checkDependencyPolicy } = require('./check-dependency-policy.cjs');
 const affected = new Set([
   'src/functions/cellGroups.ts', 'src/functions/financial.ts', 'src/functions/intelligence.ts',
-  'src/functions/kids.ts', 'src/functions/members.ts', 'src/functions/secretariatPhase2.ts',
+  'src/functions/kids.ts', 'src/functions/events.ts', 'src/functions/intelligenceReports.ts', 'src/functions/members.ts', 'src/functions/secretariatPhase2.ts',
   'src/services/memberCsvImport.ts', 'src/services/planCatalog.ts', 'src/services/planProvisioning.ts',
   'src/services/provisioningService.ts', 'src/services/publicJourney.ts',
   'src/services/featureFlagService.ts', 'src/services/intelligenceOperations.ts'
@@ -25,7 +25,7 @@ async function main() {
     ensure(/^src\/functions\/[A-Za-z0-9_-]+$/.test(moduleName), 'Handler inesperado: ' + moduleName);
     const entry = moduleName + '.ts'; if (!fs.existsSync(path.join(cwd, entry))) continue;
     const build = await esbuild.build({ absWorkingDir: cwd, entryPoints: [entry], outfile: moduleName + '.js', bundle: true, write: false,
-      metafile: true, platform: 'node', format: 'cjs', target: 'node22', external: ['sharp'], logLevel: 'silent', sourcemap: false });
+      metafile: true, platform: 'node', format: 'cjs', alias: {pdfkit: require.resolve('pdfkit')}, target: 'node22', external: ['sharp'], logLevel: 'silent', sourcemap: false });
     if (!Object.keys(build.metafile.inputs).some(input => affected.has(input))) continue;
     const dir = path.join(out, path.basename(moduleName)); fs.mkdirSync(path.join(dir, path.dirname(moduleName)), { recursive: true });
     const js = build.outputFiles.find(f => f.path.endsWith('.js')); ensure(js, 'Bundle ausente.');
@@ -41,8 +41,10 @@ async function main() {
       const elf = fs.readFileSync(path.join(nativeDir, native));
       ensure(elf.subarray(0, 4).equals(Buffer.from([0x7f, 0x45, 0x4c, 0x46])) && elf[4] === 2 && elf[5] === 1 && elf.readUInt16LE(18) === 62, 'Sharp deve ser ELF Linux x86_64.');
     }
+    const needsReportFont = Object.keys(build.metafile.inputs).some(input => input.endsWith('src/assets/report-font.json'));
+    if (needsReportFont) fs.copyFileSync(path.join(cwd, 'src/assets/REPORT_FONT_OFL.txt'), path.join(dir, 'REPORT_FONT_OFL.txt'));
     const artifact = dir + '.zip';
-    execFileSync('zip', ['-qr', artifact, 'src', ...(needsSharp ? ['node_modules'] : [])], { cwd: dir, stdio: ['ignore','pipe','pipe'] });
+    execFileSync('zip', ['-qr', artifact, 'src', ...(needsSharp ? ['node_modules'] : []), ...(needsReportFont ? ['REPORT_FONT_OFL.txt'] : [])], { cwd: dir, stdio: ['ignore','pipe','pipe'] });
     const size = fs.statSync(artifact).size; ensure(size < 50 * 1024 * 1024, 'Artefato excede o limite de upload direto.');
     const sha256 = crypto.createHash('sha256').update(fs.readFileSync(artifact)).digest('base64');
     const item = { module: moduleName, artifact, sha256, bytes: size, nativeSharpLinux: needsSharp,

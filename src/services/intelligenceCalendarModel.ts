@@ -1,0 +1,5 @@
+import {requireDay} from './intelligenceJourneyModel';
+import {IntelligenceError} from './intelligenceUsage';
+export function calendarTime(day:string,time:string){requireDay(day);if(!/^([01]\d|2[0-3]):[0-5]\d$/.test(time))throw new IntelligenceError(400,'Horário inválido.');const desired=Date.parse(day+'T'+time+':00Z');let instant=desired;
+ for(let attempt=0;attempt<4;attempt++){const parts=Object.fromEntries(new Intl.DateTimeFormat('en-GB',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hourCycle:'h23'}).formatToParts(new Date(instant)).map(p=>[p.type,p.value]));const local=Date.UTC(Number(parts.year),Number(parts.month)-1,Number(parts.day),Number(parts.hour),Number(parts.minute),Number(parts.second));if(local===desired)return new Date(instant).toISOString().slice(0,19).replace('T',' ');instant+=desired-local;}
+ throw new IntelligenceError(400,'Esse horário não existe no fuso da agenda. Escolha outro horário.');}

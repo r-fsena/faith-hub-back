@@ -1,3 +1,4 @@
+import {AsyncLocalStorage} from 'node:async_hooks';
 import { createHash } from 'crypto';
 
 export const INTELLIGENCE_VERSION = '2026-11-06.v1';
@@ -36,7 +37,11 @@ export function utcBoundary(day: string) {
   return new Date(instant).toISOString();
 }
 
-export function intelligencePeriod(preset: string = 'month', now = new Date()) {
+export interface IntelligencePeriod {preset:string;start:string;end:string;previousStart:string;previousEnd:string;comparison:string;timezone:string}
+const frozenPeriod=new AsyncLocalStorage<IntelligencePeriod>();
+export function withIntelligencePeriod<T>(period:IntelligencePeriod,fn:()=>Promise<T>){return frozenPeriod.run(Object.freeze({...period}),fn);}
+export function intelligencePeriod(preset: string = 'month', now = new Date()):IntelligencePeriod {
+  if(frozenPeriod.getStore())return {...frozenPeriod.getStore()!};
   const today = dayInSaoPaulo(now);
   const end = today; // exclusive: only complete local days
   const [year, month, day] = today.split('-').map(Number);

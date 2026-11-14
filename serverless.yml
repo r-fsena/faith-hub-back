@@ -75,6 +75,8 @@ provider:
     RATE_LIMIT_TABLE: !Ref RateLimitTable
     SAAS_OPERATIONS_QUEUE_URL: !Ref SaasOperationsQueue
     INTELLIGENCE_QUEUE_URL: !Ref IntelligenceQueue
+    INTELLIGENCE_REPORTS_BUCKET: ${env:INTELLIGENCE_REPORTS_BUCKET, ''}
+    INTELLIGENCE_REPORTS_QUEUE_URL: ${env:INTELLIGENCE_REPORTS_QUEUE_URL, ''}
     S3_MEDIA_BUCKET: ${env:S3_MEDIA_BUCKET, 'faith-hub-media-bucket-rafaelsena'}
     ASAAS_SECRET_ARN: ${env:ASAAS_SECRET_ARN, ''}
   iam:

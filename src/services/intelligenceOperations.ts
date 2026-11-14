@@ -1,3 +1,4 @@
+import {capacitiesObserved,historicalScheduleMetrics,historicalEventMetrics} from './intelligenceCapacityMetrics';
 import {query} from '../db';
 import {IntelligenceScope,scopedWhere} from './intelligenceScope';
 import {evaluateTenantFlags} from './featureFlagService';
@@ -9,6 +10,11 @@ export const OPERATIONS_ROLES=['SUPERADMIN','PASTOR','ADMIN'];
 type View='finance'|'operations'|'units';
 type Values=Record<string,number>;
 const DEFINITIONS:Record<string,[string,string,string]>={
+ unversioned_events:['Edições sem capacidade histórica','count','Edições sem referência verificável de todos os lotes até a data do evento.'],
+ unversioned_schedules:['Escalas sem requisitos históricos','count','Escalas sem referência verificável dos requisitos até a data do serviço.'],
+ kids_turns:['Turnos Kids abertos','count','Turnos abertos no período, pela data de abertura registrada.'],
+ kids_turn_capacity:['Vagas registradas em turnos Kids','count','Soma das capacidades capturadas nos turnos abertos na janela; não é capacidade simultânea.'],
+ kids_missing_capacity:['Check-ins sem turno versionado','count','Check-ins do período sem referência de capacidade; não recebem capacidade histórica presumida.'],
  income:['Receitas pagas','BRL_CENTS','Lançamentos INCOME/PAID pela data de pagamento informada na tesouraria.'],
  expense:['Despesas pagas','BRL_CENTS','Lançamentos EXPENSE/PAID pela data de pagamento informada na tesouraria.'],
  result:['Resultado registrado','BRL_CENTS','Receitas pagas menos despesas pagas. Não representa saldo bancário nem DRE por competência.'],
@@ -44,18 +50,20 @@ const metric=(key:string,current:Values,previous:Values,snapshot=false)=>{
  const old=snapshot?null:key==='average_ticket'?(previous.paid_orders?Math.round(previous.sales/previous.paid_orders):null):previous[key]??0;
  return{key,title:DEFINITIONS[key][0],unit:DEFINITIONS[key][1],definition:DEFINITIONS[key][2],value,previous:old,change:operationChange(value,old),reference:snapshot?'current_state':'selected_period'};
 };
-const SOURCE_CONFIG={finance:['financial.module_enabled','financial.cashflow_ledger'],events:['events.module_enabled'],store:['pdv.module_enabled'],stock:['pdv.module_enabled','pdv.stock_inventory'],teams:['ministries.module_enabled','volunteers.module_enabled'],kids:['kids.module_enabled','kids.reports_export']} as const;
+const SOURCE_CONFIG={finance:['financial.module_enabled','financial.cashflow_ledger'],events:['events.module_enabled'],store:['pdv.module_enabled'],stock:['pdv.module_enabled','pdv.stock_inventory'],teams:['ministries.module_enabled','volunteers.module_enabled'],kids:['kids.module_enabled','kids.reports_export'],kids_turns:['kids.module_enabled','kids.reports_export','intelligence.capacities']} as const;
 
-export async function intelligenceOperations(scope:IntelligenceScope,preset:string,view:View){
+export async function intelligenceOperations(scope:IntelligenceScope,preset:string,view:View,includeUnits=false,maximumFeatures?:Record<string,string[]>){
  if(!FINANCE_ROLES.includes(scope.user.role)||scope.cellIds!==null)throw new IntelligenceError(403,'Este perfil não pode consultar a gestão consolidada.');
  if(view==='operations'&&!OPERATIONS_ROLES.includes(scope.user.role))throw new IntelligenceError(403,'Operação exige perfil de administração ou pastoral.');
  const period=intelligencePeriod(preset),campusFilter=scopedWhere(scope,'c','id');
  const {rows:campuses}=await query(`SELECT c.id,c.name FROM campuses c WHERE c.organization_id = ?${campusFilter.sql} ORDER BY c.name,c.id LIMIT 201`,[scope.organizationId,...campusFilter.params]);
  if(campuses.length>200)throw new IntelligenceError(400,'Selecione uma unidade para consultar este volume de dados.');
  const campusFlags:Record<string,Record<string,boolean>>={};
- for(let i=0;i<campuses.length;i+=4)await Promise.all(campuses.slice(i,i+4).map(async(c:any)=>{campusFlags[c.id]=(await evaluateTenantFlags(scope.organizationId,c.id,'production')).flags;}));
+ for(let i=0;i<campuses.length;i+=4)await Promise.all(campuses.slice(i,i+4).map(async(c:any)=>{campusFlags[c.id]={...(await evaluateTenantFlags(scope.organizationId,c.id,'production')).flags};}));
+ if(maximumFeatures)for(const campus of campuses)for(const key of Object.keys(campusFlags[campus.id]))if(!maximumFeatures[campus.id]?.includes(key))campusFlags[campus.id][key]=false;
  const unitList=campuses.map((c:any)=>({id:c.id,name:c.name,sources:{} as Record<string,any>}));
  const sources:Record<string,any>={};
+ const historicalCapacities=view!=='finance'&&scope.user.role!=='TREASURER'?(Object.values(campusFlags).some(f=>f['intelligence.capacities'])||await capacitiesObserved(scope)):false;
  const utc=(day:string)=>utcBoundary(day).slice(0,19).replace('T',' ');
  const scopeFor=(ids:string[],alias:string)=>scopedWhere({...scope,campusIds:ids,cellIds:null},alias);
  async function source(key:keyof typeof SOURCE_CONFIG,keys:string[],load:(ids:string[])=>Promise<any[]>,snapshots:string[]=[]){
@@ -101,7 +109,8 @@ export async function intelligenceOperations(scope:IntelligenceScope,preset:stri
   financeDetails.categories=categories.rows.slice(0,20).map(r=>({...r,amount_cents:number(r.amount_cents),records:number(r.records)}));financeDetails.categories_has_more=categories.rows.length>20;
   return rows;
  });
- await source('events',['events','tickets','checked_tickets','cancelled_tickets','ticket_capacity'],async ids=>{
+ await source('events',['events','tickets','checked_tickets','cancelled_tickets','ticket_capacity',...(historicalCapacities?['unversioned_events']:[])],async ids=>{
+  if(historicalCapacities)return historicalEventMetrics(scope,ids,period);
   const f=scopeFor(ids,'e'),b=buckets('e.start_date');
   // Aggregate tickets per edition before application consolidation; a correlated
   // lot total avoids multiplying tickets by lots. No attendee fields are selected.
@@ -127,7 +136,8 @@ export async function intelligenceOperations(scope:IntelligenceScope,preset:stri
    INNER JOIN pdv_products p ON p.id=b.product_id AND p.organization_id=b.organization_id WHERE b.organization_id = ? AND p.status='ACTIVE' AND p.track_inventory=1
    AND b.on_hand_quantity-b.reserved_quantity <= b.minimum_stock${f.sql} GROUP BY b.campus_id`,[scope.organizationId,...f.params])).rows;
  },['low_stock']);
- await source('teams',['schedules','required_slots','accepted_slots','uncovered_slots'],async ids=>{
+ await source('teams',['schedules','required_slots','accepted_slots','uncovered_slots',...(historicalCapacities?['unversioned_schedules']:[])],async ids=>{
+  if(historicalCapacities)return historicalScheduleMetrics(scope,ids,period);
   const f=scopeFor(ids,'s'),b=buckets('s.service_date');
   return(await query(`WITH roles AS (SELECT s.id,s.organization_id,COALESCE(s.campus_id,'campus_sede') AS campus_id,${b.sql} AS bucket,r.id AS role_id,
    GREATEST(COALESCE(r.min_volunteers,0),0) AS required_slots,COUNT(DISTINCT CASE WHEN i.status='ACCEPTED' THEN i.member_id END) AS accepted_slots
@@ -148,16 +158,25 @@ export async function intelligenceOperations(scope:IntelligenceScope,preset:stri
   const rooms=await query(`SELECT COALESCE(r.campus_id,'campus_sede') AS campus_id,'current' AS bucket,SUM(GREATEST(r.capacity,0)) AS kids_capacity FROM kids_rooms r
    WHERE r.organization_id = ?${r.sql} GROUP BY campus_id`,[scope.organizationId,...r.params]);return [...historic.rows,...open.rows,...rooms.rows];
  },['kids_open','kids_capacity']);
+ await source('kids_turns',['kids_turns','kids_turn_capacity','kids_missing_capacity'],async ids=>{
+  const f=scopeFor(ids,'s'),k=scopeFor(ids,'k'),b=buckets('s.opened_at',true),kb=buckets('k.checkin_at',true);
+  const turns=await query(`SELECT s.campus_id,${b.sql} AS bucket,COUNT(*) AS kids_turns,SUM(CAST(JSON_UNQUOTE(JSON_EXTRACT(r.snapshot_json,'$.capacity')) AS UNSIGNED)) AS kids_turn_capacity FROM intelligence_kids_sessions s INNER JOIN intelligence_capacity_revisions r ON r.organization_id=s.organization_id AND r.id=s.capacity_revision_id WHERE s.organization_id = ? AND ${b.filter}${f.sql} GROUP BY s.campus_id,bucket`,[...b.params,scope.organizationId,...b.range,...f.params]);
+  const unknown=await query(`SELECT COALESCE(k.campus_id,'campus_sede') AS campus_id,${kb.sql} AS bucket,COUNT(*) AS kids_missing_capacity FROM kids_checkins k WHERE k.organization_id = ? AND k.capacity_revision_id IS NULL AND ${kb.filter}${k.sql} GROUP BY campus_id,bucket`,[...kb.params,scope.organizationId,...kb.range,...k.params]);return[...turns.rows,...unknown.rows];
+ });
+ if(historicalCapacities){for(const source of [sources,...unitList.map(u=>u.sources)])for(const [kind,unknown,fields]of [['events','unversioned_events',['ticket_capacity']],['teams','unversioned_schedules',['required_slots','uncovered_slots']]] as const){
+  const data=source[kind];if(!data)continue;const missing=data.metrics.find((m:any)=>m.key===unknown);
+  for(const metric of data.metrics)if(fields.some(field=>field===metric.key)){metric.definition='Referência registrada até a data da operação. Fontes sem cobertura histórica tornam o valor indisponível; não são substituídas pela configuração atual.';if((missing?.value||0)>0)metric.value=null;if((missing?.previous||0)>0)metric.previous=null;metric.change=operationChange(metric.value,metric.previous);}
+ }}
  if(sources.finance.status==='error'){financeDetails.categories=[];financeDetails.categories_has_more=false;}
  const notes=[
   'Somente unidades autorizadas e módulos liberados em cada unidade entram nos totais. Unidade nula legada é atribuída apenas a campus_sede, quando autorizada.',
   'Vendas da loja e inscrições não são somadas à tesouraria. Cada fonte descreve um aspecto da operação.',
-  'A tesouraria não possui classificação estruturada de transferência interna ou estorno. O painel mostra lançamentos registrados, sem afirmar conciliação bancária. TRANSFER é meio de pagamento, não prova de transferência interna.',
-  'Ingressos seguem a data informada da edição e sua situação atual, não a data de pagamento. Vagas de lotes e funções são a configuração atual; não representam histórico imutável.',
+  'Transferências internas registradas no fluxo próprio ficam fora das receitas e despesas. Correções e devoluções aparecem como valores inversos vinculados ao original, sem afirmar conciliação bancária. TRANSFER em registros legados é apenas meio de pagamento.',
+  historicalCapacities?'Ingressos e escalas usam as referências de capacidade registradas até a data da operação. Lacunas históricas permanecem indisponíveis; aceites e situação dos ingressos são a posição atual dos registros.':'Ingressos seguem a data informada da edição e sua situação atual. Vagas de lotes e funções ainda usam configuração atual neste escopo, sem comprovação histórica.',
   'A loja não informa margem porque não existe custo histórico confiável nesta fonte. Atenção de estoque considera saldos cadastrados; produtos sem saldo exigem revisão na origem.',
   'Estoque, check-ins Kids em aberto, capacidade de salas e pedidos sem data são posições atuais, sem MoM retroativo. Kids contém apenas contagens operacionais, sem identificação de crianças.',
   'Comparações usam dias completos no fuso de Brasília. Falha de fonte mantém os valores indisponíveis; zero significa ausência de registros elegíveis consultados.',
  ];
  return{view,period,updated_at:new Date().toISOString(),currency:'BRL',scope:{campus_ids:campuses.map((c:any)=>c.id),financial_only:scope.user.role==='TREASURER'},sources,
-  units:view==='units'?unitList:[],finance_details:view!=='operations'?financeDetails:undefined,notes,errors:Object.keys(sources).filter(k=>sources[k].status==='error')};
+  units:view==='units'||includeUnits?unitList:[],finance_details:view!=='operations'?financeDetails:undefined,notes,errors:Object.keys(sources).filter(k=>sources[k].status==='error')};
 }

@@ -1,3 +1,6 @@
+import {IntelligenceError} from '../services/intelligenceUsage';
+import {auditedKidsStatement} from '../services/kidsSessionWrite';
+import {intelligenceCapacitiesHandler} from '../services/intelligenceCapacities';
 import {memberStateWrite} from '../services/memberHistoryWrite';
 import { enforcePlanAccess } from '../services/planAccess';
 import { authorizeResource } from '../services/tenantResource';
@@ -97,7 +100,12 @@ export const saveRoom = async (event: APIGatewayProxyEvent): Promise<APIGatewayP
       return apiResponse(400, { message: 'Nome da sala é obrigatório' });
     }
 
-    const roomId = id || `room_${randomUUID().substring(0, 8)}`;
+    const roomId = id || `room_${randomUUID()}`;
+    const targetCampus=campus_id&&campus_id!=='all'?campus_id:'campus_sede';
+    if(!auth.user.isSuperAdmin&&!auth.user.campusIds.includes('all')&&!auth.user.campusIds.includes(targetCampus))return apiResponse(403,{message:'Sem acesso à unidade da sala.'});
+    const cap=capacity===undefined?30:Number(capacity),minAge=Number(min_age??0),maxAge=Number(max_age??12);
+    if(!Number.isInteger(cap)||cap<1||cap>10000||!Number.isInteger(minAge)||!Number.isInteger(maxAge)||minAge<0||maxAge<minAge||maxAge>30||typeof name!=='string'||name.length>100)return apiResponse(400,{message:'Confira nome, idades e capacidade da sala (1 a 10.000).'});
+
 
     const sql = `
       INSERT INTO kids_rooms (id, name, min_age, max_age, capacity, color, icon, description, organization_id, campus_id)
@@ -114,22 +122,27 @@ export const saveRoom = async (event: APIGatewayProxyEvent): Promise<APIGatewayP
         updated_at = NOW()
     `;
 
-    await query(sql, [
+    await auditedKidsStatement(sql, [
       roomId,
       name,
-      min_age || 0,
-      max_age || 12,
-      capacity || 30,
+      minAge,
+      maxAge,
+      cap,
       color || '#0f766e',
       icon || '👶',
       description || null,
       orgId,
-      campus_id || null
-    ]);
+      targetCampus
+    ], {organizationId:orgId,user:auth.user,action:'SAVE_KIDS_ROOM',resource:'kids_rooms',resourceId:roomId,details:{name,capacity:cap},event},async db=>{
+      const [units]=await db.query('SELECT id FROM campuses WHERE organization_id = ? AND id = ?',[orgId,targetCampus]);if(!units.length)throw new IntelligenceError(400,'Unidade da sala inválida.');
+      const [old]=await db.query("SELECT COALESCE(campus_id,'campus_sede') AS campus_id FROM kids_rooms WHERE organization_id = ? AND id = ? FOR UPDATE",[orgId,roomId]);
+      if(old.length&&old[0].campus_id!==targetCampus){const [sessions]=await db.query("SELECT id FROM intelligence_kids_sessions WHERE organization_id = ? AND room_id = ? AND status='OPEN' LIMIT 1",[orgId,roomId]);const [children]=await db.query("SELECT id FROM kids_checkins WHERE organization_id = ? AND room_id = ? AND status IN ('CHECKED_IN','CALLING_PARENTS') LIMIT 1",[orgId,roomId]);if(sessions.length||children.length)throw new IntelligenceError(409,'Encerre o turno e os check-ins antes de mover a sala de unidade.');}
+    });
 
     return apiResponse(200, { message: 'Sala salva com sucesso!', id: roomId });
   } catch (error: any) {
-    console.error('Erro ao salvar sala do Kids:', error);
+    if(error instanceof IntelligenceError)return apiResponse(error.status,{message:error.message});
+    console.error('Sala Kids indisponível',{name:error.name,code:error.code});
     return apiResponse(500, { message: 'Erro ao salvar sala' });
   }
 };
@@ -529,21 +542,24 @@ export const doCheckin = async (event: APIGatewayProxyEvent): Promise<APIGateway
       return apiResponse(400, { message: 'Nome da criança, nome do responsável e telefone são obrigatórios' });
     }
 
+    const requestedRoomCampus=campus_id&&campus_id!=='all'?campus_id:user.campusIds.find(c=>c!=='all')||'campus_sede';
     let finalRoomId = room_id;
+    let finalCampusId=requestedRoomCampus;
     let finalRoomName = room_name;
     if (!finalRoomId) {
-      const { rows: rRows } = await query(`SELECT id, name FROM kids_rooms WHERE organization_id = ? ORDER BY min_age ASC LIMIT 1`, [finalOrgId]);
+      const { rows: rRows } = await query(`SELECT id, name FROM kids_rooms WHERE organization_id = ? AND COALESCE(campus_id,'campus_sede') = ? ORDER BY min_age ASC LIMIT 1`, [finalOrgId,requestedRoomCampus]);
       if (rRows.length > 0) {
         finalRoomId = rRows[0].id;
         finalRoomName = rRows[0].name;
       } else {
-        finalRoomId = 'room_default';
-        finalRoomName = 'Sala Kids';
+        return apiResponse(400,{message:'Cadastre ou selecione uma sala nesta unidade antes de registrar o check-in.'});
       }
     } else {
-      const { rows: roomRows } = await query(`SELECT name FROM kids_rooms WHERE id = ? AND organization_id = ? LIMIT 1`, [finalRoomId, finalOrgId]);
+      const { rows: roomRows } = await query(`SELECT name,COALESCE(campus_id,'campus_sede') AS campus_id FROM kids_rooms WHERE id = ? AND organization_id = ? LIMIT 1`, [finalRoomId, finalOrgId]);
       if (!roomRows.length) return apiResponse(404, { message: 'Sala não encontrada' });
-      finalRoomName = roomRows[0]?.name || 'Sala Kids';
+      const canonicalCampus=roomRows[0].campus_id;
+      if((campus_id&&campus_id!=='all'&&campus_id!==canonicalCampus)||(!user.isSuperAdmin&&!user.campusIds.includes('all')&&!user.campusIds.includes(canonicalCampus)))return apiResponse(403,{message:'A sala pertence a outra unidade do acesso selecionado.'});
+      finalCampusId=canonicalCampus;finalRoomName=roomRows[0].name;
     }
 
     let finalParentMemberId = isStaff ? (parent_member_id || null) : user.userId;
@@ -586,7 +602,7 @@ export const doCheckin = async (event: APIGatewayProxyEvent): Promise<APIGateway
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'CHECKED_IN', NOW(), ?, ?, ?)
     `;
 
-    await query(sql, [
+    await auditedKidsStatement(sql, [
       checkinId,
       finalChildId,
       child_name,
@@ -599,10 +615,8 @@ export const doCheckin = async (event: APIGatewayProxyEvent): Promise<APIGateway
       securityCode,
       user.name || 'Recepção Kids',
       finalOrgId,
-      campus_id || null
-    ]);
-
-    await logSecurityEvent({
+      finalCampusId
+    ], {
       organizationId: finalOrgId,
       user,
       action: 'CHECKIN_CHILD',
@@ -629,7 +643,9 @@ export const doCheckin = async (event: APIGatewayProxyEvent): Promise<APIGateway
       }
     });
   } catch (error: any) {
-    console.error('Erro ao realizar check-in:', error);
+    if(error.sqlMessage==='KIDS_SESSION_REQUIRED')return apiResponse(409,{message:'A equipe Kids precisa abrir um turno nesta sala antes do check-in.'});
+    if(error.sqlMessage==='KIDS_SESSION_CAPACITY')return apiResponse(409,{message:'O turno atingiu a capacidade registrada. Procure a equipe Kids.'});
+    console.error('Check-in indisponível',{name:error.name,code:error.code});
     return apiResponse(500, { message: 'Erro ao realizar check-in' });
   }
 };
@@ -792,9 +808,7 @@ export const doCheckout = async (event: APIGatewayProxyEvent): Promise<APIGatewa
       WHERE id = ? AND organization_id = ?
     `;
 
-    await query(sql, [auth.user.name || 'Voluntário da Sala', checkin_id, scope.effectiveOrgId]);
-
-    await logSecurityEvent({
+    await auditedKidsStatement(sql, [auth.user.name || 'Voluntário da Sala', checkin_id, scope.effectiveOrgId], {
       organizationId: checkin.organization_id,
       user: auth.user,
       action: 'CHECKOUT_CHILD',
@@ -809,7 +823,7 @@ export const doCheckout = async (event: APIGatewayProxyEvent): Promise<APIGatewa
       status: 'CHECKED_OUT'
     });
   } catch (error: any) {
-    console.error('Erro ao realizar checkout:', error);
+    console.error('Checkout indisponível',{name:error.name,code:error.code});
     return apiResponse(500, { message: 'Erro ao realizar checkout' });
   }
 };
@@ -859,6 +873,8 @@ export const kidsHandler = async (event: APIGatewayProxyEvent): Promise<APIGatew
     if (method === 'GET') return getChildren(event);
     if (method === 'POST') return saveChild(event);
   }
+  if(rawPath.includes('/kids/sessions'))return intelligenceCapacitiesHandler(event,true);
+
   if (rawPath.includes('/kids/checkins')) {
     if (method === 'GET') return getCheckins(event);
   }

@@ -1,3 +1,7 @@
+import {maintainAlerts,alertRules,configureAlertRule,evaluateAlerts,listAlerts,alertHistory,updateAlert,actionFromAlert} from '../services/intelligenceAlerts';
+import {intelligenceCapacitiesHandler} from '../services/intelligenceCapacities';
+import {intelligenceCalendarHandler} from '../services/intelligenceCalendar';
+import {intelligenceReportsHandler,dispatchPendingReports} from '../services/intelligenceReports';
 import { APIGatewayProxyEvent, SQSEvent, SQSBatchResponse } from 'aws-lambda';
 import { apiResponse, query, getConnection } from '../db';
 import { requireAuth, enforceRole, enforcePermission } from '../services/authMiddleware';
@@ -60,6 +64,9 @@ export async function intelligenceHandler(event:APIGatewayProxyEvent) {
       else{enabled('intelligence.multicampus','system.multicampus_enabled');}
       return respond(await intelligenceOperations(scope,event.queryStringParameters?.period||'month',view));
     }
+    if(route[0]==='capacities')return intelligenceCapacitiesHandler(event);
+    if(route[0]==='calendar')return intelligenceCalendarHandler(event);
+    if(route[0]==='reports')return intelligenceReportsHandler(event);
     if(route[0]==='history'){
       const access=enforceRole(auth.user,['SUPERADMIN','PASTOR','ADMIN','LEADER']);if(!access.allowed)return access.errorResponse!;
       enabled('intelligence.history','members.module_enabled');
@@ -68,6 +75,17 @@ export async function intelligenceHandler(event:APIGatewayProxyEvent) {
     }
     // Treasury access is restricted to its financial views, never the pastoral/member panels.
     if(auth.user.role==='TREASURER')return apiResponse(403,{message:'Seu perfil de tesouraria permite consultar somente Finanças e seu consolidado de unidades.'});
+    if(route[0]==='alerts'){
+      enabled('intelligence.alerts','intelligence.actions');
+      if(method==='GET'&&route.length===1)return respond(await listAlerts(scope,event.queryStringParameters||{}));
+      if(method==='GET'&&route[1]==='rules')return respond(await alertRules(scope));
+      const management=enforcePermission(auth.user,'intelligence.manage_actions',['SUPERADMIN','PASTOR','ADMIN','LEADER']);if(!management.allowed)return management.errorResponse!;
+      if(method==='POST'&&route[1]==='evaluate'&&route.length===2)return respond(await evaluateAlerts(scope,event));
+      if(method==='POST'&&route[1]==='rules'&&route.length===2)return respond(await configureAlertRule(scope,body,event));
+      if(method==='GET'&&route[2]==='history'&&route.length===3)return respond(await alertHistory(scope,route[1]));
+      if(method==='PATCH'&&route.length===2)return respond(await updateAlert(scope,route[1],body,event));
+      if(method==='POST'&&route[2]==='action'&&route.length===3)return respond(await actionFromAlert(scope,flags.flags,route[1],body,event));
+    }
     if(route[0]==='activation'&&method==='GET'){enabled('intelligence.activation','members.module_enabled');return respond(await activationFunnel(scope,flags.flags,event.queryStringParameters?.period||'month'));}
     if(route[0]==='community'&&method==='GET'){enabled('intelligence.member_journey','visitors.module_enabled');return respond(await communityJourney(scope,event.queryStringParameters?.period||'month',Number(event.queryStringParameters?.window_days||7),flags.flags));}
     if(route[0]==='welcome'){
@@ -124,6 +142,8 @@ export async function maintainIntelligence(){
     await query('DELETE FROM intelligence_invitation_events WHERE organization_id = ? AND occurred_at < DATE_SUB(UTC_TIMESTAMP(),INTERVAL 90 DAY)',[org]);
     await query("DELETE FROM content_engagement_events WHERE organization_id = ? AND source = 'PWA_INTELLIGENCE_V1' AND occurred_at < DATE_SUB(UTC_TIMESTAMP(),INTERVAL 90 DAY)",[org]);
     const flags=await evaluateTenantFlags(org,null,'production');if(!flags.flags['intelligence.overview'])continue;
+    if(flags.flags['intelligence.reports'])await dispatchPendingReports(org);
+    if(flags.flags['intelligence.alerts'])await maintainAlerts(org);
     const db=await getConnection();
     try {
       await db.beginTransaction();

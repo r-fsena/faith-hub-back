@@ -67,7 +67,10 @@
     "db:migrate:intelligence:operations:status": "node migrate_intelligence_operations.js --status",
     "db:migrate:intelligence:foundations": "node migrate_intelligence_foundations.js",
     "db:migrate:intelligence:foundations:status": "node migrate_intelligence_foundations.js --status",
-    "test:intelligence:foundations:mysql": "node scripts/test-intelligence-foundations-mysql.cjs --isolated-schema"
+    "test:intelligence:foundations:mysql": "node scripts/test-intelligence-foundations-mysql.cjs --isolated-schema",
+    "db:migrate:intelligence-evolution:status": "node migrate_intelligence_evolution.js --status",
+    "db:migrate:intelligence-evolution": "node migrate_intelligence_evolution.js --apply",
+    "test:intelligence:evolution:mysql": "node scripts/test-intelligence-foundations-mysql.cjs --isolated-schema --extended"
   },
   "dependencies": {
     "@aws-sdk/client-cognito-identity-provider": "^3.0.0",
@@ -81,8 +84,9 @@
     "cors": "^2.8.5",
     "jose": "^5.10.0",
     "mysql2": "^3.24.6",
-    "uuid": "^11.1.1",
-    "sharp": "0.35.5"
+    "pdfkit": "0.20.2",
+    "sharp": "0.35.5",
+    "uuid": "^11.1.1"
   },
   "devDependencies": {
     "@aws-sdk/client-amplify": "^3.1111.0",
@@ -91,6 +95,7 @@
     "@types/aws-lambda": "^8.10.119",
     "@types/node": "^20.0.0",
     "@types/node-fetch": "^2.6.13",
+    "@types/pdfkit": "0.17.7",
     "@types/uuid": "^10.0.0",
     "esbuild": "^0.19.0",
     "serverless": "^3.38.0",

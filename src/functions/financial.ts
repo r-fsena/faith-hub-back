@@ -1,3 +1,4 @@
+import {financialMovementsHandler} from '../services/financialMovements';
 import { enforcePlanAccess } from '../services/planAccess';
 import { authorizeResource } from '../services/tenantResource';
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
@@ -565,6 +566,7 @@ export const financialHandler = async (event: APIGatewayProxyEvent): Promise<API
   if (!tenantCheck.allowed) return tenantCheck.errorResponse!;
 
 
+  if(/^\/financial\/ledger\/(?:movements|transfers|settlements)(?:\/|$)/.test(rawPath))return financialMovementsHandler(event);
   if(/^\/financial\/ledger(?:\/|$)/.test(rawPath))return financialLedgerHandler(event);
 
   // 1. Resumo & DRE

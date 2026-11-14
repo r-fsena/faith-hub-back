@@ -1,4 +1,5 @@
 import {createHash,randomUUID} from 'crypto';
+import {alertContext} from './intelligenceAlertAccess';
 import {query,getConnection} from '../db';
 import {IntelligenceScope,scopedWhere} from './intelligenceScope';
 import {IntelligenceError} from './intelligenceUsage';
@@ -35,6 +36,7 @@ export async function actionOptions(scope:IntelligenceScope,flags:Record<string,
 }
 async function subjectContext(scope:IntelligenceScope,type:string,id:string,flags:Record<string,boolean>,db:Executor){
  if(!safeIdentifier(id))throw new IntelligenceError(400,'Origem inválida.');
+ if(type==='alert'){const row=await alertContext(scope,id,db,true);if(['RESOLVED','DISMISSED'].includes(row.status))throw new IntelligenceError(409,'Retome a revisão do alerta antes de criar uma ação.');return {campus:row.campus_id,cellId:row.cell_group_id||null,tab:'intelligence',generation:Number(row.generation)};}
  if(type==='visitor'){
   if(!flags['visitors.module_enabled']||!flags['intelligence.member_journey'])throw new IntelligenceError(403,'Acolhimento não está disponível neste plano ou escopo.');
   const f=scopedWhere(scope,'v','campus_id','assigned_cell_id');const [rows]:any=await db.query(`SELECT v.campus_id,v.assigned_cell_id FROM church_visitors v WHERE v.organization_id = ? AND v.id = ?${f.sql} LIMIT 1`,[scope.organizationId,id,...f.params]);
@@ -63,7 +65,8 @@ export async function listActions(scope:IntelligenceScope,flags:Record<string,bo
  DATE_FORMAT(a.snoozed_until,'%Y-%m-%d') AS snoozed_until FROM intelligence_actions a
  LEFT JOIN members m ON m.organization_id = a.organization_id AND m.id = a.owner_id
  WHERE a.organization_id = ?${f.sql}${parentFilter}${statusFilter} ORDER BY a.closed_at IS NOT NULL,a.due_date,a.id LIMIT 101 OFFSET ?`,[scope.organizationId,...f.params,...(['open','snoozed'].includes(status)?[dayInSaoPaulo()]:[]),page*100]);
- const actions=rows.slice(0,100).map(row=>({...row,version:Number(row.version),source_available:row.subject_type!=='visitor'||!!(flags['visitors.module_enabled']&&flags['intelligence.member_journey']),
+ const visible=[];const accessDb=await getConnection();try{for(const row of rows.slice(0,100)){if(row.subject_type==='alert'){try{await alertContext(scope,row.subject_id,accessDb);}catch(e){if(e instanceof IntelligenceError&&e.status===404)continue;throw e;}}visible.push(row);}}finally{accessDb.release();}
+ const actions=visible.map(row=>({...row,version:Number(row.version),source_available:row.subject_type!=='visitor'||!!(flags['visitors.module_enabled']&&flags['intelligence.member_journey']),
   source_tab:row.subject_type==='visitor'?'visitantes':row.subject_type==='cell'?'celulas':'intelligence'}));
  return {actions,has_more:rows.length>100,page};
 }
@@ -73,6 +76,7 @@ export async function saveAction(scope:IntelligenceScope,flags:Record<string,boo
   if(!safeIdentifier(id))throw new IntelligenceError(400,'Ação inválida.');const f=scopedWhere(scope,'a','campus_id','cell_group_id');
   const [rows]:any=await db.query(`SELECT a.* FROM intelligence_actions a WHERE a.organization_id = ? AND a.id = ?${f.sql} LIMIT 1 FOR UPDATE`,[org,id,...f.params]);
   if(!rows.length)throw new IntelligenceError(404,'Ação não encontrada.');const previous=rows[0];
+  if(previous.subject_type==='alert')await alertContext(scope,previous.subject_id,db,true);
   if((previous.subject_type==='visitor'&&(!flags['visitors.module_enabled']||!flags['intelligence.member_journey']))||(previous.subject_type==='cell'&&!flags['cell_groups.module_enabled']))throw new IntelligenceError(403,'O módulo de origem não está disponível no plano.');
   if(requireVersion(body.expected_version)!==Number(previous.version))throw new IntelligenceError(409,'A ação foi atualizada. Recarregue antes de salvar.');
   const status=body.status||previous.status;assertActionTransition(previous.status,status,body.resolution||previous.resolution);
@@ -84,6 +88,7 @@ export async function saveAction(scope:IntelligenceScope,flags:Record<string,boo
   const resolution=['COMPLETED','DISMISSED'].includes(status)?body.resolution||previous.resolution:null;
   await db.query(`UPDATE intelligence_actions SET status = ?,owner_id = ?,due_date = ?,snoozed_until = ?,resolution = ?,version = version + 1,
    closed_at = IF(? IN ('COMPLETED','DISMISSED'),UTC_TIMESTAMP(),NULL),updated_at = UTC_TIMESTAMP() WHERE organization_id = ? AND id = ?`,[status,owner,due,snooze,resolution,status,org,id]);
+  if(previous.subject_type==='alert'&&['COMPLETED','DISMISSED'].includes(status)){const alert=await alertContext(scope,previous.subject_id,db,true);if(alert.action_id===id){const av=Number(alert.version)+1,as=status==='COMPLETED'?'RESOLVED':'DISMISSED';await db.query("UPDATE intelligence_alerts SET status=?,snoozed_until=NULL,resolved_at=IF(?='RESOLVED',UTC_TIMESTAMP(6),NULL),version=? WHERE organization_id = ? AND id=?",[as,as,av,org,alert.id]);await db.query("INSERT INTO intelligence_alert_events(organization_id,id,alert_id,version,request_hash,kind,reason,actor_id,details_json,occurred_at) VALUES(?,?,?,?,?,?,?,?,?,UTC_TIMESTAMP(6))",[org,randomUUID(),alert.id,av,createHash('sha256').update(JSON.stringify([id,status,previous.version])).digest('hex'),as,'Situação atualizada pela ação vinculada',scope.user.userId,JSON.stringify({action_id:id,resolution})]);}}
   await logSecurityEvent({organizationId:org,campusId:previous.campus_id,user:scope.user,action:'INTELLIGENCE_ACTION_UPDATED',resource:'intelligence_actions',resourceId:id,
    details:{previousStatus:previous.status,status,resolution,version:Number(previous.version)+1},event,strict:true,executor:(s,p)=>db.query(s,p)});
   await db.commit();return {id,version:Number(previous.version)+1,status};
@@ -93,8 +98,8 @@ export async function saveAction(scope:IntelligenceScope,flags:Record<string,boo
  const type=body.subject_type,subject=await subjectContext(scope,type,body.subject_id,flags,db);
  const campus=subject?.campus||body.campus_id,cellId=subject?.cellId||body.cell_group_id||null;
  await selectedContext(scope,campus,cellId,body.owner_id,db);
- if(body.signal_key&&(body.signal_key!=='welcome_waiting'||type!=='visitor'))throw new IntelligenceError(400,'Sinal de acompanhamento inválido.');
- const dedup=body.signal_key?`welcome_waiting_${dayInSaoPaulo().slice(0,7)}`:String(body.request_id);
+ if(body.signal_key&&(!((body.signal_key==='welcome_waiting'&&type==='visitor')||(body.signal_key==='alert_followup'&&type==='alert'))))throw new IntelligenceError(400,'Sinal de acompanhamento inválido.');
+ const dedup=body.signal_key==='alert_followup'?`alert_${(subject as any).generation}`:body.signal_key?`welcome_waiting_${dayInSaoPaulo().slice(0,7)}`:String(body.request_id);
  // Signal identity is bound to its origin and scope; arbitrary client text never widens deduplication.
  const key=createHash('sha256').update(`${org}:${campus}:${cellId||''}:${type}:${body.subject_id}:${dedup}`).digest('hex');
  const requestHash=createHash('sha256').update(JSON.stringify([title,due,campus,cellId,type,body.subject_id,body.owner_id,scope.user.userId])).digest('hex');
@@ -109,6 +114,7 @@ export async function saveAction(scope:IntelligenceScope,flags:Record<string,boo
  }
  await logSecurityEvent({organizationId:org,campusId:campus,user:scope.user,action:'INTELLIGENCE_ACTION_CREATED',resource:'intelligence_actions',resourceId:actionId,
   details:{subjectType:type,subjectId:body.subject_id,ownerId:body.owner_id},event,strict:true,executor:(s,p)=>db.query(s,p)});
+ if(type==='alert'){const [alerts]:any=await db.query('SELECT version FROM intelligence_alerts WHERE organization_id = ? AND id = ? FOR UPDATE',[org,body.subject_id]);const v=Number(alerts[0].version)+1;await db.query("UPDATE intelligence_alerts SET action_id=?,status='ACTION_LINKED',snoozed_until=NULL,version=? WHERE organization_id = ? AND id = ?",[actionId,v,org,body.subject_id]);await db.query("INSERT INTO intelligence_alert_events(organization_id,id,alert_id,version,request_hash,kind,reason,actor_id,details_json,occurred_at) VALUES(?,?,?,?,?,'ACTION_LINKED','Responsável e prazo definidos',?,?,UTC_TIMESTAMP(6))",[org,randomUUID(),body.subject_id,v,requestHash,scope.user.userId,JSON.stringify({action_id:actionId})]);}
  await db.commit();return {id:actionId,version:0,status:'NEW'};
  }catch(error){await db.rollback();throw error;}finally{db.release();}
 }
@@ -153,6 +159,7 @@ export async function saveGoal(scope:IntelligenceScope,flags:Record<string,boole
   if(!safeIdentifier(id))throw new IntelligenceError(400,'Meta inválida.');const f=scopedWhere(scope,'g','campus_id','cell_group_id');
   const [rows]:any=await db.query(`SELECT g.* FROM intelligence_goals g WHERE g.organization_id = ? AND g.id = ?${f.sql} LIMIT 1 FOR UPDATE`,[org,id,...f.params]);
   if(!rows.length)throw new IntelligenceError(404,'Meta não encontrada.');const previous=rows[0];
+  if(previous.subject_type==='alert')await alertContext(scope,previous.subject_id,db,true);
   if(requireVersion(body.expected_version)!==Number(previous.version))throw new IntelligenceError(409,'A meta foi alterada. Atualize antes de salvar.');
   if(!['ACTIVE','COMPLETED','CANCELLED'].includes(body.status))throw new IntelligenceError(400,'Situação de meta inválida.');
   await db.query('UPDATE intelligence_goals SET status = ?,version = version + 1,updated_at = UTC_TIMESTAMP() WHERE organization_id = ? AND id = ?',[body.status,org,id]);

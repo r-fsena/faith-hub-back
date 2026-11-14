@@ -131,7 +131,6 @@ export const createOrUpdateEvent = async (event: APIGatewayProxyEvent): Promise<
     const roleCheck = enforceRole(auth.user, EVENT_ADMIN_ROLES);
     if (!roleCheck.allowed) return roleCheck.errorResponse!;
 
-    connection = await getConnection();
     const data = JSON.parse(event.body || '{}');
 
     const tenantCheck = enforceTenant(auth.user, data.organization_id);
@@ -150,6 +149,9 @@ export const createOrUpdateEvent = async (event: APIGatewayProxyEvent): Promise<
     const campusValue = data.campus_id || 'campus_sede';
     const notifyMembers = data.notify_members ? 1 : 0;
 
+    if(!auth.user.isSuperAdmin&&!auth.user.campusIds.includes('all')&&!auth.user.campusIds.includes(campusValue))return apiResponse(403,{message:'Sem acesso à unidade do evento.'});
+    const {rows:units}=await query('SELECT id FROM campuses WHERE organization_id = ? AND id = ?',[orgValue,campusValue]);if(!units.length)return apiResponse(400,{message:'Unidade do evento inválida.'});
+    connection = await getConnection();
     await connection.beginTransaction();
 
     if (isUpdate) {
@@ -177,44 +179,34 @@ export const createOrUpdateEvent = async (event: APIGatewayProxyEvent): Promise<
       ]);
     }
 
-    // Gerenciamento de LOTES
-    if (data.lots && Array.isArray(data.lots)) {
-      for (const lot of data.lots) {
-        if (lot.id) {
-          const qLot = `UPDATE event_lots SET name=?, price=?, total_capacity=? WHERE id=? AND event_id=?`;
-          await connection.query(qLot, [lot.name, lot.price, lot.total_capacity, lot.id, id]);
-        } else {
-          const lId = uuidv4();
-          const qLot = `INSERT INTO event_lots (id, event_id, name, price, total_capacity, available_capacity) VALUES (?, ?, ?, ?, ?, ?)`;
-          await connection.query(qLot, [lId, id, lot.name, lot.price || 0, lot.total_capacity, lot.total_capacity]);
-        }
+    // Lock each lot and preserve already sold/reserved capacity in the same transaction.
+    const lotChanges:any[]=[];
+    if(data.lots&&Array.isArray(data.lots)){
+      if(data.lots.length>200){await connection.rollback();return apiResponse(400,{message:'Edite até 200 lotes por vez.'});}
+      for(const lot of data.lots){
+        const capacity=Number(lot.total_capacity),price=Number(lot.price||0);
+        if(!Number.isInteger(capacity)||capacity<0||capacity>1000000||!Number.isFinite(price)||price<0||price>9999999||Math.round(price*100)/100!==price||typeof lot.name!=='string'||!lot.name.trim()||lot.name.length>100){await connection.rollback();return apiResponse(400,{message:'Confira nome, preço e capacidade dos lotes.'});}
+        if(lot.id){
+          const [current]:any=await connection.query('SELECT total_capacity,available_capacity,price FROM event_lots WHERE organization_id = ? AND id = ? AND event_id = ? FOR UPDATE',[orgValue,lot.id,id]);
+          if(!current.length){await connection.rollback();return apiResponse(404,{message:'Lote não encontrado neste evento.'});}
+          const used=Number(current[0].total_capacity)-Number(current[0].available_capacity);
+          if(capacity<used){await connection.rollback();return apiResponse(409,{message:'A capacidade não pode ser menor que as vagas vendidas ou reservadas.'});}
+          await connection.query('UPDATE event_lots SET name=?,price=?,total_capacity=?,available_capacity=? WHERE organization_id = ? AND id = ? AND event_id = ?',[lot.name.trim(),price,capacity,capacity-used,orgValue,lot.id,id]);
+          lotChanges.push({id:lot.id,before_capacity:current[0].total_capacity,capacity,before_price:current[0].price,price});
+        }else{const lotId=uuidv4();await connection.query('INSERT INTO event_lots(id,event_id,organization_id,name,price,total_capacity,available_capacity) VALUES(?,?,?,?,?,?,?)',[lotId,id,orgValue,lot.name.trim(),price,capacity,capacity]);lotChanges.push({id:lotId,capacity,price});}
       }
-    } else if (!isUpdate) {
-      const lId = uuidv4();
-      await connection.query(`INSERT INTO event_lots (id, event_id, name, price, total_capacity, available_capacity) VALUES (?, ?, 'Lote Único', 0.00, 100, 100)`, [lId, id]);
-    }
-
+    }else if(!isUpdate){const lotId=uuidv4();await connection.query("INSERT INTO event_lots(id,event_id,organization_id,name,price,total_capacity,available_capacity) VALUES(?,?,?,'Lote Único',0,100,100)",[lotId,id,orgValue]);lotChanges.push({id:lotId,capacity:100,price:0});}
+    await logSecurityEvent({organizationId:orgValue,user:auth.user,action:isUpdate?'UPDATE_EVENT':'CREATE_EVENT',resource:'events',resourceId:id,details:{title:data.title,type,lots:lotChanges},event,strict:true,executor:(sql,p)=>connection.query(sql,p)});
     await connection.commit();
-    connection.release();
 
-    await logSecurityEvent({
-      organizationId: orgValue,
-      user: auth.user,
-      action: isUpdate ? 'UPDATE_EVENT' : 'CREATE_EVENT',
-      resource: 'events',
-      resourceId: id,
-      details: { title: data.title, type },
-      event
-    });
 
     return apiResponse(isUpdate ? 200 : 201, { message: 'Evento salvo com sucesso!', id });
   } catch (e: any) {
     if (connection) {
       await connection.rollback();
-      connection.release();
-    }
+      }
     return apiResponse(500, { message: 'Erro ao salvar evento' });
-  }
+  }finally{if(connection)connection.release();}
 };
 
 // DELETE /events/{id}
