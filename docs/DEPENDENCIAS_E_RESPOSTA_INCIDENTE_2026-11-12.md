@@ -36,3 +36,9 @@ Nenhuma credencial foi rotacionada/revogada nesta entrega. Fazer isso de forma i
 - [Post mortem do projeto Axios](https://github.com/axios/axios/issues/10636).
 - [Advisory GitHub: malware em Axios](https://github.com/advisories/GHSA-fw8c-xr5c-95f9).
 - [Release oficial Axios 1.21.1](https://github.com/axios/axios/releases/tag/v1.21.1).
+
+## Confirmação do proprietário para a liberação H1 — 17/11/2026
+
+Nesta conversa, após a pergunta explícita sobre avaliação da máquina e rotação de credenciais em dispositivo confiável, o proprietário respondeu: “Concluídas; informarei a data ou o registro”. A preparação/publicação H1 se apoia nessa confirmação de conclusão. A data de execução e o registro externo ainda não foram fornecidos; o agente não afirma ter realizado ou auditado a avaliação forense/rotação. As pendências e ações descritas acima documentam a entrega original de 12/11.
+
+Autorização de mudança desta liberação: “realize a publicação, migração em produção e ativação da flag”. Escopo: H1, migração aditiva, código do backend/worker e Studio, ativação por organização elegível conforme contrato, preservando negativas explícitas e os controles de publicação. A autorização não se estende a mudanças financeiras, de permissões pessoais ou de dados de membros para testar o fluxo.

@@ -4,6 +4,7 @@ import {query,getConnection,apiResponse} from '../db';
 import {requireAuth,enforceRole} from './authMiddleware';
 import {IntelligenceScope,intelligenceScope,scopedWhere} from './intelligenceScope';
 import {evaluateTenantFlags} from './featureFlagService';
+import {memberHistoryRevision} from './memberHistoryCorrections';
 import {historyCoverage} from './memberHistory';
 import {safeIdentifier,utcBoundary,dayInSaoPaulo} from './intelligenceModel';
 import {requireDay,requireVersion} from './intelligenceJourneyModel';
@@ -72,10 +73,13 @@ export async function occurrenceParticipation(scope:IntelligenceScope,o:any){
  if(Date.parse(starts)>=Date.now())return{eligible:null,present:null,coverage:'future',participation_percent:null};
  if(!coverage.ready||!coverage.started_at||Date.parse(coverage.started_at)>Date.parse(starts)||Date.parse(o.created_at)>Date.parse(starts))return{eligible:null,present:await recorded(),coverage:'unknown_history',participation_percent:null};
  if(o.status!=='HELD'||!Number(o.attendance_confirmed))return{eligible:null,present:null,coverage:'pending_recording',participation_percent:null};
- const {rows}=await query(`WITH latest AS (SELECT member_id,MAX(sequence_id) AS seq FROM member_state_history WHERE organization_id = ? AND generation = ? AND occurred_at <= ? GROUP BY member_id)
+ const revision=await memberHistoryRevision(scope.organizationId);
+ const {rows}=await query(`WITH latest AS (SELECT member_id,sequence_id AS seq,ROW_NUMBER() OVER(PARTITION BY member_id ORDER BY occurred_at DESC,sequence_id DESC) AS rn FROM member_state_history_effective WHERE organization_id = ? AND generation = ? AND occurred_at <= ?)
  SELECT COUNT(*) AS eligible,SUM(EXISTS(SELECT 1 FROM cell_meeting_attendees a WHERE a.organization_id = ? AND a.meeting_id = ? AND a.member_id=h.member_id AND a.status='PRESENT')) AS present
- FROM member_state_history h INNER JOIN latest l ON l.seq=h.sequence_id WHERE h.organization_id = ? AND h.kind<>'REMOVED' AND UPPER(h.after_status) IN ('ACTIVE','ATIVO') AND UPPER(h.after_role) NOT IN ('VISITOR','VISITANTE') AND COALESCE(h.after_campus_id,'campus_sede')=? AND h.after_cell_id=?`,[scope.organizationId,coverage.generation,o.starts_at,scope.organizationId,o.meeting_id,scope.organizationId,o.campus_id,o.cell_group_id]);
- const eligible=Number(rows[0]?.eligible||0),present=Number(rows[0]?.present||0);return{eligible,present,coverage:'observed',participation_percent:eligible?Math.round(present/eligible*1000)/10:null};
+ FROM member_state_history_effective h INNER JOIN latest l ON l.seq=h.sequence_id AND l.member_id=h.member_id AND l.rn=1 WHERE h.organization_id = ? AND h.kind<>'REMOVED' AND UPPER(h.after_status) IN ('ACTIVE','ATIVO') AND UPPER(h.after_role) NOT IN ('VISITOR','VISITANTE') AND COALESCE(h.after_campus_id,'campus_sede')=? AND h.after_cell_id=?`,[scope.organizationId,coverage.generation,o.starts_at,scope.organizationId,o.meeting_id,scope.organizationId,o.campus_id,o.cell_group_id]);
+ const latestCoverage=await historyCoverage(scope.organizationId);
+ if((await memberHistoryRevision(scope.organizationId)).revision!==revision.revision||latestCoverage.generation!==coverage.generation||latestCoverage.ready!==coverage.ready)throw new IntelligenceError(409,'O histórico foi revisado durante a consulta. Atualize a participação.');
+ const eligible=Number(rows[0]?.eligible||0),present=Number(rows[0]?.present||0);return{eligible,present,history_revision:revision.revision,revised_at:revision.revised_at,coverage:'observed',participation_percent:eligible?Math.round(present/eligible*1000)/10:null};
 }
 export async function listCalendar(scope:IntelligenceScope,params:any){
  const from=requireDay(params.from||dayInSaoPaulo()),to=requireDay(params.to||addDays(from,30)),page=Number(params.page||0);if(to<from||Date.parse(to)-Date.parse(from)>91*86400000||!Number.isInteger(page)||page<0||page>100)throw new IntelligenceError(400,'Selecione até 92 dias e uma página válida.');
@@ -84,7 +88,8 @@ export async function listCalendar(scope:IntelligenceScope,params:any){
  const {rows}=await query(`SELECT o.id,o.series_id,o.campus_id,o.cell_group_id,o.status,o.version,o.meeting_id,o.attendance_confirmed,o.origin_occurrence_id,o.reason,DATE_FORMAT(o.scheduled_on,'%Y-%m-%d') AS scheduled_on,DATE_FORMAT(o.starts_at,'%Y-%m-%d %H:%i:%s') AS starts_at,DATE_FORMAT(o.created_at,'%Y-%m-%dT%H:%i:%s.000Z') AS created_at FROM intelligence_calendar_occurrences o WHERE o.organization_id = ? AND o.scheduled_on>=? AND o.scheduled_on<=?${f.sql} ORDER BY o.scheduled_on,o.starts_at,o.id LIMIT 101 OFFSET ?`,[scope.organizationId,from,to,...f.params,page*100]);
  const occurrences=[];for(const o of rows.slice(0,100)){try{await gate(scope,o.campus_id);occurrences.push({...o,version:Number(o.version),participation:await occurrenceParticipation(scope,o)});}catch(e){if(!(e instanceof IntelligenceError&&e.status===403))throw e;}}
  const visibleSeries=[];for(const item of series.slice(0,200)){try{await gate(scope,item.campus_id);visibleSeries.push(item);}catch(e){if(!(e instanceof IntelligenceError&&e.status===403))throw e;}}
- return{series:visibleSeries.map(s=>({...s,weekdays:parse(s.weekdays),version:Number(s.version),created_by:undefined,request_hash:undefined})),series_has_more:series.length>200,occurrences,has_more:rows.length>100,page,from,to,timezone:'America/Sao_Paulo',notes:['Cancelar ou reagendar não cria falta. Encontros futuros não compõem o denominador de participação.','O cadastro e o vínculo são resolvidos na data do encontro, somente quando há cobertura histórica contínua.','Calendário lançado depois da data ou presenças não conferidas não produzem taxa presumida.','Editar ou pausar a série preserva as ocorrências já geradas. Cancele ou reagende cada ocorrência quando necessário.']};
+ return{series:visibleSeries.map(s=>({...s,weekdays:parse(s.weekdays),version:Number(s.version),created_by:undefined,request_hash:undefined})),series_has_more:series.length>200,occurrences,has_more:rows.length>100,page,from,to,timezone:'America/Sao_Paulo',notes:['Cancelar ou reagendar não cria falta. Encontros futuros não compõem o denominador de participação.','O cadastro e o vínculo são resolvidos na data do encontro, somente quando há cobertura histórica contínua.','Calendário lançado depois da data ou presenças não conferidas não produzem taxa presumida.','Correções de vínculos recompõem os elegíveis e a participação na consulta; a revisão histórica identifica os números recalculados.',
+ 'Editar ou pausar a série preserva as ocorrências já geradas. Cancele ou reagende cada ocorrência quando necessário.']};
 }
 export async function calendarOptions(scope:IntelligenceScope,params:any){
  const f=scopedWhere(scope,'c','campus_id','id'),m=scopedWhere(scope,'m','campus_id','cell_group_id'),from=requireDay(params.from||addDays(dayInSaoPaulo(),-30)),to=requireDay(params.to||dayInSaoPaulo());

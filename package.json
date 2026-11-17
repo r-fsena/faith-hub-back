@@ -70,7 +70,10 @@
     "test:intelligence:foundations:mysql": "node scripts/test-intelligence-foundations-mysql.cjs --isolated-schema",
     "db:migrate:intelligence-evolution:status": "node migrate_intelligence_evolution.js --status",
     "db:migrate:intelligence-evolution": "node migrate_intelligence_evolution.js --apply",
-    "test:intelligence:evolution:mysql": "node scripts/test-intelligence-foundations-mysql.cjs --isolated-schema --extended"
+    "test:intelligence:evolution:mysql": "node scripts/test-intelligence-foundations-mysql.cjs --isolated-schema --extended",
+    "db:migrate:member-history-revisions": "node migrate_member_history_revisions.js --apply",
+    "db:migrate:member-history-revisions:status": "node migrate_member_history_revisions.js --status",
+    "test:member-history:mysql": "node scripts/test-member-history-revisions-mysql.cjs --local-only"
   },
   "dependencies": {
     "@aws-sdk/client-cognito-identity-provider": "^3.0.0",

@@ -88,7 +88,7 @@ export async function processReport(message:any){
   await authorizeReport(job);
   const preview={...data,rows:data.rows.slice(0,50),total_rows:data.rows.length};
   const db=await getConnection();let published=false;
-  try{await db.beginTransaction();const [result]:any=await db.query("UPDATE intelligence_reports SET status=?,result_json=?,lease_until=NULL,error_code=NULL,updated_at=UTC_TIMESTAMP(6) WHERE organization_id = ? AND id = ? AND status='GENERATING' AND lease_token=?",[data.rows.some(r=>r.current===null||r.status==='error')?'READY_WITH_NOTES':'READY',JSON.stringify({objects,hashes,revision:data.revision,preview}),org,id,token]);
+  try{await db.beginTransaction();const [result]:any=await db.query("UPDATE intelligence_reports SET status=?,result_json=?,definition_version=?,lease_until=NULL,error_code=NULL,updated_at=UTC_TIMESTAMP(6) WHERE organization_id = ? AND id = ? AND status='GENERATING' AND lease_token=?",[data.rows.some(r=>r.current===null||r.status==='error')?'READY_WITH_NOTES':'READY',JSON.stringify({objects,hashes,revision:data.revision,preview}),data.definitionVersion,org,id,token]);
    if(result.affectedRows){await logSecurityEvent({organizationId:org,user:scope.user,action:'GENERATE_INTELLIGENCE_REPORT',resource:'intelligence_reports',resourceId:id,details:{model:job.model,revision:data.revision,rows:data.rows.length},strict:true,executor:(sql,p)=>db.query(sql,p)});published=true;}await db.commit();
   }catch(error){await db.rollback();throw error;}finally{db.release();}
   if(!published)for(const key of keys)await removeReportFile(key);

@@ -19,6 +19,7 @@ const check=()=>count++;
  const config=db.connection.config;qaConnectionConfig={host:config.host,port:config.port,user:config.user,password:config.password,ssl:config.ssl,timezone:config.timezone,database:qa,connectTimeout:10000};
  for(const sql of ddls)await db.query(sql);for(const sql of [...schema.tables,...require('./financial-evolution-schema.cjs').tables,...require('./capacity-schema.cjs').tables])await db.query(sql);
  for(const [key,value]of Object.entries(schema.columns)){const [existing]=await db.query("SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='church_financial_transactions' AND COLUMN_NAME=?",[key]);if(!existing.length)await db.query(`ALTER TABLE church_financial_transactions ADD COLUMN ${key} ${value}`);}
+ await require('./member-history-revisions-schema.cjs').applySchema(db);
  await db.query(schema.reportingView);if(!financialOnly)for(const sql of schema.triggers)await db.query(sql);
  const org='foundation-org-a',other='foundation-org-b',ca='foundation-ca',cb='foundation-cb';
  const flags={'intelligence.overview':true,'intelligence.finance':true,'intelligence.history':true,'members.module_enabled':true,'financial.accounts_ledger':true,'financial.module_enabled':true,'financial.cashflow_ledger':true};

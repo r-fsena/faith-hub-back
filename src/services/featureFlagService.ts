@@ -148,6 +148,7 @@ export async function evaluateTenantFlags(
     'intelligence.operations': false,
     'intelligence.multicampus': false,
     'intelligence.history': false,
+    'intelligence.history_corrections': false,
     'financial.accounts_ledger': false,
     'financial.transfers_reversals': false,
     'intelligence.reports': false,
