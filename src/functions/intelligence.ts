@@ -16,6 +16,7 @@ import {activationFunnel,communityJourney} from '../services/intelligenceJourney
 import {listWelcomeVisitors,welcomeOptions,mutateWelcome} from '../services/intelligenceWelcome';
 import {actionOptions,listActions,saveAction,listGoals,saveGoal} from '../services/intelligenceActions';
 import {memberHistory,initializeMemberHistory} from '../services/memberHistory';
+import {historyCorrectionDetails,correctMemberHistory} from '../services/memberHistoryCorrections';
 import {intelligenceOperations,FINANCE_ROLES,OPERATIONS_ROLES} from '../services/intelligenceOperations';
 
 export async function intelligenceHandler(event:APIGatewayProxyEvent) {
@@ -72,6 +73,12 @@ export async function intelligenceHandler(event:APIGatewayProxyEvent) {
       enabled('intelligence.history','members.module_enabled');
       if(method==='GET'&&route.length===1)return respond(await memberHistory(scope,event.queryStringParameters?.period||'month',event.queryStringParameters||{}));
       if(method==='POST'&&route[1]==='initialize'&&route.length===2)return respond(await initializeMemberHistory(scope,event));
+      if(route[1]&&route[2]==='corrections'&&route.length===3){
+        const management=enforceRole(auth.user,['SUPERADMIN','PASTOR','ADMIN']);if(!management.allowed)return management.errorResponse!;
+        enabled('intelligence.history_corrections');
+        if(method==='GET')return respond(await historyCorrectionDetails(scope,route[1],Number(event.queryStringParameters?.page||0)));
+        if(method==='POST')return respond(await correctMemberHistory(scope,route[1],body,event));
+      }
     }
     // Treasury access is restricted to its financial views, never the pastoral/member panels.
     if(auth.user.role==='TREASURER')return apiResponse(403,{message:'Seu perfil de tesouraria permite consultar somente Finanças e seu consolidado de unidades.'});

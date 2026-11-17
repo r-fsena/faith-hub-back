@@ -4,7 +4,7 @@ import {ReportData} from './intelligenceReportData';
 import {IntelligenceError} from './intelligenceUsage';
 export const REPORT_MAX_BYTES=3*1024*1024;
 const clean=(s:unknown)=>String(s??'').replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g,'').replace(/[\u2011-\u2014]/g,'-');
-export const reportStatus=(s:string)=>({available:'Fonte disponível',error:'Fonte indisponível',not_available:'Indisponível',not_measured:'Medição em formação',insufficient_sample:'Amostra protegida',partial_coverage:'Cobertura parcial',registered_records:'Registros disponíveis',current_register:'Posição atual',partial:'Cobertura parcial'} as Record<string,string>)[s]||'Confira a cobertura';
+export const reportStatus=(s:string)=>({observed:'Histórico observado e revisado',unknown_history:'Sem cobertura histórica suficiente',available:'Fonte disponível',error:'Fonte indisponível',not_available:'Indisponível',not_measured:'Medição em formação',insufficient_sample:'Amostra protegida',partial_coverage:'Cobertura parcial',registered_records:'Registros disponíveis',current_register:'Posição atual',partial:'Cobertura parcial'} as Record<string,string>)[s]||'Confira a cobertura';
 const date=(s:string)=>s.slice(0,10).split('-').reverse().join('/');
 const end=(s:string)=>new Date(Date.parse(s+'T12:00:00Z')-86400000).toISOString().slice(0,10);
 const display=(n:number|null,unit:string)=>n===null?'Indisponível':unit==='BRL_CENTS'?new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(n/100):n.toLocaleString('pt-BR',{maximumFractionDigits:2})+(unit==='percent'?'%':'');
