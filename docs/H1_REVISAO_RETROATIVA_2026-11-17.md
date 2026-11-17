@@ -1,6 +1,6 @@
 # H1 — revisão retroativa do histórico cadastral
 
-Estado em 17/11/2026: implementação e validação locais concluídas. **Não publicado nem ativado em produção.** A migração e a ativação exigem autorização própria pelo [fluxo formal](FLUXO_IMPLEMENTACAO_E_PUBLICACAO.md), após atender à condição operacional de segurança nele registrada.
+Estado em 17/11/2026: **publicado e ativado nas cinco organizações ativas elegíveis**, com três organizações inativas preservadas. Migração, código de backend/worker e Studio verificados. Veja o [registro de publicação](PUBLICACAO_H1_2026-11-17.md), incluindo os limites da homologação e a confirmação do proprietário sobre a condição operacional de segurança.
 
 ## Comportamento
 
@@ -33,7 +33,7 @@ Após revisão de impacto, autorização e backup pelo fluxo formal:
 2. Publicar o backend, incluindo os leitores históricos/calendário e o worker de relatórios; depois, o Studio, usando versões e manifestos compatíveis. O PWA não tem alteração de código neste pacote.
 3. Autorizar e ativar a flag apenas no tenant/piloto selecionado, conforme contrato e permissões. Homologar com a equipe responsável e registrar evidência.
 
-Comandos preparados (não executados contra produção nesta implementação):
+Comandos do caminho autorizado, executados na liberação registrada de 17/11/2026:
 
 ```sh
 npm run db:migrate:member-history-revisions:status
