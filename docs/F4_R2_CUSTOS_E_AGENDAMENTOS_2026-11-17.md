@@ -1,5 +1,7 @@
 # F4 e R2 — custos históricos e relatórios mensais
 
+**Atualização operacional:** publicado e ativado em produção; veja o [registro final](PUBLICACAO_F4_R2_2026-11-17.md). As seções abaixo preservam o estado de implementação e preparação.
+
 Implementação local em 17/11/2026, na branch `feat/f4-r2-20261117` do backend e do Studio. **Não publicada. Nenhuma migração, flag ou infraestrutura de produção foi alterada nesta entrega.**
 
 Referências: plano do ecossistema `PLANO_IMPLEMENTACAO_RELATORIOS_ALERTAS_HISTORICO_FINANCEIRO_2026-11-08.md`, itens F4/R2, e [fluxo formal de publicação](FLUXO_IMPLEMENTACAO_E_PUBLICACAO.md). A autorização anterior de H1 não é uma autorização de publicação de F4/R2.

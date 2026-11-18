@@ -1,0 +1,123 @@
+{
+  "releaseId": "FH-F4R2-20261117-001",
+  "status": "PUBLISHED_ACTIVATED_TECHNICALLY_VERIFIED",
+  "completedAt": "2026-11-18T02:39:49.698Z",
+  "commits": {
+    "faith-hub-backend": "4a343a5bd4d169a5a3f2646bd32a0b6f0381b92e",
+    "faith-hub-web": "600015d671e10a26c7ebd9bf40c1624fd7c4785d",
+    "faith-hub-pwa": "65b3018d676f639f3754e4be9a4eea01fb212ee8",
+    "faith-hub-site": "204ec5188e0e149a158d4e3ec64e440e5c9d203a"
+  },
+  "migration": {
+    "id": "20261117_002_costs_report_schedules",
+    "checksum": "0ac4a1ddd9d1a8cd5164feb3f4e7e5b4e2488993cadbbb3a1366091035b8b8b4",
+    "snapshot": "faith-hub-pre-f4r2-20261117",
+    "tables": 6,
+    "verified": true
+  },
+  "existingLambdaFunctions": 95,
+  "privateWorkerUpdated": true,
+  "rollbackArchivesVerified": 34,
+  "studio": {
+    "job": "160",
+    "status": "SUCCEED",
+    "guardShaVerified": true,
+    "publicBundleSha256": "de953851c0e7c399e36e9915df54784ac828aa387d05e4c7698fdb724daf4500"
+  },
+  "flags": {
+    "activated": 8,
+    "activeOrganizations": 4,
+    "inactiveOrganizationsPreserved": 4,
+    "globalFlagsEnabled": false,
+    "apiChecks": 32,
+    "allVerified": true
+  },
+  "scheduler": {
+    "stack": "faith-hub-intelligence-schedules-production",
+    "status": "UPDATE_COMPLETE",
+    "dispatcher": "faith-hub-intelligence-schedules-production",
+    "codeSha256": "PEztR8mjY4Zsmr0xmb1JcO/R+WnYEwf45CodruBm638=",
+    "rule": "faith-hub-intelligence-schedules-production",
+    "schedule": "cron(0 * * * ? *)",
+    "state": "ENABLED",
+    "iamActions": [
+      "logs:CreateLogStream",
+      "logs:PutLogEvents",
+      "secretsmanager:GetSecretValue",
+      "sqs:SendMessage"
+    ],
+    "iamPolicySha256": "4180bcb41213123af6bace0b97e7e4e07474ffc19b19f65c28f46735250260b4",
+    "deadLetterEncrypted": true,
+    "deadLetterMessages": 0,
+    "checkedAt": "2026-11-18T02:39:36.811Z"
+  },
+  "dependencyReferenceProof": {
+    "ruleArnUnchanged": true,
+    "invocationPermissionOnlySameRule": true,
+    "deadLetterPolicyOnlySameRule": true,
+    "codeUnchanged": true,
+    "iamRolePolicyUnchanged": true,
+    "checkedAt": "2026-11-18T02:41:08.338Z"
+  },
+  "tests": {
+    "repositories": {
+      "faith-hub-backend": {
+        "sha": "4a343a5bd4d169a5a3f2646bd32a0b6f0381b92e",
+        "clean": true
+      },
+      "faith-hub-web": {
+        "sha": "600015d671e10a26c7ebd9bf40c1624fd7c4785d",
+        "clean": true
+      },
+      "faith-hub-pwa": {
+        "sha": "65b3018d676f639f3754e4be9a4eea01fb212ee8",
+        "clean": true
+      },
+      "faith-hub-site": {
+        "sha": "204ec5188e0e149a158d4e3ec64e440e5c9d203a",
+        "clean": true
+      }
+    },
+    "backendTypes": true,
+    "backendTests": 277,
+    "studioBuild": true,
+    "pwaBuild": true,
+    "pwaTests": 43,
+    "browserSynthetic": true,
+    "node": "22.16.0"
+  },
+  "manualRuntimeTest": {
+    "status": "AUTO_REVIEW_REJECTED_NOT_EXECUTED",
+    "action": "Invoke faith-hub-intelligence-schedules-production once",
+    "reason": "May process real schedules/reports/notifications or access sensitive data; production publication authorization was not considered authorization for this operational test.",
+    "alternative": "Complete authorized deployment and activation; inspect passive configuration, code and API evidence; await natural schedule execution or separate explicit test approval."
+  },
+  "authenticatedProductionBrowser": {
+    "authenticatedVisualValidation": false,
+    "browserAccessHost": "unavailable",
+    "nativeChromeFallback": "Computer Use timeoutReached (-10005)",
+    "productionBrowserChanged": false,
+    "fallbackVerification": [
+      "source SHA guard",
+      "public Studio bundle",
+      "API authentication refusal",
+      "isolated synthetic browser test"
+    ],
+    "explanation": "Browser host unavailable and native Chrome fallback timed out; no authenticated production journey claimed."
+  },
+  "operatorReviewIncident": {
+    "initialReview": "UNEXPECTED_ENABLE_CHANGE: expected one direct State modification; CloudFormation also included two dependent dynamic ARN references",
+    "applicationAdvancedDespiteReviewFailure": true,
+    "cause": "Application checked raw change-set Status instead of a separate validated review approval record",
+    "actualScope": [
+      "MonthlyDispatchRule.State direct modification",
+      "DispatcherInvokePermission.SourceArn dynamic reference to MonthlyDispatchRule.Arn",
+      "EventDeliveryDeadLetters.PolicyDocument dynamic reference to MonthlyDispatchRule.Arn"
+    ],
+    "reviewCompletedAfterExecution": true,
+    "correction": "Application now requires a separate review-approved record, matching source commit and an available change set. Review writes approval only after all allowed-change criteria pass.",
+    "newManualInvocation": false
+  },
+  "customerBusinessWritesForTests": 0,
+  "publishingControlsPreserved": true
+}
