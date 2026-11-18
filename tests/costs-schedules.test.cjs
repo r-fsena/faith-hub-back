@@ -2,7 +2,7 @@ process.env.AWS_EC2_METADATA_DISABLED='true';
 const {test,beforeEach}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),ts=require('typescript'),{randomUUID}=require('node:crypto');
 require.extensions['.ts']=(m,f)=>m._compile(ts.transpileModule(fs.readFileSync(f,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,esModuleInterop:true}}).outputText,f);
 const mock=(f,exports)=>{const id=require.resolve(f);require.cache[id]={id,filename:id,loaded:true,exports};};let s;
-mock('../src/db/index.ts',{query:async(sql,p=[])=>{s.sql.push({sql,p});assert.equal((sql.match(/\?/g)||[]).length,p.length);if(sql.includes('FROM campuses'))return{rows:[{id:'ca'}]};if(sql.includes('FROM organizations'))return{rows:[{status:'ACTIVE'}]};return{rows:[]};},getConnection:async()=>{throw Error('UNEXPECTED_WRITE');},apiResponse:(statusCode,body)=>({statusCode,body:JSON.stringify(body)})});
+mock('../src/db/index.ts',{query:async(sql,p=[])=>{s.sql.push({sql,p});assert.equal((sql.match(/\?/g)||[]).length,p.length);if(sql.includes('FROM campuses'))return{rows:[{id:'ca'}]};if(sql.includes('SELECT id FROM organizations WHERE status'))return{rows:[]};if(sql.includes('FROM organizations'))return{rows:[{status:'ACTIVE'}]};return{rows:[]};},getConnection:async()=>{throw Error('UNEXPECTED_WRITE');},apiResponse:(statusCode,body)=>({statusCode,body:JSON.stringify(body)})});
 mock('../src/services/featureFlagService.ts',{evaluateTenantFlags:async()=>({flags:s.flags})});mock('../src/services/rateLimiter.ts',{checkRateLimit:async()=>({allowed:true})});
 mock('../src/services/planAccess.ts',{enforcePlanAccess:async()=>null});
 const auth=require('../src/services/authMiddleware.ts');auth.requireAuth=async()=>s.user?{user:s.user}:{errorResponse:{statusCode:401,body:'{}'}};
@@ -25,4 +25,8 @@ test('store analytics use one validated tenant scope and keep authorized operati
  s.sql=[];assert.equal((await getPdvAnalytics({...event,queryStringParameters:{...event.queryStringParameters,organization_id:'org-a'}})).statusCode,403);assert.equal(s.sql.length,0);
  s.user={...s.user,role:'VOLUNTEER',isSuperAdmin:false,operationalPermissions:['inventory.view']};s.flags['pdv.historical_costs']=true;
  const allowed=await getPdvAnalytics({...event,headers:{'x-organization-id':'org-a'}});assert.equal(allowed.statusCode,200);assert.equal(JSON.parse(allowed.body).cost_margin,null);assert.ok(!s.sql.some(q=>q.sql.includes('pdv_sale_costs')));
+});
+
+test('hourly report dispatch enumerates active organizations only',async()=>{
+ const {dispatchScheduledReports}=require('../src/functions/intelligence.ts');assert.deepEqual(await dispatchScheduledReports(),{organizations:0});assert.equal(s.sql.length,1);assert.match(s.sql[0].sql,/WHERE status = \?/);assert.deepEqual(s.sql[0].p,['ACTIVE']);
 });

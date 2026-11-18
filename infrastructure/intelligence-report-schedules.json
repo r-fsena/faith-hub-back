@@ -191,7 +191,6 @@
         },
         "Timeout": 120,
         "MemorySize": 512,
-        "ReservedConcurrentExecutions": 1,
         "Code": {
           "S3Bucket": {
             "Ref": "CodeS3Bucket"
