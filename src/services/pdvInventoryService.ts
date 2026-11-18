@@ -1,5 +1,6 @@
 import type { PoolConnection } from 'mysql2/promise';
 import { v4 as uuidv4 } from 'uuid';
+import {costGate,quantityUnits,manualCost,saleCost,costHash} from './pdvCosts';
 
 export class InventoryError extends Error {
   constructor(public code: string, message: string, public statusCode = 409) {
@@ -181,6 +182,7 @@ export async function transitionOrderInventory(
       if (!balance.allow_negative && onHand < quantity) {
         throw new InventoryError('INSUFFICIENT_STOCK', 'O saldo físico mudou e não é suficiente para confirmar esta venda.');
       }
+      await saleCost(connection,input,reservation,onHand,'COMMIT',await costGate(input.organizationId,reservation.campus_id));
       const nextOnHand = onHand - quantity;
       const nextReserved = Math.max(0, reserved - quantity);
       await connection.query(
@@ -247,6 +249,7 @@ export async function transitionOrderInventory(
       action = 'RELEASED';
       affected++;
     } else if (reservation.status === 'COMMITTED') {
+      await saleCost(connection,input,reservation,onHand,'CANCEL',await costGate(input.organizationId,reservation.campus_id));
       const nextOnHand = onHand + quantity;
       await connection.query(
         `UPDATE pdv_inventory_balances SET on_hand_quantity = ?, updated_at = NOW()
@@ -293,16 +296,22 @@ export async function applyManualInventoryMovement(
     reason: string;
     notes?: string | null;
     actorId: string;
+    requestId?: string; totalCostCents?:number|null; additionalCostCents?:number; sourceReference?:string;
   }
 ): Promise<{ previousOnHand: number; newOnHand: number }> {
+  quantityUnits(input.quantity);
   const balance = await lockBalance(connection, input.organizationId, input.campusId, input.productId);
   const onHand = numberValue(balance.on_hand_quantity);
   const reserved = numberValue(balance.reserved_quantity);
+  const enabled=await costGate(input.organizationId,input.campusId);
+  if((enabled||input.requestId!==undefined)&&(typeof input.requestId!=='string'||!/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i.test(input.requestId)))throw new InventoryError('REQUEST_ID_REQUIRED','Atualize o Studio para enviar uma referência única da movimentação.',400);
+  if(input.requestId){const [existing]:any=await connection.query('SELECT request_hash,result_json FROM pdv_cost_events WHERE organization_id = ? AND id = ?',[input.organizationId,'manual:'+input.requestId]);if(existing.length){if(existing[0].request_hash!==costHash(input))throw new InventoryError('REQUEST_REUSED','Referência já usada com outros dados. Atualize o estoque.',409);return typeof existing[0].result_json==='string'?JSON.parse(existing[0].result_json):existing[0].result_json;}}
+  if(input.requestId){const [old]:any=await connection.query('SELECT * FROM pdv_inventory_movements WHERE organization_id = ? AND idempotency_key = ?',[input.organizationId,'manual:'+input.requestId]);if(old.length){const r=old[0],requested=['ADJUSTMENT','OPENING_BALANCE'].includes(input.type)?Number(r.new_on_hand):Math.abs(Number(r.quantity_delta));if(r.campus_id!==input.campusId||r.product_id!==input.productId||r.movement_type!==input.type||requested!==input.quantity||r.reason!==input.reason||(r.notes||null)!==(input.notes||null)||r.created_by!==input.actorId||input.totalCostCents!=null||input.additionalCostCents)throw new InventoryError('REQUEST_REUSED','Referência já usada. Atualize o estoque.',409);return{previousOnHand:Number(r.previous_on_hand),newOnHand:Number(r.new_on_hand)};}}
   let delta = 0;
   if (input.type === 'ENTRY') delta = input.quantity;
   if (input.type === 'EXIT' || input.type === 'LOSS') delta = -input.quantity;
   if (input.type === 'ADJUSTMENT' || input.type === 'OPENING_BALANCE') delta = input.quantity - onHand;
-  const nextOnHand = onHand + delta;
+  const nextOnHand = Math.round((onHand + delta)*1000)/1000;
   if (!balance.allow_negative && nextOnHand < reserved) {
     throw new InventoryError('INSUFFICIENT_AVAILABLE_STOCK', `O ajuste não pode deixar o saldo físico abaixo das ${reserved} unidades reservadas.`);
   }
@@ -311,7 +320,8 @@ export async function applyManualInventoryMovement(
       WHERE id = ? AND organization_id = ? AND campus_id = ?`,
     [nextOnHand, balance.id, input.organizationId, input.campusId]
   );
-  const movementId = uuidv4();
+  const movementId = input.requestId||uuidv4();
+  await manualCost(connection,input,onHand,nextOnHand,movementId,enabled);
   await insertMovement(connection, {
     organizationId: input.organizationId,
     campusId: input.campusId,

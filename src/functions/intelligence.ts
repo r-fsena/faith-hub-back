@@ -168,3 +168,10 @@ export async function maintainIntelligence(){
   if(failures)throw Error(`INTELLIGENCE_MAINTENANCE_FAILURES:${failures}`);
   return {organizations:organizations.length};
 }
+
+export async function dispatchScheduledReports(){
+ const {maintainReportSchedules}=await import('../services/reportSchedules');
+ const {rows}=await query('SELECT id FROM organizations ORDER BY id');let failed=0;
+ for(const org of rows){try{await maintainReportSchedules(org.id);await dispatchPendingReports(org.id);}catch{failed++;console.error('Scheduled reports deferred',{organizationId:org.id});}}
+ if(failed)throw Error('REPORT_SCHEDULE_DISPATCH_FAILURES:'+failed);return{organizations:rows.length};
+}

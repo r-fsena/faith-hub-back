@@ -238,6 +238,13 @@ functions:
           batchSize: 5
           functionResponseType: ReportBatchItemFailures
           maximumConcurrency: 2
+  dispatchScheduledReports:
+    handler: src/functions/intelligence.dispatchScheduledReports
+    timeout: 120
+    events:
+      - schedule:
+          rate: cron(0 * * * ? *)
+          enabled: ${param:reportSchedulesEnabled, false}
   maintainIntelligence:
     handler: src/functions/intelligence.maintainIntelligence
     timeout: 120

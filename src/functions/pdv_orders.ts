@@ -1,3 +1,4 @@
+import {IntelligenceError} from '../services/intelligenceUsage';
 import { enforcePlanAccess } from '../services/planAccess';
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { v4 as uuidv4 } from 'uuid';
@@ -123,6 +124,7 @@ export const createOrder = async (event: APIGatewayProxyEvent): Promise<APIGatew
     });
   } catch (error: any) {
     if (connection) await connection.rollback();
+    if(error instanceof IntelligenceError)return apiResponse(error.status,{message:error.message});
     if (error instanceof InventoryError) return apiResponse(error.statusCode, { error: error.code, message: error.message });
     console.error('Erro criando pedido:', error);
     return apiResponse(500, { message: 'Erro ao criar pedido' });
@@ -303,7 +305,6 @@ export const updateOrderStatus = async (event: APIGatewayProxyEvent): Promise<AP
     const sql = `UPDATE pdv_orders SET ${updateFields.join(', ')}, updated_at = NOW() WHERE id = ? AND organization_id = ?`;
 
     await connection.query(sql, params);
-    await connection.commit();
 
     await logSecurityEvent({
       organizationId: tenantCheck.effectiveOrgId,
@@ -313,12 +314,14 @@ export const updateOrderStatus = async (event: APIGatewayProxyEvent): Promise<AP
       resourceId: id,
       campusId: existing[0].campus_id,
       details: { status, payment_status, stock_transition: stockTransition },
-      event
+      event,strict:true,executor:(sql,params)=>connection!.query(sql,params)
     });
+    await connection.commit();
 
     return apiResponse(200, { message: 'Status do pedido atualizado com sucesso', id, stock_transition: stockTransition });
   } catch (error: any) {
     if (connection) await connection.rollback();
+    if(error instanceof IntelligenceError)return apiResponse(error.status,{message:error.message});
     if (error instanceof InventoryError) return apiResponse(error.statusCode, { error: error.code, message: error.message });
     console.error('Erro atualizando pedido:', error);
     return apiResponse(500, { message: 'Erro ao atualizar pedido' });

@@ -73,7 +73,10 @@
     "test:intelligence:evolution:mysql": "node scripts/test-intelligence-foundations-mysql.cjs --isolated-schema --extended",
     "db:migrate:member-history-revisions": "node migrate_member_history_revisions.js --apply",
     "db:migrate:member-history-revisions:status": "node migrate_member_history_revisions.js --status",
-    "test:member-history:mysql": "node scripts/test-member-history-revisions-mysql.cjs --local-only"
+    "test:member-history:mysql": "node scripts/test-member-history-revisions-mysql.cjs --local-only",
+    "db:migrate:costs-report-schedules": "node migrate_costs_report_schedules.js --apply",
+    "db:migrate:costs-report-schedules:status": "node migrate_costs_report_schedules.js --status",
+    "test:costs-schedules:mysql": "node scripts/test-costs-schedules-mysql.cjs --local-only"
   },
   "dependencies": {
     "@aws-sdk/client-cognito-identity-provider": "^3.0.0",
