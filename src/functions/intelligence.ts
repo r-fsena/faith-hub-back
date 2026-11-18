@@ -171,7 +171,7 @@ export async function maintainIntelligence(){
 
 export async function dispatchScheduledReports(){
  const {maintainReportSchedules}=await import('../services/reportSchedules');
- const {rows}=await query('SELECT id FROM organizations ORDER BY id');let failed=0;
+ const {rows}=await query('SELECT id FROM organizations WHERE status = ? ORDER BY id',['ACTIVE']);let failed=0;
  for(const org of rows){try{await maintainReportSchedules(org.id);await dispatchPendingReports(org.id);}catch{failed++;console.error('Scheduled reports deferred',{organizationId:org.id});}}
  if(failed)throw Error('REPORT_SCHEDULE_DISPATCH_FAILURES:'+failed);return{organizations:rows.length};
 }
