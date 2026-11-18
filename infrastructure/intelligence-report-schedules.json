@@ -1,0 +1,418 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "Faith Hubs monthly report dispatcher, separate from legacy stacks; review change set and keep disabled until release gates pass.",
+  "Parameters": {
+    "Environment": {
+      "Type": "String",
+      "AllowedValues": [
+        "development",
+        "staging",
+        "production"
+      ]
+    },
+    "DatabaseSecretArn": {
+      "Type": "String",
+      "AllowedPattern": "arn:aws:secretsmanager:[a-z0-9-]+:[0-9]{12}:secret:.+"
+    },
+    "DatabaseSecretRegion": {
+      "Type": "String"
+    },
+    "ReportsBucket": {
+      "Type": "String"
+    },
+    "ReportsQueueUrl": {
+      "Type": "String"
+    },
+    "ReportsQueueArn": {
+      "Type": "String",
+      "AllowedPattern": "arn:aws:sqs:[a-z0-9-]+:[0-9]{12}:.+"
+    },
+    "CodeS3Bucket": {
+      "Type": "String"
+    },
+    "CodeS3Key": {
+      "Type": "String"
+    },
+    "ScheduleEnabled": {
+      "Type": "String",
+      "AllowedValues": [
+        "true",
+        "false"
+      ],
+      "Default": "false"
+    },
+    "VpcSubnetIds": {
+      "Type": "CommaDelimitedList",
+      "Default": ""
+    },
+    "VpcSecurityGroupIds": {
+      "Type": "CommaDelimitedList",
+      "Default": ""
+    }
+  },
+  "Conditions": {
+    "ScheduleEnabledCondition": {
+      "Fn::Equals": [
+        {
+          "Ref": "ScheduleEnabled"
+        },
+        "true"
+      ]
+    },
+    "VpcEnabled": {
+      "Fn::Not": [
+        {
+          "Fn::Equals": [
+            {
+              "Fn::Select": [
+                0,
+                {
+                  "Ref": "VpcSubnetIds"
+                }
+              ]
+            },
+            ""
+          ]
+        }
+      ]
+    }
+  },
+  "Resources": {
+    "DispatcherDeadLetterQueue": {
+      "Type": "AWS::SQS::Queue",
+      "DeletionPolicy": "Retain",
+      "UpdateReplacePolicy": "Retain",
+      "Properties": {
+        "SqsManagedSseEnabled": true,
+        "MessageRetentionPeriod": 1209600
+      }
+    },
+    "DispatcherLogGroup": {
+      "Type": "AWS::Logs::LogGroup",
+      "DeletionPolicy": "Retain",
+      "UpdateReplacePolicy": "Retain",
+      "Properties": {
+        "LogGroupName": {
+          "Fn::Sub": "/aws/lambda/faith-hub-intelligence-schedules-${Environment}"
+        },
+        "RetentionInDays": 30
+      }
+    },
+    "DispatcherRole": {
+      "Type": "AWS::IAM::Role",
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "lambda.amazonaws.com"
+              },
+              "Action": "sts:AssumeRole"
+            }
+          ]
+        },
+        "ManagedPolicyArns": [
+          {
+            "Fn::If": [
+              "VpcEnabled",
+              "arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole",
+              {
+                "Ref": "AWS::NoValue"
+              }
+            ]
+          }
+        ],
+        "Policies": [
+          {
+            "PolicyName": "MonthlyReportDispatchOnly",
+            "PolicyDocument": {
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Effect": "Allow",
+                  "Action": "secretsmanager:GetSecretValue",
+                  "Resource": {
+                    "Ref": "DatabaseSecretArn"
+                  }
+                },
+                {
+                  "Effect": "Allow",
+                  "Action": "sqs:SendMessage",
+                  "Resource": [
+                    {
+                      "Ref": "ReportsQueueArn"
+                    },
+                    {
+                      "Fn::GetAtt": [
+                        "DispatcherDeadLetterQueue",
+                        "Arn"
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "logs:CreateLogStream",
+                    "logs:PutLogEvents"
+                  ],
+                  "Resource": {
+                    "Fn::GetAtt": [
+                      "DispatcherLogGroup",
+                      "Arn"
+                    ]
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "Dispatcher": {
+      "Type": "AWS::Lambda::Function",
+      "DependsOn": "DispatcherLogGroup",
+      "Properties": {
+        "FunctionName": {
+          "Fn::Sub": "faith-hub-intelligence-schedules-${Environment}"
+        },
+        "Runtime": "nodejs22.x",
+        "Architectures": [
+          "x86_64"
+        ],
+        "Handler": "src/functions/intelligence.dispatchScheduledReports",
+        "Role": {
+          "Fn::GetAtt": [
+            "DispatcherRole",
+            "Arn"
+          ]
+        },
+        "Timeout": 120,
+        "MemorySize": 512,
+        "ReservedConcurrentExecutions": 1,
+        "Code": {
+          "S3Bucket": {
+            "Ref": "CodeS3Bucket"
+          },
+          "S3Key": {
+            "Ref": "CodeS3Key"
+          }
+        },
+        "VpcConfig": {
+          "Fn::If": [
+            "VpcEnabled",
+            {
+              "SubnetIds": {
+                "Ref": "VpcSubnetIds"
+              },
+              "SecurityGroupIds": {
+                "Ref": "VpcSecurityGroupIds"
+              }
+            },
+            {
+              "Ref": "AWS::NoValue"
+            }
+          ]
+        },
+        "Environment": {
+          "Variables": {
+            "DB_SECRET_ARN": {
+              "Ref": "DatabaseSecretArn"
+            },
+            "DB_SECRET_REGION": {
+              "Ref": "DatabaseSecretRegion"
+            },
+            "DB_SSL": "require",
+            "INTELLIGENCE_REPORTS_BUCKET": {
+              "Ref": "ReportsBucket"
+            },
+            "INTELLIGENCE_REPORTS_QUEUE_URL": {
+              "Ref": "ReportsQueueUrl"
+            }
+          }
+        }
+      }
+    },
+    "DispatcherAsyncFailures": {
+      "Type": "AWS::Lambda::EventInvokeConfig",
+      "Properties": {
+        "FunctionName": {
+          "Ref": "Dispatcher"
+        },
+        "Qualifier": "$LATEST",
+        "MaximumRetryAttempts": 1,
+        "MaximumEventAgeInSeconds": 3600,
+        "DestinationConfig": {
+          "OnFailure": {
+            "Destination": {
+              "Fn::GetAtt": [
+                "DispatcherDeadLetterQueue",
+                "Arn"
+              ]
+            }
+          }
+        }
+      }
+    },
+    "MonthlyDispatchRule": {
+      "Type": "AWS::Events::Rule",
+      "Properties": {
+        "Name": {
+          "Fn::Sub": "faith-hub-intelligence-schedules-${Environment}"
+        },
+        "Description": "Dispatch monthly closed-period reports at 08h Sao Paulo; hourly recovery and private notifications.",
+        "ScheduleExpression": "cron(0 * * * ? *)",
+        "State": {
+          "Fn::If": [
+            "ScheduleEnabledCondition",
+            "ENABLED",
+            "DISABLED"
+          ]
+        },
+        "Targets": [
+          {
+            "Id": "MonthlyReports",
+            "Arn": {
+              "Fn::GetAtt": [
+                "Dispatcher",
+                "Arn"
+              ]
+            },
+            "RetryPolicy": {
+              "MaximumRetryAttempts": 2,
+              "MaximumEventAgeInSeconds": 3600
+            },
+            "DeadLetterConfig": {
+              "Arn": {
+                "Fn::GetAtt": [
+                  "DispatcherDeadLetterQueue",
+                  "Arn"
+                ]
+              }
+            }
+          }
+        ]
+      }
+    },
+    "DispatcherInvokePermission": {
+      "Type": "AWS::Lambda::Permission",
+      "Properties": {
+        "Action": "lambda:InvokeFunction",
+        "FunctionName": {
+          "Ref": "Dispatcher"
+        },
+        "Principal": "events.amazonaws.com",
+        "SourceArn": {
+          "Fn::GetAtt": [
+            "MonthlyDispatchRule",
+            "Arn"
+          ]
+        }
+      }
+    },
+    "EventDeliveryDeadLetters": {
+      "Type": "AWS::SQS::QueuePolicy",
+      "Properties": {
+        "Queues": [
+          {
+            "Ref": "DispatcherDeadLetterQueue"
+          }
+        ],
+        "PolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "events.amazonaws.com"
+              },
+              "Action": "sqs:SendMessage",
+              "Resource": {
+                "Fn::GetAtt": [
+                  "DispatcherDeadLetterQueue",
+                  "Arn"
+                ]
+              },
+              "Condition": {
+                "ArnEquals": {
+                  "aws:SourceArn": {
+                    "Fn::GetAtt": [
+                      "MonthlyDispatchRule",
+                      "Arn"
+                    ]
+                  }
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "DispatchFailureAlarm": {
+      "Type": "AWS::CloudWatch::Alarm",
+      "Properties": {
+        "AlarmDescription": "A scheduled report dispatch failed; inspect private dispatcher logs and DLQ. No external notification destination configured.",
+        "Namespace": "AWS/Lambda",
+        "MetricName": "Errors",
+        "Dimensions": [
+          {
+            "Name": "FunctionName",
+            "Value": {
+              "Ref": "Dispatcher"
+            }
+          }
+        ],
+        "Statistic": "Sum",
+        "Period": 300,
+        "EvaluationPeriods": 1,
+        "Threshold": 1,
+        "ComparisonOperator": "GreaterThanOrEqualToThreshold",
+        "TreatMissingData": "notBreaching"
+      }
+    },
+    "DispatchDeadLetterAlarm": {
+      "Type": "AWS::CloudWatch::Alarm",
+      "Properties": {
+        "AlarmDescription": "Scheduled report dispatch has dead letters; operational review required.",
+        "Namespace": "AWS/SQS",
+        "MetricName": "ApproximateNumberOfMessagesVisible",
+        "Dimensions": [
+          {
+            "Name": "QueueName",
+            "Value": {
+              "Fn::GetAtt": [
+                "DispatcherDeadLetterQueue",
+                "QueueName"
+              ]
+            }
+          }
+        ],
+        "Statistic": "Maximum",
+        "Period": 300,
+        "EvaluationPeriods": 1,
+        "Threshold": 1,
+        "ComparisonOperator": "GreaterThanOrEqualToThreshold",
+        "TreatMissingData": "notBreaching"
+      }
+    }
+  },
+  "Outputs": {
+    "DispatcherName": {
+      "Value": {
+        "Ref": "Dispatcher"
+      }
+    },
+    "RuleName": {
+      "Value": {
+        "Ref": "MonthlyDispatchRule"
+      }
+    },
+    "DeadLetterQueueUrl": {
+      "Value": {
+        "Ref": "DispatcherDeadLetterQueue"
+      }
+    }
+  }
+}

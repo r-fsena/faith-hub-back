@@ -2,12 +2,14 @@ import {createHash} from 'crypto';
 import {intelligenceOverview} from './intelligenceOverview';
 import {communityJourney} from './intelligenceJourneys';
 import {intelligenceOperations} from './intelligenceOperations';
+import {costMargins} from './pdvCosts';
+import {utcBoundary} from './intelligenceModel';
 import {memberHistory} from './memberHistory';
 import {memberHistoryRevision} from './memberHistoryCorrections';
 import {IntelligenceScope} from './intelligenceScope';
 import {IntelligenceError} from './intelligenceUsage';
 import {IntelligencePeriod,withIntelligencePeriod} from './intelligenceModel';
-export const REPORT_VERSION='2026-11-17.h1';
+export const REPORT_VERSION='2026-11-17.f4r2';
 export const REPORT_MODELS={executive:'Resumo executivo',financial:'Gestão financeira',operations:'Operação e unidades',community:'Comunidade e acolhimento'};
 export type ReportModel=keyof typeof REPORT_MODELS;
 export type ReportRow={section:string;metric:string;unit:string;current:number|null;previous:number|null;status:string;definition:string};
@@ -43,6 +45,7 @@ export async function collectReportData(scope:IntelligenceScope,flags:Record<str
    notes.push(`Histórico cadastral: revisão ${history.revision}${history.revised_at?`, revisado em ${history.revised_at}`:''}. Arquivos anteriores preservam os números da revisão em que foram gerados.`);
    if((await memberHistoryRevision(scope.organizationId)).revision!==historyRevision!.revision)throw new IntelligenceError(409,'O histórico mudou durante a geração. Gere uma nova revisão do relatório.');
   }
+  if(model==='operations'&&flags['pdv.historical_costs']&&flags['pdv.stock_inventory']&&flags['pdv.module_enabled']){const margin=await costMargins(scope,utcBoundary(period.start),utcBoundary(period.end));for(const [key,label]of Object.entries({gross_margin_cents:'Margem bruta coberta da loja',covered_revenue_cents:'Vendas com custo conhecido',cost_cents:'Custo histórico das vendas cobertas',total_revenue_cents:'Vendas totais elegíveis'}))rows.push({section:'Custo e margem da loja',metric:label,unit:'BRL_CENTS',current:(margin as any)[key],previous:null,status:'partial_coverage',definition:margin.definition});notes.push(`Cobertura de custo: ${margin.coverage_percent===null?'indisponível':margin.coverage_percent+'%'}. A margem não representa vendas descobertas.`);}
   if(rows.length>20000)throw new IntelligenceError(413,'O relatório excede 20 mil linhas. Restrinja o escopo ou o período.');
   const data:ReportData={title:REPORT_MODELS[model],organization,scopeLabel:scope.campusId?'Unidade selecionada':`${scope.campusIds?.length||0} unidades autorizadas${scope.cellIds!==null?' · somente grupos permitidos':''}`,period,generatedAt:new Date().toISOString(),definitionVersion:REPORT_VERSION,revision:'',rows,notes:[...new Set(notes)],containsDigital:model==='executive'};
   data.revision=createHash('sha256').update(JSON.stringify({rows,notes:data.notes,period,definitionVersion:REPORT_VERSION})).digest('hex');return data;

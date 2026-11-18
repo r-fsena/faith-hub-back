@@ -1,3 +1,4 @@
+import {authorizeScheduledReport,schedulesRoute} from './reportSchedules';
 import {randomUUID,createHash} from 'crypto';
 import {query,getConnection,apiResponse} from '../db';
 import {AuthUser,requireAuth,enforceRole,normalizeRole} from './authMiddleware';
@@ -10,15 +11,16 @@ import {checkRateLimit} from './rateLimiter';
 import {REPORT_VERSION,REPORT_MODELS,ReportModel,collectReportData} from './intelligenceReportData';
 import {reportPdf,reportCsv} from './intelligenceReportFiles';
 import {reportsConfigured,enqueueReport,saveReportFile,readReportFile,removeReportFile} from './intelligenceReportStorage';
-const REPORT_FIELDS="*,DATE_FORMAT(created_at,'%Y-%m-%dT%H:%i:%s.000Z') AS created_at,DATE_FORMAT(updated_at,'%Y-%m-%dT%H:%i:%s.000Z') AS updated_at,DATE_FORMAT(expires_at,'%Y-%m-%dT%H:%i:%s.000Z') AS expires_at,(expires_at<=UTC_TIMESTAMP()) AS is_expired";
+export const REPORT_FIELDS="*,DATE_FORMAT(created_at,'%Y-%m-%dT%H:%i:%s.000Z') AS created_at,DATE_FORMAT(updated_at,'%Y-%m-%dT%H:%i:%s.000Z') AS updated_at,DATE_FORMAT(expires_at,'%Y-%m-%dT%H:%i:%s.000Z') AS expires_at,(expires_at<=UTC_TIMESTAMP()) AS is_expired";
 const ROLES=['SUPERADMIN','PASTOR','ADMIN','TREASURER','LEADER'];
 const REQUIRED:Record<ReportModel,string[]>={executive:['intelligence.reports','intelligence.overview'],financial:['intelligence.reports','intelligence.finance','financial.module_enabled','financial.cashflow_ledger'],operations:['intelligence.reports','intelligence.operations'],community:['intelligence.reports','intelligence.member_journey','visitors.module_enabled']};
-const SOURCE_FEATURES=['intelligence.usage_collection','members.module_enabled','cell_groups.module_enabled','visitors.module_enabled','events.module_enabled','pdv.module_enabled','pdv.stock_inventory','ministries.module_enabled','volunteers.module_enabled','kids.module_enabled','kids.reports_export','intelligence.activation','intelligence.member_journey','intelligence.history','intelligence.finance','intelligence.operations','financial.module_enabled','financial.cashflow_ledger','content.analytics_dashboard','devotionals.module_enabled','studies.module_enabled','broadcasts.module_enabled','intelligence.calendar','intelligence.capacities'];
+const SOURCE_FEATURES=['intelligence.usage_collection','members.module_enabled','cell_groups.module_enabled','visitors.module_enabled','events.module_enabled','pdv.module_enabled','pdv.stock_inventory','ministries.module_enabled','volunteers.module_enabled','kids.module_enabled','kids.reports_export','intelligence.activation','intelligence.member_journey','intelligence.history','intelligence.finance','intelligence.operations','financial.module_enabled','financial.cashflow_ledger','content.analytics_dashboard','devotionals.module_enabled','studies.module_enabled','broadcasts.module_enabled','intelligence.calendar','intelligence.capacities','pdv.historical_costs'];
 const digest=(v:any)=>createHash('sha256').update(JSON.stringify(v)).digest('hex');
 const parse=<T>(v:any):T=>typeof v==='string'?JSON.parse(v):v;
 const validId=(v:any)=>{if(typeof v!=='string'||!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v))throw new IntelligenceError(400,'Referência de relatório inválida.');return v;};
-function modelAllowed(user:AuthUser,model:ReportModel){if(!Object.hasOwn(REPORT_MODELS,model))throw new IntelligenceError(400,'Modelo de relatório inválido.');if(user.role==='TREASURER'&&model!=='financial'||user.role==='LEADER'&&['financial','operations'].includes(model))throw new IntelligenceError(403,'Este modelo não está disponível no seu perfil.');}
-async function captureScope(scope:IntelligenceScope,model:ReportModel){
+function modelAllowed(user:AuthUser,model:ReportModel){if(!ROLES.includes(user.role))throw new IntelligenceError(403,'O perfil atual não permite relatórios.');if(!Object.hasOwn(REPORT_MODELS,model))throw new IntelligenceError(400,'Modelo de relatório inválido.');if(user.role==='TREASURER'&&model!=='financial'||user.role==='LEADER'&&['financial','operations'].includes(model))throw new IntelligenceError(403,'Este modelo não está disponível no seu perfil.');}
+export async function captureScope(scope:IntelligenceScope,model:ReportModel){
+ modelAllowed(scope.user,model);
  const f=scopedWhere(scope,'c','id');const {rows}=await query(`SELECT c.id FROM campuses c WHERE c.organization_id = ?${f.sql} ORDER BY c.id LIMIT 201`,[scope.organizationId,...f.params]);
  if(!rows.length||rows.length>200)throw new IntelligenceError(400,'Selecione de 1 a 200 unidades autorizadas.');
  const access:Array<{campus:string;features:string[]}>=[];
@@ -37,7 +39,7 @@ async function currentRequester(job:any):Promise<AuthUser>{
  const m=rows[0],role=normalizeRole(m.role),campusIds=parse<any>(m.campus_ids||'null'),permissions=parse<any>(m.operational_permissions||'[]');
  return{userId:m.id,email:m.email,name:m.name,role,organizationId:m.organization_id,campusIds:Array.isArray(campusIds)&&campusIds.length?campusIds:[m.campus_id||'campus_sede'],operationalPermissions:Array.isArray(permissions)?permissions:[],isSuperAdmin:role==='SUPERADMIN'};
 }
-export async function authorizeReport(job:any,user?:AuthUser):Promise<IntelligenceScope>{
+export async function authorizeReportSources(job:any,user?:AuthUser):Promise<IntelligenceScope>{
  const actor=user||await currentRequester(job);modelAllowed(actor,job.model);
  if(actor.userId!==job.requested_by||actor.organizationId!==job.requester_organization_id)throw new IntelligenceError(403,'O relatório pertence a outro solicitante.');
  const selected=parse<any>(job.scope_json),event={headers:{'x-organization-id':job.organization_id},queryStringParameters:{campus_id:selected.campusId||'all'}};
@@ -48,8 +50,9 @@ export async function authorizeReport(job:any,user?:AuthUser):Promise<Intelligen
  for(const saved of parse<any[]>(job.access_json)){const flags=(await evaluateTenantFlags(job.organization_id,saved.campus,'production')).flags;if(!saved.features.every((key:string)=>flags[key]))throw new IntelligenceError(403,'Uma fonte do relatório deixou de estar habilitada.');}
  return{...current,campusIds:selected.campusIds,cellIds:selected.cellIds};
 }
+export async function authorizeReport(job:any,user?:AuthUser){const scope=await authorizeReportSources(job,user);await authorizeScheduledReport(job);return scope;}
 async function ownReport(scope:IntelligenceScope,id:string){validId(id);const {rows}=await query(`SELECT ${REPORT_FIELDS} FROM intelligence_reports WHERE organization_id = ? AND id = ? AND requested_by = ? AND requester_organization_id = ?`,[scope.organizationId,id,scope.user.userId,scope.user.organizationId]);if(!rows.length)throw new IntelligenceError(404,'Relatório não encontrado neste acesso.');return rows[0];}
-const publicReport=(job:any)=>({id:job.id,model:job.model,title:REPORT_MODELS[job.model as ReportModel],status:job.status,period:parse<IntelligencePeriod>(job.period_json),created_at:job.created_at,updated_at:job.updated_at,expires_at:job.expires_at,definition_version:job.definition_version,error_code:job.error_code,preview:job.result_json?parse<any>(job.result_json).preview:null});
+const publicReport=(job:any)=>({id:job.id,model:job.model,title:REPORT_MODELS[job.model as ReportModel],status:job.status,period:parse<IntelligencePeriod>(job.period_json),created_at:job.created_at,updated_at:job.updated_at,expires_at:job.expires_at,definition_version:job.definition_version,error_code:job.error_code,schedule_execution:job.schedule_execution||null,preview:job.result_json&&['READY','READY_WITH_NOTES'].includes(job.status)&&!Number(job.is_expired)?parse<any>(job.result_json).preview:null});
 export async function dispatchPendingReports(org:string){
  await query("UPDATE intelligence_reports SET status='EXPIRED',error_code='EXPIRED',updated_at=UTC_TIMESTAMP(6) WHERE organization_id = ? AND expires_at<=UTC_TIMESTAMP() AND status IN ('QUEUED','GENERATING','READY','READY_WITH_NOTES')",[org]);
  if(!reportsConfigured())return;
@@ -82,6 +85,7 @@ export async function processReport(message:any){
   const scope=await authorizeReport(job),evaluated=await reportFlags(scope,parse(job.access_json));
   const {rows:organizations}=await query('SELECT name FROM organizations WHERE id = ?',[org]);
   const data=await collectReportData(scope,evaluated.flags,job.model,parse<IntelligencePeriod>(job.period_json),organizations[0]?.name||'Organização',evaluated.maximum);
+  if(job.schedule_execution){const x=job.schedule_execution,label=`Agenda mensal: revisão ${x.revision+1}${x.previous_run_id?' · vinculada à revisão anterior':''}. ${x.reason||'Primeira execução mensal.'}`;data.notes.push(label);for(const row of data.rows)row.definition+=` ${label}`;data.revision=digest({rows:data.rows,notes:data.notes,period:data.period,definitionVersion:data.definitionVersion});}
   const files={pdf:await reportPdf(data),csv:reportCsv(data)};const objects:Record<string,string>={},hashes:Record<string,string>={};
   for(const [format,bytes]of Object.entries(files)){const key=`reports/${org}/${id}/${token}/report.${format}`;keys.push(key);await saveReportFile(key,bytes,format==='pdf'?'application/pdf':'text/csv; charset=utf-8');objects[format]=key;hashes[format]=createHash('sha256').update(bytes).digest('hex');}
   // Permissions/privacy may change while rendering; verify again before publishing either file.
@@ -109,7 +113,8 @@ export async function intelligenceReportsHandler(event:any){
   const rate=await checkRateLimit(event,{maxRequests:20,windowSeconds:60,identifierPrefix:'intelligence-reports:'+scope.organizationId+':'+auth.user.userId});if(!rate.allowed)return rate.errorResponse!;
   const path=(event.rawPath||event.path||'').split('/').filter(Boolean),route=path.slice(path.indexOf('reports')+1),method=event.requestContext?.http?.method||event.httpMethod;
   let result:any;
-  if(method==='GET'&&route[0]==='options')result={models:Object.entries(REPORT_MODELS).filter(([m])=>{try{modelAllowed(auth.user,m as ReportModel);return REQUIRED[m as ReportModel].every(k=>flags[k]);}catch{return false;}}).map(([id,title])=>({id,title})),limits:{rows:20000,bytes_per_file:3*1024*1024,retention_days:30}};
+  if(route[0]==='schedules')return apiResponse(200,await schedulesRoute(scope,method,route.slice(1),body,event.queryStringParameters||{},event),{'Cache-Control':'no-store'});
+  if(method==='GET'&&route[0]==='options')result={schedule_manage_allowed:['SUPERADMIN','PASTOR','ADMIN','TREASURER'].includes(auth.user.role)&&auth.user.organizationId===scope.organizationId,models:Object.entries(REPORT_MODELS).filter(([m])=>{try{modelAllowed(auth.user,m as ReportModel);return REQUIRED[m as ReportModel].every(k=>flags[k]);}catch{return false;}}).map(([id,title])=>({id,title})),limits:{rows:20000,bytes_per_file:3*1024*1024,retention_days:30}};
   else if(method==='POST'&&route[0]==='preview'){
    const model=body.model as ReportModel;modelAllowed(auth.user,model);const captured=await captureScope(scope,model),period=intelligencePeriod(body.period||'month');
    const {rows}=await query('SELECT name FROM organizations WHERE id = ?',[scope.organizationId]);const evaluated=await reportFlags(scope,captured.access);const data=await collectReportData({...scope,...captured.scope},evaluated.flags,model,period,rows[0]?.name||'Organização',evaluated.maximum);result={...data,rows:data.rows.slice(0,50),total_rows:data.rows.length,period_signature:digest(period)};

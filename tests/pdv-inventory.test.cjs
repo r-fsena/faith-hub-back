@@ -9,6 +9,7 @@ require.extensions['.ts'] = (module, filename) => module._compile(ts.transpileMo
   { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true } }
 ).outputText, filename);
 
+const flagModule=require.resolve('../src/services/featureFlagService.ts');require.cache[flagModule]={id:flagModule,filename:flagModule,loaded:true,exports:{evaluateTenantFlags:async()=>({flags:{}})}};
 const {
   InventoryError,
   reserveOrderInventory,
@@ -23,6 +24,7 @@ function inventoryConnection(initialOnHand = 10, minimumStock = 0) {
   };
   const connection = {
     query: async (sql, params = []) => {
+      if(sql.includes('FROM pdv_cost_pools'))return [[]];
       if (sql.includes('INSERT IGNORE INTO pdv_inventory_balances')) return [{ affectedRows: 0 }];
       if (sql.includes('FROM pdv_inventory_balances') && sql.includes('FOR UPDATE')) return [[{ ...state.balance }]];
       if (sql.includes('UPDATE pdv_inventory_balances SET on_hand_quantity = ?, reserved_quantity = ?')) {
@@ -128,7 +130,8 @@ test('operations analytics are tenant-scoped, paid-only and exposed by the conso
   const serverless = fs.readFileSync(path.join(root, 'serverless.yml'), 'utf8');
 
   assert.match(analytics, /requireAuth\(event\)/);
-  assert.match(analytics, /enforceTenant\(auth\.user, event\.queryStringParameters\?\.organization_id\)/);
+  assert.match(analytics, /intelligenceScope\(event,auth\.user\)/);
+  assert.match(fs.readFileSync(path.join(root,'src/services/intelligenceScope.ts'),'utf8'), /enforceTenant\(user, orgs\[0\]\)/);
   assert.match(analytics, /o\.payment_status = 'PAID'/);
   assert.match(analytics, /o\.status <> 'CANCELADO'/);
   assert.match(analytics, /rangeDays > 366/);

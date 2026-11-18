@@ -1,7 +1,11 @@
+import {costMargins} from '../services/pdvCosts';
+import {IntelligenceError} from '../services/intelligenceUsage';
+import {intelligenceScope} from '../services/intelligenceScope';
+import {utcBoundary} from '../services/intelligenceModel';
 import { enforcePlanAccess } from '../services/planAccess';
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { apiResponse, query } from '../db';
-import { enforcePermission, enforceRole, enforceTenant, requireAuth } from '../services/authMiddleware';
+import { enforcePermission, enforceRole, requireAuth } from '../services/authMiddleware';
 import { evaluateTenantFlags } from '../services/featureFlagService';
 
 const ANALYTICS_ROLES = ['SUPERADMIN', 'PASTOR', 'ADMIN', 'TREASURER', 'LEADER', 'VOLUNTEER'];
@@ -55,11 +59,9 @@ export const getPdvAnalytics = async (event: APIGatewayProxyEvent): Promise<APIG
     const permission = enforcePermission(auth.user, 'inventory.view', ['SUPERADMIN', 'PASTOR', 'ADMIN', 'TREASURER']);
     if (!permission.allowed) return permission.errorResponse!;
 
-    const tenant = enforceTenant(auth.user, event.queryStringParameters?.organization_id);
-    if (!tenant.allowed) return tenant.errorResponse!;
-    const organizationId = tenant.effectiveOrgId;
-    const campusId = event.queryStringParameters?.campus_id;
-    const scopedCampus = campusId && campusId !== 'all' ? campusId : null;
+    const costScope=await intelligenceScope(event,auth.user);if('statusCode' in costScope)return costScope;
+    const organizationId=costScope.organizationId,scopedCampus=costScope.campusId;
+    if(!scopedCampus&&costScope.campusIds!==null)return apiResponse(403,{message:'Selecione uma unidade autorizada.'});
     const period = resolvePeriod(event);
     if ('error' in period) return period.error;
 
@@ -175,8 +177,14 @@ export const getPdvAnalytics = async (event: APIGatewayProxyEvent): Promise<APIG
       };
     });
 
+    let costMargin:Awaited<ReturnType<typeof costMargins>>|null=null;
+    if(flags.flags['pdv.historical_costs']&&['SUPERADMIN','PASTOR','ADMIN','TREASURER'].includes(auth.user.role)){
+      try{costMargin=await costMargins(costScope,utcBoundary(period.startDate),utcBoundary(new Date(Date.parse(period.endDate+'T12:00:00Z')+86400000).toISOString().slice(0,10)));}
+      catch(error){if(!(error instanceof IntelligenceError&&error.status===403))throw error;}
+    }
     return apiResponse(200, {
       period: { start_date: period.startDate, end_date: period.endDate },
+      cost_margin: costMargin,
       inventory_enabled: Boolean(flags.flags['pdv.stock_inventory']),
       summary: {
         gross_sales: Number(summary.gross_sales) || 0,

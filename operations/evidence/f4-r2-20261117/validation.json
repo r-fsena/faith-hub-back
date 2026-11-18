@@ -1,0 +1,84 @@
+{
+  "date": "2026-11-17",
+  "scope": [
+    "F4",
+    "R2_MONTHLY_INITIAL"
+  ],
+  "status": "IMPLEMENTED_LOCALLY_NOT_DEPLOYED",
+  "production_changes": false,
+  "flags_default": {
+    "pdv.historical_costs": false,
+    "intelligence.report_schedules": false
+  },
+  "hourly_schedule_enabled_default": false,
+  "tests": {
+    "backend_workspace": {
+      "passed": 285,
+      "failed": 0,
+      "preexisting_untracked_tests": 9
+    },
+    "backend_types_clean_dependencies": "PASS",
+    "backend_types_original_workspace": "PREEXISTING_INCOMPLETE_DUPLICATE_TYPES_DIRECTORIES",
+    "mysql_local": {
+      "passed": 27,
+      "port": 33308,
+      "random_schema_removed": true,
+      "customer_records_read": 0,
+      "customer_records_changed": 0
+    },
+    "browser_synthetic": "PASS",
+    "studio_build": "PASS",
+    "pwa_build": "PASS",
+    "pwa_tests": 43
+  },
+  "limitations": [
+    "Monthly at 08:00 America/Sao_Paulo only",
+    "Cost policy requires treasury homologation before release",
+    "No production load test or SLA",
+    "Production migration, deployment and flag activation pending separate release"
+  ],
+  "repositories": {
+    "faith-hub-backend": {
+      "branch": "feat/f4-r2-20261117",
+      "base_sha": "9b8a6ce0a181ff6c77afc4131b14ce9bfcd9dee9",
+      "committed": false,
+      "files": {
+        "docs/F4_R2_CUSTOS_E_AGENDAMENTOS_2026-11-17.md": "3162851bfff6104811e8b08e0c48289a6cb1f612db1b6653a3d1cd963c7d426c",
+        "migrate_costs_report_schedules.js": "37f8e436183aabea10dbdab4fcf7f2d6609126f3bdece151860da30386fcd2ea",
+        "package.json": "0d3ff57d82422a54aaba6e244b78662c5dcfb93108cc5f4bb67a28f302f21d34",
+        "scripts/cost-schedules-schema.cjs": "0c655c8a4eb47ebd30e29191562ab5713514acda147716471234b06d8c5ef8c5",
+        "scripts/test-costs-schedules-mysql.cjs": "6576bec32fe2bb47072240e045df5a148ad8a65921b26be0d465092f736b33c4",
+        "serverless.yml": "3811a085381f8d62f2aa5a44864d44743f8884c23fe6bca7c26ed4a17b5c10d8",
+        "src/config/commercialPlans.json": "5a9509f0b1a883dce0d94fe14cabeec72c659c9f90d7795e122b4463833c14f1",
+        "src/functions/intelligence.ts": "0bf4531f09383592eacb5ea02a273ba1feb918f8008685ccbc73d43b47bcc84c",
+        "src/functions/pdv_analytics.ts": "26baa579034a0e36ab301ba84a2785aebf4fe7719013a3efd9ea26e6039637b4",
+        "src/functions/pdv_inventory.ts": "7c52014c2712a3dc98f3a9e6a5a9d5ea65901c64804697c275e9531e5883f39d",
+        "src/functions/pdv_orders.ts": "4067eb85655213145b59732d382160eae38ac0a7ad2ebbf389a3a140ceded51f",
+        "src/services/featureFlagService.ts": "d7130ce45200d21b5873b2ac6463a39fa7b0336a5904231b425ca7f4b41a63a6",
+        "src/services/intelligenceReportData.ts": "4c0eeb94df25b28bb17100a6ea1950231542f61d9e6fb807f16659dca1ba2d6f",
+        "src/services/intelligenceReports.ts": "0994da23d5470ce607285c02a7d5e39d5b81526be0b4d80a3b1f26fa261ba1d3",
+        "src/services/pdvCosts.ts": "7f19a3a9eb5280feedfb58e390be67157da75a29bd288b5e8519253ed7e1ad23",
+        "src/services/pdvInventoryService.ts": "8872ac8424b9418c65ca3d214d8fdc08c2a010361db392568baa2a18acd201b7",
+        "src/services/planCatalog.ts": "5df356d528f0ad3cf899b8217a044daedbcd41e7b933c97a7fd5600d6a7d3704",
+        "src/services/reportSchedules.ts": "549459507d923edb9e4dc2b3407b9a1890b00093756863d08e1dcdd772d98b06",
+        "tests/costs-schedules.test.cjs": "1de0780829d1dc43cdbd40c74c5da5e9972a7175fc220c14a79d2ac026429762",
+        "tests/pdv-inventory.test.cjs": "ad1bf1052ebb01cbc7d5bdf9dbf96153277046e5e262ae6f12de8a905e9c0e0d"
+      }
+    },
+    "faith-hub-web": {
+      "branch": "feat/f4-r2-20261117",
+      "base_sha": "de47d7adaeb7acddd3885f9c91a9fc74e0603d29",
+      "committed": false,
+      "files": {
+        "package.json": "b2bb5f6bedb21671d7c547a345b1a78b985243e8f4dbf9566e5fd3b05c417195",
+        "src/components/OperationsOverview.tsx": "434de9eef9aa807b17f918a7030a950e83954a928f5173d2ec848c219ba2cb91",
+        "src/modules/PdvEstoque.css": "d4d8ae52fada5c4a38a3e8f05da78812e4ab0b88554a4d1de7f2e46964dcc3be",
+        "src/modules/PdvEstoque.tsx": "d18d1c1a8b896ebfbbaace7beb2463670b4058bb821acd83911e047eb3051c0e",
+        "src/modules/intelligence/IntelligenceReports.tsx": "ed19cd992f93790b82a6041d21bb76556c6f7a47aa7e21ef00ad37d73cb64842",
+        "src/modules/intelligence/ReportSchedules.tsx": "100a3c300c51cb7ad531eb88a13e1f8c6a7450cd8d152b4cb83688f41089ac00",
+        "src/modules/intelligence/intelligence.css": "fc258b06e7c4a5ec9f915797b9f625e678358f76f03b82473d8be28ce739bab5",
+        "tests/costs-schedules.browser.cjs": "7ff74b911fda109e5eb6bed4e4887d3dc737750c9fc2d6e7e60721c0d78136fa"
+      }
+    }
+  }
+}

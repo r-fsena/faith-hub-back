@@ -34,6 +34,8 @@ export function normalizeEntitlements(value: unknown): Record<string, boolean> {
     const base=input['intelligence.overview']??input['content.analytics_dashboard']===true;
     const additions=['intelligence.activation','intelligence.member_journey','intelligence.actions','intelligence.goals'];
     const evolution:Record<string,boolean>={
+      'pdv.historical_costs':input['pdv.module_enabled']===true&&input['pdv.stock_inventory']===true,
+      'intelligence.report_schedules':(input['intelligence.reports']??!!base)===true,
       'intelligence.history_corrections':(input['intelligence.history']??(!!base&&input['members.module_enabled']===true))===true,
       'financial.transfers_reversals':input['financial.accounts_ledger']??(input['financial.module_enabled']===true&&input['financial.cashflow_ledger']===true),
       'intelligence.reports':!!base,

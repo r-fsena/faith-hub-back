@@ -1,3 +1,4 @@
+import {IntelligenceError} from '../services/intelligenceUsage';
 import { enforcePlanAccess } from '../services/planAccess';
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { apiResponse, getConnection, query } from '../db';
@@ -25,11 +26,16 @@ async function inventoryAuth(
   );
   if (!access.allowed) return { errorResponse: access.errorResponse! };
   let parsedBody: any = {};
-  try { parsedBody = JSON.parse(event.body || '{}'); } catch {}
-  const requestedOrgId = event.queryStringParameters?.organization_id || parsedBody.organization_id;
+  try { parsedBody = JSON.parse(event.body || '{}'); } catch {return {errorResponse:apiResponse(400,{message:'JSON inválido.'})};}
+  if(!parsedBody||typeof parsedBody!=='object'||Array.isArray(parsedBody))return {errorResponse:apiResponse(400,{message:'Envie um objeto JSON.'})};
+  const organizations=[event.queryStringParameters?.organization_id,parsedBody.organization_id,event.headers?.['x-organization-id']].filter(Boolean),campuses=[event.queryStringParameters?.campus_id,parsedBody.campus_id,event.headers?.['x-campus-id']].filter(Boolean);
+  if(new Set(organizations).size>1||new Set(campuses).size>1)return {errorResponse:apiResponse(403,{message:'Organização ou unidade conflitante.'})};
+  const requestedOrgId = event.queryStringParameters?.organization_id || parsedBody.organization_id||event.headers?.['x-organization-id'];
   const tenant = enforceTenant(auth.user, requestedOrgId);
   if (!tenant.allowed) return { errorResponse: tenant.errorResponse! };
-  const requestedCampus = event.queryStringParameters?.campus_id || parsedBody.campus_id;
+  const requestedCampus = event.queryStringParameters?.campus_id || parsedBody.campus_id||event.headers?.['x-campus-id'];
+  if(requestedCampus&&requestedCampus!=='all'&&!auth.user.isSuperAdmin&&!auth.user.campusIds.includes('all')&&!auth.user.campusIds.includes(requestedCampus))return {errorResponse:apiResponse(403,{message:'Sem acesso a esta unidade.'})};
+  if((!requestedCampus||requestedCampus==='all')&&!auth.user.isSuperAdmin&&!auth.user.campusIds.includes('all'))return {errorResponse:apiResponse(403,{message:'Selecione uma unidade autorizada.'})};
   const flags = await evaluateTenantFlags(tenant.effectiveOrgId, requestedCampus && requestedCampus !== 'all' ? requestedCampus : null, 'production');
   if (!flags.flags['pdv.stock_inventory']) {
     return { errorResponse: apiResponse(403, { error: 'FEATURE_DISABLED', message: 'O controle de estoque não está habilitado para esta organização.' }) };
@@ -173,13 +179,14 @@ export const createMovement = async (event: APIGatewayProxyEvent): Promise<APIGa
     const productId = String(body.product_id || '');
     const reason = String(body.reason || '').trim();
     if (!MOVEMENT_TYPES.has(type)) return apiResponse(400, { message: 'Tipo de movimentação inválido.' });
+    if(reason.length>255||/[\x00-\x1f]/.test(reason))return apiResponse(400,{message:'Motivo inválido ou acima de 255 caracteres.'});
     if (!campusId || !productId || !reason) return apiResponse(400, { message: 'Produto, unidade e motivo são obrigatórios.' });
     if (!Number.isFinite(quantity) || quantity < 0 || (quantity === 0 && !['ADJUSTMENT', 'OPENING_BALANCE'].includes(type))) {
       return apiResponse(400, { message: 'Informe uma quantidade válida.' });
     }
     const { rows: products } = await query(
-      'SELECT id, track_inventory FROM pdv_products WHERE id = ? AND organization_id = ? LIMIT 1',
-      [productId, scope.organizationId]
+      'SELECT id, track_inventory FROM pdv_products WHERE id = ? AND organization_id = ? AND (campus_id = ? OR campus_id IS NULL) LIMIT 1',
+      [productId, scope.organizationId,campusId]
     );
     if (!products.length) return apiResponse(404, { message: 'Produto não encontrado.' });
     if (!products[0].track_inventory) return apiResponse(409, { message: 'Ative o controle de estoque deste produto antes de movimentá-lo.' });
@@ -196,9 +203,8 @@ export const createMovement = async (event: APIGatewayProxyEvent): Promise<APIGa
       quantity,
       reason,
       notes: body.notes ? String(body.notes).slice(0, 2000) : null,
-      actorId: scope.user.userId
+      actorId: scope.user.userId,requestId:body.request_id,totalCostCents:body.total_cost_cents,additionalCostCents:body.additional_cost_cents,sourceReference:body.source_reference
     });
-    await connection.commit();
     await logSecurityEvent({
       organizationId: scope.organizationId,
       campusId,
@@ -207,11 +213,13 @@ export const createMovement = async (event: APIGatewayProxyEvent): Promise<APIGa
       resource: 'pdv_inventory_movements',
       resourceId: productId,
       details: { type, quantity, reason, ...result },
-      event
+      event,strict:true,executor:(sql,params)=>connection!.query(sql,params)
     });
+    await connection.commit();
     return apiResponse(201, { message: 'Movimentação registrada com sucesso.', ...result });
   } catch (error: any) {
     if (connection) await connection.rollback();
+    if(error instanceof IntelligenceError)return apiResponse(error.status,{message:error.message});
     if (error instanceof InventoryError) return apiResponse(error.statusCode, { error: error.code, message: error.message });
     console.error('Erro criando movimentação:', error);
     return apiResponse(500, { message: 'Erro ao registrar a movimentação.' });
