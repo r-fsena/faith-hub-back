@@ -1,6 +1,6 @@
 # A2 — alertas avançados: implementação e validação local
 
-Data: 23/11/2026. Estado: implementado e validado localmente; **ainda sem publicação, migração ou ativação em produção**. Branches do backend e Studio: `feat/a2-advanced-alerts-20261123`. A autorização desta entrega é estruturar, implementar e testar com segurança. A autorização anterior de publicação de F4/R2 não foi reutilizada para A2.
+Data: 23/11/2026. **Estado atual: publicado e flag ativada em produção**, após a autorização do proprietário. O [registro de publicação](PUBLICACAO_A2_2026-11-23.md) reúne SHAs, snapshot, migração, gates, ativação e limites. A implementação local precedeu essa autorização.
 
 ## Entrega funcional
 
@@ -42,7 +42,7 @@ npm run db:migrate:advanced-alerts:status
 npm run db:migrate:advanced-alerts
 ```
 
-Nenhum desses comandos foi executado contra produção nesta entrega. O teste importa a migração sem `.env`, usa exclusivamente `127.0.0.1:33308`, cria um schema aleatório `faith_a2_qa_*` com dados sintéticos e o elimina ao terminar. A conferência final encontrou zero schemas QA restantes e o servidor temporário foi encerrado. Nenhum teste usa stages legados `dev`/`prod`.
+Na etapa de implementação local, nenhum desses comandos foi executado contra produção; a migração produtiva foi aplicada posteriormente pelo operador controlado da release autorizada. O teste importa a migração sem `.env`, usa exclusivamente `127.0.0.1:33308`, cria um schema aleatório `faith_a2_qa_*` com dados sintéticos e o elimina ao terminar. A conferência final encontrou zero schemas QA restantes e o servidor temporário foi encerrado. Nenhum teste usa stages legados `dev`/`prod`.
 
 ## Validação executada
 
@@ -61,7 +61,7 @@ npm run test:advanced-alerts:mysql
 node tests/advanced-alerts.browser.cjs
 ```
 
-## Próxima publicação e reversão
+## Fluxo de publicação e reversão
 
 Publicação continua separada, seguindo `FLUXO_IMPLEMENTACAO_E_PUBLICACAO.md`: checkout limpo, commits/SHA completos, manifesto e gates, autorização específica para backend/worker, migração e switches por tenant/unidade. Antes da migração, confirmar as fundações, snapshot/backup e compatibilidade dos triggers existentes. Os triggers acrescentam uma atualização de contador por organização nas escritas relevantes; importações de membros e consentimentos concorrentes precisam ser acompanhadas no rollout.
 
@@ -77,4 +77,4 @@ Após revisar esta implementação, o proprietário solicitou: “certo, realize
 
 Foi confirmada por leitura a conta AWS esperada, RDS MySQL 8.4.8 em us-east-1, nove fontes/fundações presentes e o pré-requisito dos triggers. O snapshot pré-migração é `faith-hub-pre-a2-20261123-001`; a aplicação depende de seu estado disponível e dos demais gates. A confirmação do proprietário sobre avaliação da máquina e rotação de credenciais, registrada em 17/11, continua sendo a condição operacional usada nesta liberação.
 
-A contenção autoriza desativar somente os overrides criados por esta release, preservando schema e evidências. A reversão de código usa ZIPs anteriores verificados e configuração preservada; o Studio anterior é `600015d671e10a26c7ebd9bf40c1624fd7c4785d`, pelo processo controlado. O resultado efetivo será registrado ao encerrar a publicação. Este registro de preparação não afirma que os componentes já foram publicados.
+A contenção autoriza desativar somente os overrides criados por esta release, preservando schema e evidências. A reversão de código usa ZIPs anteriores verificados e configuração preservada; o Studio anterior é `600015d671e10a26c7ebd9bf40c1624fd7c4785d`, pelo processo controlado. O resultado efetivo está no [registro de publicação concluída](PUBLICACAO_A2_2026-11-23.md). Os parágrafos desta seção registram a avaliação e a autorização anteriores à execução.

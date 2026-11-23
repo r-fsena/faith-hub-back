@@ -1,0 +1,209 @@
+{
+  "releaseId": "FH-A2-20261123-001",
+  "status": "PUBLISHED_ENABLED_PASSIVELY_VERIFIED",
+  "completedAt": "2026-11-23T15:11:52.903Z",
+  "commits": {
+    "faith-hub-web": "2a22bb03d6e44581f70e7cbf5b54eb4efcf1c064",
+    "faith-hub-pwa": "65b3018d676f639f3754e4be9a4eea01fb212ee8",
+    "faith-hub-site": "204ec5188e0e149a158d4e3ec64e440e5c9d203a",
+    "faith-hub-backend": "a1782cd74cab767642b9ad2f0427f60ab3c6e397"
+  },
+  "pullRequests": {
+    "backend": "https://github.com/r-fsena/faith-hub-back/pull/12",
+    "studio": "https://github.com/r-fsena/faith-hub-web/pull/10"
+  },
+  "ci": {
+    "back": "https://github.com/r-fsena/faith-hub-back/actions/runs/45198121477",
+    "web": "https://github.com/r-fsena/faith-hub-web/actions/runs/45197487547"
+  },
+  "studio": {
+    "jobId": "161",
+    "status": "SUCCEED",
+    "actualCommitGuardVerified": true,
+    "publicAdvancedBundleVerified": true
+  },
+  "lambda": {
+    "legacyFunctions": 95,
+    "privateWorkers": 2,
+    "all97CodeHashesVerified": true,
+    "configurationPreserved": true,
+    "verifiedRollbackArchives": 34
+  },
+  "migration": {
+    "id": "20261123_001_advanced_alerts",
+    "checksum": "d3cae7c39aaedb1e6027988e37ff75e187ac483a575eff31209a855f0d2c0b93",
+    "snapshot": "faith-hub-pre-a2-20261123-001",
+    "tables": 3,
+    "triggers": 6,
+    "verified": true
+  },
+  "activation": {
+    "feature": "intelligence.alerts_advanced",
+    "organizations": 4,
+    "inactivePreserved": 4,
+    "auditedWrites": 4,
+    "globalFlagEnabled": false,
+    "campusOverridesPreserved": true,
+    "ruleConfigurationsUnchanged": true
+  },
+  "verification": {
+    "backendTests": 282,
+    "pwaTests": 43,
+    "isolatedMysqlChecks": 22,
+    "a2BrowserChecks": 12,
+    "existingStudioRegressionChecks": 8,
+    "apiFlagChecks": 82,
+    "anonymousGETDenied": 2,
+    "runtimeDbNewTablesReadable": 3,
+    "runtimeDmlPrivilegesVerified": true,
+    "sourceCollationsCompatible": true,
+    "manualInvocations": 0,
+    "productionBusinessTestWrites": 0,
+    "authenticatedProductionJourneyPerformed": false
+  },
+  "controls": [
+    {
+      "name": "studio",
+      "autobuild": false,
+      "previews": false,
+      "autoBranches": false,
+      "routingPreserved": true,
+      "nonReleaseVariablesPreserved": true
+    },
+    {
+      "name": "pwa",
+      "autobuild": false,
+      "previews": false,
+      "autoBranches": false,
+      "routingPreserved": true,
+      "nonReleaseVariablesPreserved": true
+    },
+    {
+      "name": "site",
+      "autobuild": false,
+      "previews": false,
+      "autoBranches": false,
+      "routingPreserved": true,
+      "nonReleaseVariablesPreserved": true
+    }
+  ],
+  "passiveMetricsWindow": {
+    "start": "2026-11-23T14:41:51.723Z",
+    "end": "2026-11-23T15:11:51.723Z",
+    "limitedPassiveObservation": true
+  },
+  "passiveRuntime": [
+    {
+      "name": "faith-hub-backend-dev-maintainIntelligence",
+      "metric": "Invocations",
+      "sum": 0,
+      "points": 0,
+      "status": "Complete"
+    },
+    {
+      "name": "faith-hub-backend-dev-maintainIntelligence",
+      "metric": "Errors",
+      "sum": 0,
+      "points": 0,
+      "status": "Complete"
+    },
+    {
+      "name": "faith-hub-backend-dev-maintainIntelligence",
+      "metric": "Throttles",
+      "sum": 0,
+      "points": 0,
+      "status": "Complete"
+    },
+    {
+      "name": "faith-hub-backend-prod-intelligence",
+      "metric": "Invocations",
+      "sum": 0,
+      "points": 0,
+      "status": "Complete"
+    },
+    {
+      "name": "faith-hub-backend-prod-intelligence",
+      "metric": "Errors",
+      "sum": 0,
+      "points": 0,
+      "status": "Complete"
+    },
+    {
+      "name": "faith-hub-backend-prod-intelligence",
+      "metric": "Throttles",
+      "sum": 0,
+      "points": 0,
+      "status": "Complete"
+    },
+    {
+      "name": "faith-hub-backend-prod-maintainIntelligence",
+      "metric": "Invocations",
+      "sum": 0,
+      "points": 0,
+      "status": "Complete"
+    },
+    {
+      "name": "faith-hub-backend-prod-maintainIntelligence",
+      "metric": "Errors",
+      "sum": 0,
+      "points": 0,
+      "status": "Complete"
+    },
+    {
+      "name": "faith-hub-backend-prod-maintainIntelligence",
+      "metric": "Throttles",
+      "sum": 0,
+      "points": 0,
+      "status": "Complete"
+    },
+    {
+      "name": "faith-hub-intelligence-reports-production",
+      "metric": "Invocations",
+      "sum": 0,
+      "points": 0,
+      "status": "Complete"
+    },
+    {
+      "name": "faith-hub-intelligence-reports-production",
+      "metric": "Errors",
+      "sum": 0,
+      "points": 0,
+      "status": "Complete"
+    },
+    {
+      "name": "faith-hub-intelligence-reports-production",
+      "metric": "Throttles",
+      "sum": 0,
+      "points": 0,
+      "status": "Complete"
+    },
+    {
+      "name": "faith-hub-intelligence-schedules-production",
+      "metric": "Invocations",
+      "sum": 1,
+      "points": 1,
+      "status": "Complete"
+    },
+    {
+      "name": "faith-hub-intelligence-schedules-production",
+      "metric": "Errors",
+      "sum": 0,
+      "points": 1,
+      "status": "Complete"
+    },
+    {
+      "name": "faith-hub-intelligence-schedules-production",
+      "metric": "Throttles",
+      "sum": 0,
+      "points": 1,
+      "status": "Complete"
+    }
+  ],
+  "limitations": [
+    "Rule configurations remain intentionally unchanged; an authorized administrator configures rules per campus.",
+    "Coverage and mature authorized samples are required before alerts can be generated.",
+    "No authenticated production journey or load/SLA certification; browser workflows used synthetic APIs.",
+    "Bank divergence still depends on F3; digital cell routine needs unambiguous instrumentation.",
+    "Dev/Homologation isolation and server-enforced release approvals are not delivered by this release."
+  ]
+}
