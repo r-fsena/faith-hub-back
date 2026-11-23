@@ -41,6 +41,7 @@ export function normalizeEntitlements(value: unknown): Record<string, boolean> {
       'intelligence.reports':!!base,
       'intelligence.calendar':!!base&&input['intelligence.history']!==false&&input['members.module_enabled']===true&&input['cell_groups.module_enabled']===true,
       'intelligence.capacities':!!base&&input['intelligence.operations']!==false&&['events.module_enabled','kids.module_enabled','volunteers.module_enabled'].some(k=>input[k]===true),
+      'intelligence.alerts_advanced':input['intelligence.alerts']??input['intelligence.actions']??!!base,
       'intelligence.alerts':input['intelligence.actions']??!!base
     };
     const value = input[key]===undefined&&key in evolution?evolution[key]:input[key] === undefined && ['intelligence.overview','intelligence.usage_collection'].includes(key)
