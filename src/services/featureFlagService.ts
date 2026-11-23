@@ -156,6 +156,7 @@ export async function evaluateTenantFlags(
     'intelligence.reports': false,
     'intelligence.calendar': false,
     'intelligence.capacities': false,
+    'intelligence.alerts_advanced': false,
     'intelligence.alerts': false
   };
   if (contract) {

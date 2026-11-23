@@ -1,3 +1,4 @@
+import {advancedAlertSource} from '../services/advancedAlerts';
 import {maintainAlerts,alertRules,configureAlertRule,evaluateAlerts,listAlerts,alertHistory,updateAlert,actionFromAlert} from '../services/intelligenceAlerts';
 import {intelligenceCapacitiesHandler} from '../services/intelligenceCapacities';
 import {intelligenceCalendarHandler} from '../services/intelligenceCalendar';
@@ -81,14 +82,16 @@ export async function intelligenceHandler(event:APIGatewayProxyEvent) {
       }
     }
     // Treasury access is restricted to its financial views, never the pastoral/member panels.
-    if(auth.user.role==='TREASURER')return apiResponse(403,{message:'Seu perfil de tesouraria permite consultar somente Finanças e seu consolidado de unidades.'});
+    const treasury=auth.user.role==='TREASURER';
+    if(treasury){if(!['alerts','actions','options'].includes(route[0]))return apiResponse(403,{message:'Seu perfil de tesouraria permite somente finanças e seus acompanhamentos.'});enabled('intelligence.alerts_advanced','intelligence.finance');enabled('financial.module_enabled','financial.accounts_ledger');const financial=enforcePermission(auth.user,'intelligence.view_financial',FINANCE_ROLES);if(!financial.allowed)return financial.errorResponse!;}
     if(route[0]==='alerts'){
       enabled('intelligence.alerts','intelligence.actions');
       if(method==='GET'&&route.length===1)return respond(await listAlerts(scope,event.queryStringParameters||{}));
       if(method==='GET'&&route[1]==='rules')return respond(await alertRules(scope));
-      const management=enforcePermission(auth.user,'intelligence.manage_actions',['SUPERADMIN','PASTOR','ADMIN','LEADER']);if(!management.allowed)return management.errorResponse!;
+      const management=enforcePermission(auth.user,'intelligence.manage_actions',['SUPERADMIN','PASTOR','ADMIN','TREASURER','LEADER']);if(!management.allowed)return management.errorResponse!;
       if(method==='POST'&&route[1]==='evaluate'&&route.length===2)return respond(await evaluateAlerts(scope,event));
       if(method==='POST'&&route[1]==='rules'&&route.length===2)return respond(await configureAlertRule(scope,body,event));
+      if(method==='GET'&&route[2]==='source'&&route.length===3)return respond(await advancedAlertSource(scope,route[1]));
       if(method==='GET'&&route[2]==='history'&&route.length===3)return respond(await alertHistory(scope,route[1]));
       if(method==='PATCH'&&route.length===2)return respond(await updateAlert(scope,route[1],body,event));
       if(method==='POST'&&route[2]==='action'&&route.length===3)return respond(await actionFromAlert(scope,flags.flags,route[1],body,event));
@@ -106,18 +109,18 @@ export async function intelligenceHandler(event:APIGatewayProxyEvent) {
     }
     if(route[0]==='options'&&method==='GET'){
       if(!flags.flags['intelligence.actions']&&!flags.flags['intelligence.goals'])throw new IntelligenceError(403,'Acompanhamento não está habilitado.');
-      return respond(await actionOptions(scope,flags.flags));
+      return respond(await actionOptions(scope,flags.flags,event.queryStringParameters?.context==='alerts'));
     }
     if(route[0]==='actions'){
       enabled('intelligence.actions');
       if(method==='GET'&&route.length===1)return respond(await listActions(scope,flags.flags,Number(event.queryStringParameters?.page||0),event.queryStringParameters?.status||'all'));
-      const management=enforcePermission(auth.user,'intelligence.manage_actions',['SUPERADMIN','PASTOR','ADMIN','LEADER']);if(!management.allowed)return management.errorResponse!;
+      const management=enforcePermission(auth.user,'intelligence.manage_actions',['SUPERADMIN','PASTOR','ADMIN','TREASURER','LEADER']);if(!management.allowed)return management.errorResponse!;
       if((method==='POST'&&route.length===1)||(method==='PATCH'&&route.length===2))return respond(await saveAction(scope,flags.flags,body,event,route[1]));
     }
     if(route[0]==='goals'){
       enabled('intelligence.goals');
       if(method==='GET'&&route.length===1)return respond(await listGoals(scope,flags.flags,Number(event.queryStringParameters?.page||0)));
-      const management=enforcePermission(auth.user,'intelligence.manage_actions',['SUPERADMIN','PASTOR','ADMIN','LEADER']);if(!management.allowed)return management.errorResponse!;
+      const management=enforcePermission(auth.user,'intelligence.manage_actions',['SUPERADMIN','PASTOR','ADMIN','TREASURER','LEADER']);if(!management.allowed)return management.errorResponse!;
       if((method==='POST'&&route.length===1)||(method==='PATCH'&&route.length===2))return respond(await saveGoal(scope,flags.flags,body,event,route[1]));
     }
     if(action==='overview'&&method==='GET')return apiResponse(200,await intelligenceOverview(scope,flags.flags,event.queryStringParameters?.period||'month'),{'Cache-Control':'no-store'});

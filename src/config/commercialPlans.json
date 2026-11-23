@@ -141,7 +141,8 @@
         "intelligence.reports": true,
         "intelligence.calendar": true,
         "intelligence.capacities": false,
-        "intelligence.alerts": true
+        "intelligence.alerts": true,
+        "intelligence.alerts_advanced": true
       },
       "status": "ACTIVE"
     },
@@ -269,7 +270,8 @@
         "intelligence.reports": true,
         "intelligence.calendar": true,
         "intelligence.capacities": true,
-        "intelligence.alerts": true
+        "intelligence.alerts": true,
+        "intelligence.alerts_advanced": true
       },
       "status": "ACTIVE"
     },
@@ -402,7 +404,8 @@
         "intelligence.reports": true,
         "intelligence.calendar": true,
         "intelligence.capacities": true,
-        "intelligence.alerts": true
+        "intelligence.alerts": true,
+        "intelligence.alerts_advanced": true
       },
       "status": "ACTIVE"
     },
@@ -535,7 +538,8 @@
         "intelligence.reports": true,
         "intelligence.calendar": true,
         "intelligence.capacities": true,
-        "intelligence.alerts": true
+        "intelligence.alerts": true,
+        "intelligence.alerts_advanced": true
       },
       "status": "ACTIVE"
     }

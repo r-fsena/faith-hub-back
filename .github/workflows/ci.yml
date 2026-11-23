@@ -23,7 +23,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: r-fsena/faith-hub-web
-          ref: 74b2713925dbbb56c00ec47e4552bd1cc04f8157
+          ref: 2a22bb03d6e44581f70e7cbf5b54eb4efcf1c064
           path: faith-hub-web
           persist-credentials: false
       - uses: actions/checkout@v4

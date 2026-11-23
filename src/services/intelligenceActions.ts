@@ -9,7 +9,7 @@ import {normalizeRole} from './authMiddleware';
 import {logSecurityEvent} from './auditLogService';
 
 type Executor={query:(sql:string,params?:any[])=>Promise<any>};
-async function selectedContext(scope:IntelligenceScope,campus:string,cellId:string|null,ownerId:string,db:Executor){
+async function selectedContext(scope:IntelligenceScope,campus:string,cellId:string|null,ownerId:string,db:Executor,alertId?:string){
  if(!safeIdentifier(campus)||!safeIdentifier(ownerId)||(cellId!==null&&!safeIdentifier(cellId)))throw new IntelligenceError(400,'Selecione unidade, responsável e grupo válidos.');
  if(scope.campusIds&&!scope.campusIds.includes(campus))throw new IntelligenceError(403,'Unidade fora do seu escopo.');
  if(scope.cellIds&&(!cellId||!scope.cellIds.includes(cellId)))throw new IntelligenceError(403,'Selecione um dos seus grupos.');
@@ -17,26 +17,28 @@ async function selectedContext(scope:IntelligenceScope,campus:string,cellId:stri
  if(!campuses.length)throw new IntelligenceError(404,'Unidade não encontrada.');
  let cell:any=null;
  if(cellId){const [cells]:any=await db.query("SELECT id,leader_id FROM cell_groups WHERE organization_id = ? AND COALESCE(campus_id,'campus_sede') = ? AND id = ?",[scope.organizationId,campus,cellId]);cell=cells[0];if(!cell)throw new IntelligenceError(404,'Grupo não encontrado nesta unidade.');}
- const [owners]:any=await db.query(`SELECT id,role,campus_id,campus_ids FROM members WHERE organization_id = ? AND id = ? AND UPPER(status) IN ('ACTIVE','ATIVO') LIMIT 1`,[scope.organizationId,ownerId]);
- const owner=owners[0];if(!owner||!['SUPERADMIN','PASTOR','ADMIN','LEADER'].includes(normalizeRole(owner.role)))throw new IntelligenceError(400,'Responsável precisa ser um líder, pastor ou administrador ativo desta igreja.');
+ const [owners]:any=await db.query(`SELECT id,role,campus_id,campus_ids,operational_permissions FROM members WHERE organization_id = ? AND id = ? AND UPPER(status) IN ('ACTIVE','ATIVO') LIMIT 1`,[scope.organizationId,ownerId]);
+ const owner=owners[0];const context=alertId?await alertContext(scope,alertId,db):null;const financial=context?.rule_key==='financial_variation';if(!owner||!(financial?['SUPERADMIN','PASTOR','ADMIN','TREASURER']:['SUPERADMIN','PASTOR','ADMIN','LEADER']).includes(normalizeRole(owner.role)))throw new IntelligenceError(400,'Responsável precisa ser um líder, pastor ou administrador ativo desta igreja.');
  let ids:any;try{ids=typeof owner.campus_ids==='string'?JSON.parse(owner.campus_ids):owner.campus_ids;}catch{ids=[];}if(!Array.isArray(ids)||!ids.length)ids=[owner.campus_id||'campus_sede'];
  if(normalizeRole(owner.role)!=='SUPERADMIN'&&!ids.includes('all')&&!ids.includes(campus))throw new IntelligenceError(400,'O responsável não tem acesso à unidade.');
  if(normalizeRole(owner.role)==='LEADER'&&(!cell||cell.leader_id!==ownerId))throw new IntelligenceError(400,'O líder responsável deve conduzir o grupo selecionado.');
+ if(context){const role=normalizeRole(owner.role),permissions=typeof owner.operational_permissions==='string'?JSON.parse(owner.operational_permissions):owner.operational_permissions;const ownerScope:IntelligenceScope={...scope,user:{...scope.user,userId:ownerId,role,isSuperAdmin:role==='SUPERADMIN',campusIds:ids,operationalPermissions:permissions||[]},campusId:campus,campusIds:[campus],cellIds:role==='LEADER'?[cellId!]:null};await alertContext(ownerScope,alertId!,db);}
  return {campus,cellId};
 }
-export async function actionOptions(scope:IntelligenceScope,flags:Record<string,boolean>={}){
+export async function actionOptions(scope:IntelligenceScope,flags:Record<string,boolean>={},includeFinancialOwners=false){
  const campus=scopedWhere({...scope,cellIds:null},'c','id'),cell=scopedWhere(scope,'cg','campus_id','id'),member=scopedWhere({...scope,cellIds:null},'m');
  const {rows:campuses}=await query(`SELECT c.id,c.name FROM campuses c WHERE c.organization_id = ?${campus.sql} ORDER BY c.name LIMIT 100`,[scope.organizationId,...campus.params]);
- const {rows:cells}=flags['cell_groups.module_enabled']?await query(`SELECT cg.id,cg.name,cg.campus_id,cg.leader_id FROM cell_groups cg WHERE cg.organization_id = ?${cell.sql} ORDER BY cg.name LIMIT 200`,[scope.organizationId,...cell.params]):{rows:[]};
+ const treasury=scope.user.role==='TREASURER',financeOwners=includeFinancialOwners&&flags['intelligence.alerts_advanced']&&flags['intelligence.finance']&&['SUPERADMIN','PASTOR','ADMIN'].includes(scope.user.role);const {rows:cells}=!treasury&&flags['cell_groups.module_enabled']?await query(`SELECT cg.id,cg.name,cg.campus_id,cg.leader_id FROM cell_groups cg WHERE cg.organization_id = ?${cell.sql} ORDER BY cg.name LIMIT 200`,[scope.organizationId,...cell.params]):{rows:[]};
  const {rows:owners}=scope.cellIds?await query(`SELECT m.id,m.name,m.role,m.campus_id FROM members m
  WHERE m.organization_id = ? AND m.id = ? AND UPPER(m.status) IN ('ACTIVE','ATIVO')${member.sql}`,[scope.organizationId,scope.user.userId,...member.params])
  :await query(`SELECT m.id,m.name,m.role,m.campus_id FROM members m WHERE m.organization_id = ?
- AND UPPER(m.status) IN ('ACTIVE','ATIVO') AND UPPER(m.role) IN ('SUPERADMIN','PASTOR','ADMIN','LEADER','LIDER')${member.sql} ORDER BY m.name LIMIT 200`,[scope.organizationId,...member.params]);
- return {campuses,cells,owners,metrics:Object.fromEntries(Object.entries(GOAL_METRICS).filter(([key,value])=>flags[value.flag]&&(!key.startsWith('visitors_')||flags['intelligence.member_journey'])))};
+ AND UPPER(m.status) IN ('ACTIVE','ATIVO') AND UPPER(m.role) IN (${treasury?"'SUPERADMIN','PASTOR','ADMIN','TREASURER','TESOUREIRO'":financeOwners?"'SUPERADMIN','PASTOR','ADMIN','LEADER','LIDER','TREASURER','TESOUREIRO'":"'SUPERADMIN','PASTOR','ADMIN','LEADER','LIDER'"})${member.sql} ORDER BY m.name LIMIT 200`,[scope.organizationId,...member.params]);
+ return {campuses,cells,owners,metrics:treasury?{}:Object.fromEntries(Object.entries(GOAL_METRICS).filter(([key,value])=>flags[value.flag]&&(!key.startsWith('visitors_')||flags['intelligence.member_journey'])))};
 }
 async function subjectContext(scope:IntelligenceScope,type:string,id:string,flags:Record<string,boolean>,db:Executor){
  if(!safeIdentifier(id))throw new IntelligenceError(400,'Origem inválida.');
  if(type==='alert'){const row=await alertContext(scope,id,db,true);if(['RESOLVED','DISMISSED'].includes(row.status))throw new IntelligenceError(409,'Retome a revisão do alerta antes de criar uma ação.');return {campus:row.campus_id,cellId:row.cell_group_id||null,tab:'intelligence',generation:Number(row.generation)};}
+ if(scope.user.role==='TREASURER')throw new IntelligenceError(403,'A tesouraria acompanha somente ações de alertas financeiros.');
  if(type==='visitor'){
   if(!flags['visitors.module_enabled']||!flags['intelligence.member_journey'])throw new IntelligenceError(403,'Acolhimento não está disponível neste plano ou escopo.');
   const f=scopedWhere(scope,'v','campus_id','assigned_cell_id');const [rows]:any=await db.query(`SELECT v.campus_id,v.assigned_cell_id FROM church_visitors v WHERE v.organization_id = ? AND v.id = ?${f.sql} LIMIT 1`,[scope.organizationId,id,...f.params]);
@@ -58,7 +60,7 @@ export async function listActions(scope:IntelligenceScope,flags:Record<string,bo
  if(!Number.isInteger(page)||page<0||page>100)throw new IntelligenceError(400,'Página inválida.');
  if(!['all','open','closed','snoozed'].includes(status))throw new IntelligenceError(400,'Filtro de situação inválido.');
  const f=scopedWhere(scope,'a','campus_id','cell_group_id');
- const parentFilter=`${flags['visitors.module_enabled']&&flags['intelligence.member_journey']?'':" AND a.subject_type <> 'visitor'"}${flags['cell_groups.module_enabled']?'':" AND a.subject_type <> 'cell'"}`;
+ const parentFilter=`${scope.user.role==='TREASURER'?" AND a.subject_type='alert' AND EXISTS(SELECT 1 FROM intelligence_alerts fa WHERE fa.organization_id=a.organization_id AND fa.id=a.subject_id AND fa.rule_key='financial_variation')":''}${flags['visitors.module_enabled']&&flags['intelligence.member_journey']?'':" AND a.subject_type <> 'visitor'"}${flags['cell_groups.module_enabled']?'':" AND a.subject_type <> 'cell'"}`;
  const statusFilter=status==='open'?" AND a.closed_at IS NULL AND (a.snoozed_until IS NULL OR a.snoozed_until <= ?)":status==='closed'?" AND a.closed_at IS NOT NULL":status==='snoozed'?" AND a.closed_at IS NULL AND a.snoozed_until > ?":'';
  const {rows}=await query(`SELECT a.*,m.name AS owner_name,DATE_FORMAT(a.created_at,'%Y-%m-%dT%H:%i:%s.000Z') AS created_at,
  DATE_FORMAT(a.updated_at,'%Y-%m-%dT%H:%i:%s.000Z') AS updated_at,DATE_FORMAT(a.due_date,'%Y-%m-%d') AS due_date,
@@ -76,12 +78,13 @@ export async function saveAction(scope:IntelligenceScope,flags:Record<string,boo
   if(!safeIdentifier(id))throw new IntelligenceError(400,'Ação inválida.');const f=scopedWhere(scope,'a','campus_id','cell_group_id');
   const [rows]:any=await db.query(`SELECT a.* FROM intelligence_actions a WHERE a.organization_id = ? AND a.id = ?${f.sql} LIMIT 1 FOR UPDATE`,[org,id,...f.params]);
   if(!rows.length)throw new IntelligenceError(404,'Ação não encontrada.');const previous=rows[0];
+  if(scope.user.role==='TREASURER'&&previous.subject_type!=='alert')throw new IntelligenceError(404,'Ação não encontrada.');
   if(previous.subject_type==='alert')await alertContext(scope,previous.subject_id,db,true);
   if((previous.subject_type==='visitor'&&(!flags['visitors.module_enabled']||!flags['intelligence.member_journey']))||(previous.subject_type==='cell'&&!flags['cell_groups.module_enabled']))throw new IntelligenceError(403,'O módulo de origem não está disponível no plano.');
   if(requireVersion(body.expected_version)!==Number(previous.version))throw new IntelligenceError(409,'A ação foi atualizada. Recarregue antes de salvar.');
   const status=body.status||previous.status;assertActionTransition(previous.status,status,body.resolution||previous.resolution);
   const owner=body.owner_id||previous.owner_id,due=body.due_date?requireDay(body.due_date):String(previous.due_date instanceof Date?previous.due_date.toISOString().slice(0,10):previous.due_date);
-  await selectedContext(scope,previous.campus_id,previous.cell_group_id,owner,db);
+  await selectedContext(scope,previous.campus_id,previous.cell_group_id,owner,db,previous.subject_type==='alert'?previous.subject_id:undefined);
   let snooze=['COMPLETED','DISMISSED'].includes(status)?null:body.snoozed_until?requireDay(body.snoozed_until):null;
   if(snooze&&snooze<dayInSaoPaulo())snooze=null;
   if(snooze&&Date.parse(snooze)-Date.parse(dayInSaoPaulo())>30*86400000)throw new IntelligenceError(400,'Adie somente ações abertas, por até 30 dias.');
@@ -96,8 +99,8 @@ export async function saveAction(scope:IntelligenceScope,flags:Record<string,boo
  const title=shortTitle(body.title),due=requireDay(body.due_date);
  if(!safeIdentifier(body.request_id))throw new IntelligenceError(400,'Identificador de solicitação inválido.');
  const type=body.subject_type,subject=await subjectContext(scope,type,body.subject_id,flags,db);
- const campus=subject?.campus||body.campus_id,cellId=subject?.cellId||body.cell_group_id||null;
- await selectedContext(scope,campus,cellId,body.owner_id,db);
+ const campus=subject?.campus||body.campus_id,cellId=subject?subject.cellId:body.cell_group_id||null;
+ await selectedContext(scope,campus,cellId,body.owner_id,db,type==='alert'?body.subject_id:undefined);
  if(body.signal_key&&(!((body.signal_key==='welcome_waiting'&&type==='visitor')||(body.signal_key==='alert_followup'&&type==='alert'))))throw new IntelligenceError(400,'Sinal de acompanhamento inválido.');
  const dedup=body.signal_key==='alert_followup'?`alert_${(subject as any).generation}`:body.signal_key?`welcome_waiting_${dayInSaoPaulo().slice(0,7)}`:String(body.request_id);
  // Signal identity is bound to its origin and scope; arbitrary client text never widens deduplication.
