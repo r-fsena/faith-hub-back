@@ -5,6 +5,9 @@ import { applyContractEntitlements, COMMERCIAL_PLAN_IDS, ENTITLEMENT_KEYS, LEGAC
 
 export type EnvironmentScope = 'all' | 'development' | 'staging' | 'production';
 
+export const CELL_GROUP_OFFERINGS_FLAG = 'cell_groups.offerings';
+export const CELL_GROUP_OFFERINGS_DESCRIPTION = 'Registro de ofertas nas reuniões dos pequenos grupos';
+
 export interface FeatureFlagRecord {
   id: string;
   organization_id: string;
@@ -118,6 +121,7 @@ export async function evaluateTenantFlags(
   );
 
   let flagsMap: Record<string, boolean> = {
+    [CELL_GROUP_OFFERINGS_FLAG]: false,
     'system.saas_public_journey': false,
     'system.saas_pwa_customization': false,
     'system.saas_public_checkout': false,
@@ -170,6 +174,9 @@ export async function evaluateTenantFlags(
   }
   const configsMap: Record<string, any> = {};
   const catalogMap: Map<string, { category: string; description: string; hasOverride: boolean }> = new Map();
+  catalogMap.set(CELL_GROUP_OFFERINGS_FLAG, {
+    category: 'Pequenos grupos', description: CELL_GROUP_OFFERINGS_DESCRIPTION, hasOverride: false
+  });
 
   // Process rows with cascading overrides
   for (const r of rows) {
@@ -189,8 +196,8 @@ export async function evaluateTenantFlags(
 
     if (!catalogMap.has(key) || !isGlobal) {
       catalogMap.set(key, {
-        category: r.category || 'Geral',
-        description: r.description || '',
+        category: key === CELL_GROUP_OFFERINGS_FLAG ? 'Pequenos grupos' : r.category || 'Geral',
+        description: key === CELL_GROUP_OFFERINGS_FLAG ? CELL_GROUP_OFFERINGS_DESCRIPTION : r.description || '',
         hasOverride: !isGlobal
       });
     }
@@ -215,7 +222,10 @@ export async function evaluateTenantFlags(
     }
   }
   if (contract) {
+    // Offerings is an optional switch within the existing cell-group module, without changing contracts.
+    const offeringsEnabled = flagsMap[CELL_GROUP_OFFERINGS_FLAG];
     flagsMap = applyContractEntitlements(flagsMap, contract);
+    flagsMap[CELL_GROUP_OFFERINGS_FLAG] = offeringsEnabled && !!contract.entitlements['cell_groups.module_enabled'];
     for (const key of ENTITLEMENT_KEYS) {
       if (!catalogMap.has(key)) catalogMap.set(key, { category: 'Plano contratado', description: key, hasOverride: false });
     }
@@ -224,6 +234,7 @@ export async function evaluateTenantFlags(
   if (trialExpired) {
     for (const key of ENTITLEMENT_KEYS) if (key !== 'system.saas_subscription_portal' && key !== 'system.plan_entitlements') flagsMap[key] = false;
   }
+  if (trialExpired || flagsMap['cell_groups.module_enabled'] === false) flagsMap[CELL_GROUP_OFFERINGS_FLAG] = false;
 
   // Build catalog array for admin UI
   const catalog = Array.from(catalogMap.entries()).map(([key, meta]) => ({
@@ -232,7 +243,7 @@ export async function evaluateTenantFlags(
     description: meta.description,
     enabled: Boolean(flagsMap[key]),
     hasOverride: meta.hasOverride,
-    contracted: contract ? Boolean(contract.entitlements[key]) : undefined,
+    contracted: contract ? Boolean(contract.entitlements[key === CELL_GROUP_OFFERINGS_FLAG ? 'cell_groups.module_enabled' : key]) : undefined,
     config: configsMap[key] || null
   }));
 
