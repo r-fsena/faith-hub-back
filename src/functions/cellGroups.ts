@@ -5,11 +5,25 @@ import { v4 as uuidv4 } from 'uuid';
 import { query, apiResponse, getConnection } from '../db';
 import { requireAuth, enforceRole, enforceTenant, getAuthenticatedUser } from '../services/authMiddleware';
 import { logSecurityEvent } from '../services/auditLogService';
+import { CELL_GROUP_OFFERINGS_FLAG, evaluateTenantFlags } from '../services/featureFlagService';
 
 import {IntelligenceError} from '../services/intelligenceUsage';
 
 const LEADERSHIP_ROLES = ['SUPERADMIN', 'PASTOR', 'ADMIN', 'LEADER'];
 
+async function offeringsEnabled(organizationId: string, campusId?: string): Promise<boolean> {
+  // The legacy dev/prod stages both serve production. Client headers cannot select another environment.
+  const environment = process.env.APP_STAGE === 'development' ? 'development'
+    : process.env.APP_STAGE === 'staging' ? 'staging' : 'production';
+  const result = await evaluateTenantFlags(organizationId, campusId || 'campus_sede', environment);
+  return result.flags[CELL_GROUP_OFFERINGS_FLAG] === true;
+}
+
+function meetingWithOfferings(meeting: any, enabled: boolean) {
+  if (enabled) return meeting;
+  const { offerings_amount, ...visibleMeeting } = meeting;
+  return visibleMeeting;
+}
 
 async function membershipTarget(scope:any, identifier:string, attaching:boolean):Promise<string> {
   if (scope.user.role==='LEADER' && scope.record.leader_id!==scope.user.userId) throw new IntelligenceError(403,'Somente o líder deste grupo pode alterar seus vínculos.');
@@ -347,104 +361,143 @@ export const recordMeeting = async (event: APIGatewayProxyEvent): Promise<APIGat
     const auth = await requireAuth(event);
     if ('errorResponse' in auth) return auth.errorResponse;
 
+    const roleCheck = enforceRole(auth.user, LEADERSHIP_ROLES);
+    if (!roleCheck.allowed) return roleCheck.errorResponse!;
+
     const groupId = event.pathParameters?.id;
     if (!groupId) return apiResponse(400, { error: 'ID da célula faltante' });
 
-    const { rows: cellRows } = await query(`SELECT organization_id, campus_id, leader_id, name FROM cell_groups WHERE id = ? LIMIT 1`, [groupId]);
-    if (cellRows.length === 0) return apiResponse(404, { error: 'Célula não encontrada' });
-    const cell = cellRows[0];
-
-    const tenantCheck = enforceTenant(auth.user, cell.organization_id);
-    if (!tenantCheck.allowed) return tenantCheck.errorResponse!;
+    const scope = await authorizeResource(event, 'cell_groups', groupId, LEADERSHIP_ROLES);
+    if ('errorResponse' in scope) return scope.errorResponse;
+    const cell = scope.record;
+    if (auth.user.role === 'LEADER' && cell.leader_id !== auth.user.userId) {
+      return apiResponse(403, { error: 'Somente o líder deste grupo pode registrar a reunião.' });
+    }
 
     const body = JSON.parse(event.body || '{}');
-    const { 
-      meeting_date, 
-      study_topic, 
-      offerings_amount = 0, 
-      notes, 
-      attendees = [] 
+    const {
+      meeting_date,
+      study_topic,
+      offerings_amount = 0,
+      notes,
+      attendees = []
     } = body;
 
     if (!meeting_date) {
       return apiResponse(400, { error: 'Data da reunião é obrigatória (YYYY-MM-DD)' });
     }
 
+    const amount = Number(offerings_amount);
+    if (!['number', 'string'].includes(typeof offerings_amount) || !Number.isFinite(amount) || amount < 0) {
+      return apiResponse(400, { error: 'O valor da oferta deve ser um número maior ou igual a zero.' });
+    }
+    if (amount !== 0 && !await offeringsEnabled(scope.organizationId, cell.campus_id)) {
+      return apiResponse(403, { error: 'CELL_GROUP_OFFERINGS_DISABLED', message: 'O registro de ofertas dos pequenos grupos não está habilitado neste ambiente.' });
+    }
+    if (!Array.isArray(attendees)) return apiResponse(400, { error: 'Lista de participantes inválida.' });
+
+    // Validate references before writing attendance in this tenant and group.
+    const memberIds = [...new Set(attendees.filter(att => att?.member_id).map(att => att.member_id))];
+    if (attendees.some(att => !att || typeof att !== 'object')) return apiResponse(400, { error: 'Participante inválido.' });
+    if (memberIds.length) {
+      const { rows: members } = await query(
+        `SELECT id FROM members WHERE organization_id = ? AND cell_group_id = ? AND COALESCE(campus_id, 'campus_sede') = ? AND id IN (${memberIds.map(() => '?').join(',')})`,
+        [scope.organizationId, groupId, cell.campus_id || 'campus_sede', ...memberIds]
+      );
+      if (members.length !== memberIds.length) return apiResponse(400, { error: 'Participante fora deste grupo ou unidade.' });
+    }
+
     const meetingId = uuidv4();
     const effectiveCampusId = cell.campus_id || 'campus_sede';
     const leaderId = auth.user.userId || cell.leader_id || null;
 
-    // 1. Inserir cabeçalho da reunião
-    await query(
-      `INSERT INTO cell_meetings (id, organization_id, campus_id, cell_group_id, leader_id, meeting_date, study_topic, offerings_amount, notes)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        meetingId,
-        tenantCheck.effectiveOrgId,
-        effectiveCampusId,
-        groupId,
-        leaderId,
-        meeting_date,
-        study_topic || null,
-        Number(offerings_amount) || 0,
-        notes || null
-      ]
-    );
+    const db = await getConnection();
+    try {
+      await db.beginTransaction();
 
-    // 2. Inserir participantes (membros e visitantes)
-    let presentCount = 0;
-    let absentCount = 0;
-    let visitorCount = 0;
-
-    for (const att of attendees) {
-      const attId = uuidv4();
-      const status = att.status === 'ABSENT' ? 'ABSENT' : (att.status === 'JUSTIFIED' ? 'JUSTIFIED' : 'PRESENT');
-      
-      if (status === 'PRESENT') presentCount++;
-      else absentCount++;
-
-      if (att.visitor_name) visitorCount++;
-
-      await query(
-        `INSERT INTO cell_meeting_attendees 
-         (id, organization_id, meeting_id, member_id, visitor_name, visitor_phone, status, justification)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      // 1. Inserir cabeçalho da reunião
+      await db.query(
+        `INSERT INTO cell_meetings (id, organization_id, campus_id, cell_group_id, leader_id, meeting_date, study_topic, offerings_amount, notes)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
-          attId,
-          tenantCheck.effectiveOrgId,
           meetingId,
-          att.member_id || null,
-          att.visitor_name || null,
-          att.visitor_phone || null,
-          status,
-          att.justification || null
+          scope.organizationId,
+          effectiveCampusId,
+          groupId,
+          leaderId,
+          meeting_date,
+          study_topic || null,
+          amount,
+          notes || null
         ]
       );
-    }
 
-    await logSecurityEvent({
-      organizationId: tenantCheck.effectiveOrgId,
-      user: auth.user,
-      action: 'RECORD_CELL_MEETING',
-      resource: 'cell_meetings',
-      resourceId: meetingId,
-      details: { 
-        cell_name: cell.name, 
-        meeting_date, 
-        present_count: presentCount, 
+      // 2. Inserir participantes (membros e visitantes)
+      let presentCount = 0;
+      let absentCount = 0;
+      let visitorCount = 0;
+
+      for (const att of attendees) {
+        const attId = uuidv4();
+        const status = att.status === 'ABSENT' ? 'ABSENT' : (att.status === 'JUSTIFIED' ? 'JUSTIFIED' : 'PRESENT');
+
+        if (status === 'PRESENT') presentCount++;
+        else absentCount++;
+
+        if (att.visitor_name) visitorCount++;
+
+        await db.query(
+          `INSERT INTO cell_meeting_attendees
+           (id, organization_id, meeting_id, member_id, visitor_name, visitor_phone, status, justification)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            attId,
+            scope.organizationId,
+            meetingId,
+            att.member_id || null,
+            att.visitor_name || null,
+            att.visitor_phone || null,
+            status,
+            att.justification || null
+          ]
+        );
+      }
+
+      await logSecurityEvent({
+        organizationId: scope.organizationId,
+        campusId: effectiveCampusId,
+        user: auth.user,
+        action: 'RECORD_CELL_MEETING',
+        resource: 'cell_meetings',
+        resourceId: meetingId,
+        details: {
+          cell_name: cell.name,
+          meeting_date,
+          present_count: presentCount,
+          absent_count: absentCount,
+          visitor_count: visitorCount,
+          offerings_amount: amount
+        },
+        event,
+        strict: true,
+        executor: (sql, params) => db.query(sql, params)
+      });
+
+      await db.commit();
+
+      return apiResponse(201, {
+        message: 'Reunião e chamada registradas com sucesso!',
+        id: meetingId,
+        present_count: presentCount,
         absent_count: absentCount,
         visitor_count: visitorCount
-      },
-      event
-    });
-
-    return apiResponse(201, {
-      message: 'Reunião e chamada registradas com sucesso!',
-      id: meetingId,
-      present_count: presentCount,
-      absent_count: absentCount,
-      visitor_count: visitorCount
-    });
+      });
+    } catch (error) {
+      await db.rollback();
+      throw error;
+    } finally {
+      db.release();
+    }
   } catch (err: any) {
     if(err instanceof IntelligenceError)return apiResponse(err.status,{error:err.message});
     console.error('Erro ao registrar reunião da célula:', err);
@@ -467,7 +520,7 @@ export const getCellMeetings = async (event: APIGatewayProxyEvent): Promise<APIG
         COUNT(CASE WHEN cma.status IN ('ABSENT', 'JUSTIFIED') THEN 1 END) as absent_count,
         COUNT(CASE WHEN cma.visitor_name IS NOT NULL THEN 1 END) as visitor_count
       FROM cell_meetings cm
-      LEFT JOIN cell_meeting_attendees cma ON cm.id = cma.meeting_id
+      LEFT JOIN cell_meeting_attendees cma ON cm.id = cma.meeting_id AND cma.organization_id = cm.organization_id
       WHERE cm.cell_group_id = ? AND cm.organization_id = ?
       GROUP BY cm.id
       ORDER BY cm.meeting_date DESC, cm.created_at DESC
@@ -475,7 +528,8 @@ export const getCellMeetings = async (event: APIGatewayProxyEvent): Promise<APIG
     `;
 
     const { rows } = await query(q, [groupId, scope.organizationId]);
-    return apiResponse(200, rows);
+    const enabled = await offeringsEnabled(scope.organizationId, scope.record.campus_id);
+    return apiResponse(200, rows.map(row => meetingWithOfferings(row, enabled)));
   } catch (err: any) {
     if(err instanceof IntelligenceError)return apiResponse(err.status,{error:err.message});
     console.error('Erro ao buscar histórico de reuniões:', err);
@@ -508,14 +562,15 @@ export const getCellMeetingDetails = async (event: APIGatewayProxyEvent): Promis
          m.phone as member_phone,
          m.email as member_email
        FROM cell_meeting_attendees cma
-       LEFT JOIN members m ON cma.member_id = m.id
-       WHERE cma.meeting_id = ? AND EXISTS (SELECT 1 FROM cell_meetings cm WHERE cm.id = cma.meeting_id AND cm.organization_id = ?)
+       LEFT JOIN members m ON cma.member_id = m.id AND m.organization_id = cma.organization_id
+       WHERE cma.meeting_id = ? AND cma.organization_id = ? AND EXISTS (SELECT 1 FROM cell_meetings cm WHERE cm.id = cma.meeting_id AND cm.organization_id = ?)
        ORDER BY cma.status ASC, m.name ASC`,
-      [meetingId, scope.organizationId]
+      [meetingId, scope.organizationId, scope.organizationId]
     );
 
+    const enabled = await offeringsEnabled(scope.organizationId, scope.record.campus_id);
     return apiResponse(200, {
-      ...meetingRows[0],
+      ...meetingWithOfferings(meetingRows[0], enabled),
       attendees
     });
   } catch (err: any) {
